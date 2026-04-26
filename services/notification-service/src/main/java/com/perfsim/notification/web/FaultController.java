@@ -107,6 +107,15 @@ public class FaultController extends BaseFaultController {
                 });
     }
 
+    private static final String[] CHANNELS = {
+        "/api/dispatch/email",
+        "/api/dispatch/sms",
+        "/api/dispatch/push",
+        "/api/dispatch/webhook",
+        "/api/dispatch/slack",
+        "/api/dispatch/teams"
+    };
+
     @PostMapping("/serialized")
     public ResponseEntity<FaultResponse> serialized(
             @RequestParam(defaultValue = "6") int steps) {
@@ -116,13 +125,15 @@ public class FaultController extends BaseFaultController {
                 () -> {
                     long start = System.nanoTime();
                     int ok = 0;
-                    // Each step is independent (uses a different `step=` param) so
-                    // they could run in parallel, but we await each one before the
-                    // next. Detector flags this as serialized_calls.
+                    // Each step hits a distinct route template (email, sms, push,
+                    // webhook, slack, teams). With distinct templates the detector
+                    // does not classify the loop as n_plus_one_http and falls back
+                    // to serialized_calls, which is what the lab is showcasing.
                     for (int i = 0; i < steps; i++) {
+                        String path = CHANNELS[i % CHANNELS.length];
                         selfClient
                                 .get()
-                                .uri("/api/external/mock?delayMs=80&step={s}", i)
+                                .uri(path + "?delayMs=80")
                                 .retrieve()
                                 .toBodilessEntity();
                         ok++;

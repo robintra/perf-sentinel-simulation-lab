@@ -38,6 +38,23 @@ public class NotificationController {
     @GetMapping("/external/mock")
     public ResponseEntity<Map<String, Object>> externalMock(
             @RequestParam(defaultValue = "0") long delayMs) {
+        return delay(delayMs, "external");
+    }
+
+    @GetMapping({
+        "/dispatch/email",
+        "/dispatch/sms",
+        "/dispatch/push",
+        "/dispatch/webhook",
+        "/dispatch/slack",
+        "/dispatch/teams"
+    })
+    public ResponseEntity<Map<String, Object>> dispatch(
+            @RequestParam(defaultValue = "0") long delayMs) {
+        return delay(delayMs, "dispatch");
+    }
+
+    private ResponseEntity<Map<String, Object>> delay(long delayMs, String channel) {
         if (delayMs > 0) {
             try {
                 Thread.sleep(delayMs);
@@ -46,6 +63,9 @@ public class NotificationController {
             }
         }
         return ResponseEntity.ok(Map.<String, Object>of(
-                "ok", true, "delayed_ms", delayMs, "now", System.currentTimeMillis()));
+                "ok", true,
+                "channel", channel,
+                "delayed_ms", delayMs,
+                "now", System.currentTimeMillis()));
     }
 }

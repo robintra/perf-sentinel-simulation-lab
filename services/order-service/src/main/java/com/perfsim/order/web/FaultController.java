@@ -5,6 +5,8 @@ import com.perfsim.order.domain.OrderRepository;
 import com.perfsim.shared.BaseFaultController;
 import com.perfsim.shared.FaultConstants;
 import com.perfsim.shared.FaultResponse;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import jakarta.transaction.Transactional;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,9 @@ public class FaultController extends BaseFaultController {
     private final OrderRepository orders;
     private final RestClient paymentClient;
 
+    @PersistenceContext
+    private EntityManager em;
+
     public FaultController(OrderRepository orders, RestClient paymentClient) {
         this.orders = orders;
         this.paymentClient = paymentClient;
@@ -43,19 +48,22 @@ public class FaultController extends BaseFaultController {
                 "n_plus_one_sql",
                 Map.of("items", items),
                 () -> {
-                    List<Order> first = orders.findFirst50ByStatus("PENDING");
-                    int touched = 0;
+                    // Native query with literal value concatenated each iteration so
+                    // the OTel JDBC instrumentation captures distinct SQL strings.
+                    // Hibernate prepared statements would all share the same `?`
+                    // template and the detector would classify the loop as
+                    // redundant_sql instead of n_plus_one_sql.
                     int total = 0;
-                    for (Order o : first) {
-                        if (touched >= items) {
-                            break;
+                    for (int orderId = 1; orderId <= items; orderId++) {
+                        Object count = em.createNativeQuery(
+                                        "SELECT count(*) FROM orders.order_items "
+                                                + "WHERE order_id = " + orderId)
+                                .getSingleResult();
+                        if (count instanceof Number n) {
+                            total += n.intValue();
                         }
-                        // Lazy-loaded items collection: each access fires a separate SQL
-                        // SELECT * FROM order_items WHERE order_id = ? — that is the N+1.
-                        total += o.getItems().size();
-                        touched++;
                     }
-                    return Map.of("orders_touched", touched, "items_total", total);
+                    return Map.of("orders_touched", items, "items_total", total);
                 });
     }
 
@@ -70,11 +78,11 @@ public class FaultController extends BaseFaultController {
                     for (int i = 0; i < repeats; i++) {
                         // Same call, same params, same response. Detector flags this
                         // as redundant_http when count >= n_plus_one_min_occurrences.
-                        Map<?, ?> resp = paymentClient
+                        List<?> resp = paymentClient
                                 .get()
                                 .uri("/api/payments/history?customerId=1&limit=10")
                                 .retrieve()
-                                .body(Map.class);
+                                .body(List.class);
                         if (resp != null) {
                             ok++;
                         }
@@ -93,8 +101,13 @@ public class FaultController extends BaseFaultController {
                 () -> {
                     double seconds = delayMs / 1000.0;
                     int executed = 0;
+                    // Native query with literal values inlined so the detector
+                    // sees distinct, slow SQL templates.
                     for (int i = 0; i < repeats; i++) {
-                        orders.slowQuery(seconds);
+                        em.createNativeQuery(
+                                "SELECT pg_sleep(" + seconds + "), * FROM orders.orders "
+                                        + "ORDER BY id OFFSET " + i + " LIMIT 1")
+                                .getResultList();
                         executed++;
                     }
                     return Map.of("queries_executed", executed, "delay_ms", delayMs);

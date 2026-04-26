@@ -3,6 +3,8 @@ package com.perfsim.payment.web;
 import com.perfsim.payment.domain.PaymentRepository;
 import com.perfsim.shared.BaseFaultController;
 import com.perfsim.shared.FaultResponse;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +19,9 @@ public class FaultController extends BaseFaultController {
 
     private final PaymentRepository payments;
     private final RestClient notificationClient;
+
+    @PersistenceContext
+    private EntityManager em;
 
     public FaultController(PaymentRepository payments, RestClient notificationClient) {
         this.payments = payments;
@@ -35,11 +40,19 @@ public class FaultController extends BaseFaultController {
                 "redundant_sql",
                 Map.of("repeats", repeats),
                 () -> {
+                    // Same SQL string with the same literal value every iteration.
+                    // The detector compares (template, params) and flags as
+                    // redundant_sql when occurrences >= threshold and
+                    // distinct_params < threshold.
                     int rows = 0;
                     for (int i = 0; i < repeats; i++) {
-                        // Same parameters every iteration. Detector flags this as
-                        // redundant_sql when count >= n_plus_one_min_occurrences.
-                        rows += payments.historyNative(1L, 10).size();
+                        Object count = em.createNativeQuery(
+                                        "SELECT count(*) FROM payments.payments "
+                                                + "WHERE customer_id = 1")
+                                .getSingleResult();
+                        if (count instanceof Number n) {
+                            rows += n.intValue();
+                        }
                     }
                     return Map.of("queries_made", repeats, "rows_seen", rows);
                 });
