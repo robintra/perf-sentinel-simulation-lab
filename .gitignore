@@ -1,0 +1,30 @@
+# JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Lab runtime artifacts
+tmp/
+*.log
+kubeconfig*
+.kube-config-perf-sentinel-lab
+
+# Secrets generated at bootstrap
+.postgres-password
+*.pem
+*.key
+*.crt
+
+# Helm packaged charts
+charts/*.tgz
+
+# Editor swap files
+*.swp
+*.swo
+*~
