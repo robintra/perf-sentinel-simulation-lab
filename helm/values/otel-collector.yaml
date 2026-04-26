@@ -110,6 +110,9 @@ config:
       endpoint: http://perf-sentinel-daemon.observability.svc.cluster.local:14318
       tls:
         insecure: true
+      # The daemon's OTLP HTTP receiver does not decompress gzip bodies,
+      # it expects raw protobuf. Override the default gzip compression.
+      compression: none
     prometheus:
       endpoint: 0.0.0.0:8889
       send_timestamps: true

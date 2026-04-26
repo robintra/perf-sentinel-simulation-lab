@@ -9,7 +9,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images
+.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -51,6 +51,18 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 
 smoke: ## Run end-to-end smoke test against the running lab (CI-friendly)
 	./scripts/smoke-test.sh
+
+seed-services: ## Build + import + helm install the 3 Java services into shop
+	./scripts/seed-services.sh
+
+teardown-services: ## Remove the 3 Java services (cluster stays up)
+	./scripts/teardown-services.sh
+
+inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)
+	./scripts/inject-all.sh
+
+validate-findings: ## Run all 10 k6 scenarios and write tmp/validation-report.md
+	./scripts/validate-findings.sh
 
 status: ## Curl-only status of cluster + perf-sentinel daemon endpoints
 	@echo "==> Pods overview"

@@ -54,13 +54,13 @@ traffic.
 
 ## Manifest direct vs. Helm chart
 
-The lab mixes two installation styles. The split follows one rule:
+The lab mixes two installation styles. The split follows three rules:
 
 | Use direct manifest when... | Use Helm chart when... |
 | --- | --- |
 | The official chart is deprecated (Tempo) | The chart is actively maintained (kube-prometheus-stack, opentelemetry-collector) |
 | The upstream chart targets end users with knobs we do not need (perf-sentinel) | The chart's defaults already match what we want |
-| The workload is a single StatefulSet/Deployment with a small ConfigMap (Postgres) | The workload spans many resources (CRDs, RBAC, multiple workloads) |
+| The workload is a single StatefulSet/Deployment with a small ConfigMap (Postgres) | The workload spans many resources (CRDs, RBAC, multiple workloads) or we author the chart to match an enterprise pattern (Java services) |
 
 Concretely:
 
@@ -70,7 +70,10 @@ Concretely:
   Grafana dashboards (loaded as ConfigMap).
 - **Helm chart**: kube-prometheus-stack (CRDs + operator + several
   workloads), OTel Collector contrib (config rendering and DaemonSet
-  template are non-trivial).
+  template are non-trivial), the three Java services (Deployment +
+  Service + Secret + ServiceMonitor each, authored locally because the
+  brief targets parity with enterprise Spring Boot deployments where
+  per-service charts are the convention).
 
 When a chart switches status (e.g. Tempo Operator gets a maintained
 chart, or kube-prometheus-stack splits), revisit this split.
@@ -212,5 +215,80 @@ the cluster.
   scenario calls for stricter isolation.
 - No auth on the perf-sentinel HTTP API. Local lab, fine.
 - No Postgres backup. Data is ephemeral.
-- No application service. That is S2.
 - No self-hosted CI/CD. That is S3/S4.
+
+## Java services in the shop namespace
+
+Three Spring Boot 4 services run on Java 25 inside `shop`:
+
+```
+order-service        :8080  ──> postgres:5432/lab?schema=orders
+                      │
+                      ├──> payment-service :8081
+                      │     │
+                      │     └──> notification-service :8082
+                      │
+                      └──> calls notification-service for some flows
+
+notification-service :8082  ──> self-loops to /api/external/mock and
+                                /api/dispatch/{email,sms,push,...}
+```
+
+Each service ships:
+
+- A multistage container image built from
+  `services/shared-dockerfile/Dockerfile`. Build stage runs Maven on
+  `eclipse-temurin:25-jdk-alpine`. Runtime stage is
+  `gcr.io/distroless/java25:nonroot`. The OpenTelemetry Java agent
+  v2.27.0 is downloaded in a dedicated stage and copied into
+  `/otel/opentelemetry-javaagent.jar`. `JAVA_TOOL_OPTIONS` activates
+  the agent at JVM startup.
+- A Helm chart in `services/<svc>/helm/`. Values cover image tag,
+  service port, database URL, OTel endpoint, ServiceMonitor labels.
+  Each chart provisions a Deployment, Service, Secret (filled with
+  the postgres password from `.postgres-password` at install time),
+  and ServiceMonitor.
+- A `/api/fault/*` controller with parameterizable endpoints that
+  intentionally produce anti-patterns. The brief mapping lives in
+  `scripts/validate-findings.sh`, which is the source of truth on
+  which scenario expects which finding type on which service.
+
+### OpenTelemetry instrumentation specifics
+
+The agent runs in `always_on` sampling mode so every trace reaches
+the Collector. JDBC and HikariCP instrumentation are enabled
+explicitly. The common DB statement sanitizer is disabled
+(`OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED=false`),
+otherwise the agent rewrites SQL literals to `?` and the
+perf-sentinel detector cannot tell N+1 from redundant_sql.
+
+## Validation pipeline
+
+`scripts/validate-findings.sh` orchestrates the ten k6 scenarios
+sequentially. For each entry:
+
+1. The scenario JS is wrapped in a ConfigMap.
+2. A Kubernetes Job mounts the ConfigMap and runs `k6 run` against
+   the in-cluster service URL.
+3. The script waits for the Job to complete, then waits 15 seconds
+   for the daemon to flush traces and emit findings.
+4. The daemon `/api/findings` endpoint is queried and filtered for
+   `(type, service)` matches.
+5. PASS if at least one matching finding is present, FAIL otherwise.
+
+The daemon's `trace_ttl_ms` is set to 5 seconds (instead of the
+default 60 seconds) so findings emerge quickly enough for the 15s
+wait to suffice. Production deployments would use the longer TTL.
+
+The OTel Collector exporter that targets the daemon disables gzip
+compression: the daemon's `/v1/traces` handler does not decompress
+request bodies and rejects gzipped payloads with HTTP 400.
+
+## Out of scope (still)
+
+- No application service. (Done.)
+- No NetworkPolicy across namespaces. The k3s flannel CNI does enforce
+  policies, but a permissive enough rule for `make smoke` and
+  `make psql` to keep working ends up trivially satisfied. A real
+  isolation story would require a richer CNI (Calico) and is left as
+  follow-up.

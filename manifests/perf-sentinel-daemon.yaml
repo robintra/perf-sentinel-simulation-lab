@@ -18,7 +18,11 @@ data:
     listen_port_http = 14318
     listen_port_grpc = 14317
     max_active_traces = 10000
-    trace_ttl_ms = 60000
+    # WARNING: lab-only value. 5 seconds is short enough that any real
+    # production trace longer than 5s would be evicted before its child
+    # spans arrive, losing the finding. Production deployments must use
+    # 30000-60000 ms. See docs/ARCHITECTURE.md "Validation pipeline".
+    trace_ttl_ms = 5000
     api_enabled = true
     environment = "staging"
 

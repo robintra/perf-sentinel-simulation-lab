@@ -217,6 +217,29 @@ kubectl -n db run pgcheck --rm -it --restart=Never \
 If that works but `make psql` does not, check `.postgres-password`
 (no trailing newline, mode 0600).
 
+## perf-sentinel reports `suggested_fix: null` and `source_endpoint: unknown`
+
+perf-sentinel infers the framework (`java_jpa`, `java_quarkus`, `csharp_ef_core`, etc.) from the `code.namespace` attribute on the finding's primary span. For SQL findings the primary span is a JDBC span, which the OpenTelemetry Java agent does not currently enrich with the originating user-code namespace.
+
+In our trace tree:
+
+```
+HTTP span             (http.route present)
+  └─ Controller span  (code.namespace=com.perfsim.order.web.FaultController)
+      └─ Hibernate Query span    (no code.* attributes)
+          └─ JDBC span           (no code.* attributes; perf-sentinel reads here)
+```
+
+perf-sentinel 0.5.4 does not walk up the parent chain, so it sees no namespace and emits no `suggested_fix`. `source_endpoint` is similarly read from the immediate parent (Hibernate Query span) rather than from the HTTP server span, hence the `unknown` value.
+
+This is a real limitation of the framework-aware suggestion feature with typical Spring Boot + JPA stacks. The detector itself still classifies the anti-pattern correctly (the lab confirms 10/10), only the actionable hint is missing.
+
+Workarounds explored and dismissed:
+
+- `OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED=true` and friends. Add code attributes to controller and repository spans, but not to JDBC spans, so perf-sentinel still sees nothing on the spans it inspects.
+- Modifying perf-sentinel to walk parents. Out of scope for this lab.
+- Adding a custom OTel processor that propagates `code.*` from parent to child. Possible but adds collector complexity not aligned with the lab's role as an external consumer.
+
 ## Reset to a clean state
 
 ```bash

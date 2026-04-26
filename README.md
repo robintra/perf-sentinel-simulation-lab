@@ -1,21 +1,24 @@
 # perf-sentinel simulation lab
 
 Local Kubernetes cluster preconfigured to validate perf-sentinel
-against instrumented Java services. Sprint S1 ships only the
-observability infrastructure, no application services.
+against instrumented Java services. The lab ships an observability
+stack, three Java 25 + Spring Boot 4 services that intentionally
+exhibit performance anti-patterns, and a k6 driven validation
+pipeline that asserts perf-sentinel correctly classifies each
+pattern.
 
 ## What it is for
 
 The project is an external consumer of perf-sentinel. It deploys a
-local k3d cluster and the surrounding stack: OpenTelemetry Collector
-to ingest traces, Tempo to store them, Prometheus and Grafana for
-visualization, perf-sentinel daemon to detect IO anti-patterns in
-real time, and PostgreSQL ready to host the Java services in
-sprint S2.
+local k3d cluster with OpenTelemetry Collector, Tempo, Prometheus,
+Grafana, perf-sentinel daemon, PostgreSQL, plus three application
+services in the `shop` namespace (`order-service`, `payment-service`,
+`notification-service`) that produce the ten canonical anti-pattern
+classes on demand via `/api/fault/*` endpoints.
 
-The end goal is a reproducible environment for measuring
-perf-sentinel's true and false positive rates against realistic
-workloads.
+`make seed-services && make validate-findings` runs the ten k6
+scenarios in sequence and reports how many anti-patterns
+perf-sentinel detected on the expected service.
 
 ## Prerequisites
 
@@ -97,6 +100,12 @@ make inspect      # launch the perf-sentinel TUI (host binary required)
 make ps           # docker ps for k3d containers
 make clean-images # docker image prune
 make help         # list targets
+
+# Service deployment (depends on `make up` first)
+make seed-services       # build, import, helm install the 3 Java services
+make teardown-services   # helm uninstall the 3 services
+make inject-all          # alias of validate-findings
+make validate-findings   # run 10 k6 scenarios, assert findings, write tmp/validation-report.md
 ```
 
 ## Verifications after `make up`
@@ -153,12 +162,29 @@ To change these values, edit `manifests/perf-sentinel-daemon.yaml`,
 re-apply with `kubectl apply -f`, then
 `kubectl rollout restart deployment/perf-sentinel-daemon -n observability`.
 
+## Java services and anti-patterns
+
+Three Spring Boot 4 services live in the `shop` namespace. Each
+exposes one `/api/fault/<pattern>` endpoint per anti-pattern it owns,
+plus actuator health and prometheus endpoints.
+
+| Service | Port | Postgres schema | Faults exposed |
+| --- | --- | --- | --- |
+| order-service | 8080 | orders | n_plus_one_sql, redundant_http, slow_sql, pool_saturation |
+| payment-service | 8081 | payments | redundant_sql, slow_http |
+| notification-service | 8082 | notifications | n_plus_one_http, excessive_fanout, chatty_service, serialized_calls |
+
+Together they cover the ten canonical detection classes of
+perf-sentinel 0.5.4. `make validate-findings` exercises all ten
+through k6 Jobs running in-cluster and asserts that each scenario
+produces at least one matching finding on the expected service.
+
 ## Roadmap
 
 - **S1 (shipped)**: k3d cluster + observability + Postgres + daemon.
-- **S2 (next)**: 3 Java 25 + Spring Boot 4 services instrumented to
-  intentionally exhibit anti-patterns. Synthetic load via k6.
-  Findings validation.
+- **S2 (shipped)**: 3 Java 25 + Spring Boot 4 services with
+  `/api/fault/*` endpoints. 10 k6 scenarios. validate-findings
+  pipeline.
 - **S3 (TBD)**: GitLab CE self-hosted via Helm to validate the
   perf-sentinel GitLab CI template.
 - **S4 (optional)**: Forgejo + Forgejo Actions for the GitHub Actions
