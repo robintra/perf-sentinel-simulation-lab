@@ -24,6 +24,11 @@ kubeconfig*
 # Helm packaged charts
 charts/*.tgz
 
+# Maven build artifacts
+services/**/target/
+services/**/*.iml
+.mvn/wrapper/maven-wrapper.jar
+
 # Editor swap files
 *.swp
 *.swo
