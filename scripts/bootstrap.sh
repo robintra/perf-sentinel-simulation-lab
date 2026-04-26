@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# Bootstrap the perf-sentinel simulation lab.
+# Usage: ./scripts/bootstrap.sh
+# Requires: docker, k3d, kubectl, helm. Use `make up` from the repo root.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${REPO_ROOT}"
+
+# Pinned versions. Update together with helm/values/*.yaml comments.
+CLUSTER_NAME="perf-sentinel-lab"
+PERF_SENTINEL_VERSION="0.5.4"
+PERF_SENTINEL_IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+KPS_CHART_VERSION="84.1.0"
+TEMPO_IMAGE_VERSION="2.9.0"
+OTEL_CHART_VERSION="0.152.0"
+
+# shellcheck source=./wait-for-ready.sh
+. "${REPO_ROOT}/scripts/wait-for-ready.sh"
+
+color_red()    { printf "\033[31m%s\033[0m\n" "$*"; }
+color_green()  { printf "\033[32m%s\033[0m\n" "$*"; }
+color_yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
+color_blue()   { printf "\033[34m%s\033[0m\n" "$*"; }
+
+step() { color_blue "==> $*"; }
+ok()   { color_green "    ok: $*"; }
+warn() { color_yellow "    warn: $*"; }
+die()  { color_red "    error: $*"; exit 1; }
+
+check_prereqs() {
+  step "Checking prerequisites"
+  command -v docker >/dev/null 2>&1 || die "docker not found. Install Docker Desktop or Colima."
+  docker info >/dev/null 2>&1 || die "docker daemon not reachable. Start Docker first."
+  command -v k3d >/dev/null 2>&1 || die "k3d not found. Run: brew install k3d"
+  command -v kubectl >/dev/null 2>&1 || die "kubectl not found. Run: brew install kubectl"
+  command -v helm >/dev/null 2>&1 || die "helm not found. Run: brew install helm"
+  command -v openssl >/dev/null 2>&1 || die "openssl not found."
+  ok "all CLIs present"
+}
+
+pull_perf_sentinel_image() {
+  step "Pulling perf-sentinel image ${PERF_SENTINEL_IMAGE}"
+  docker pull "${PERF_SENTINEL_IMAGE}" \
+    || die "failed to pull ${PERF_SENTINEL_IMAGE}. Image private? Run: docker login ghcr.io"
+  ok "image cached on host (kubelets will pull on demand)"
+}
+
+create_cluster() {
+  step "Creating k3d cluster ${CLUSTER_NAME}"
+  if k3d cluster list "${CLUSTER_NAME}" >/dev/null 2>&1; then
+    ok "cluster ${CLUSTER_NAME} already exists, skipping creation"
+    return
+  fi
+  k3d cluster create --config "${REPO_ROOT}/cluster/k3d-config.yaml"
+  ok "cluster created"
+}
+
+import_image() {
+  step "Importing perf-sentinel image into k3d (best effort)"
+  # k3d image import has been flaky on Docker Desktop in some setups
+  # (failed digest lookups). The manifest references the GHCR image
+  # directly so kubelets can fall back to pulling on demand. We still
+  # try the import to make the lab work offline once the image is on the
+  # host.
+  if k3d image import "${PERF_SENTINEL_IMAGE}" -c "${CLUSTER_NAME}" 2>&1; then
+    ok "image imported"
+  else
+    warn "k3d image import failed, kubelets will pull from GHCR at run time"
+  fi
+}
+
+add_helm_repos() {
+  step "Adding helm repos"
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+  helm repo add grafana https://grafana.github.io/helm-charts >/dev/null 2>&1 || true
+  helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null 2>&1 || true
+  helm repo update >/dev/null
+  ok "repos updated"
+}
+
+apply_namespaces() {
+  step "Applying namespaces"
+  kubectl apply -f "${REPO_ROOT}/manifests/namespaces.yaml"
+  ok "namespaces applied"
+}
+
+generate_postgres_secret() {
+  step "Generating postgres credentials"
+  local password_file="${REPO_ROOT}/.postgres-password"
+  local password
+  if [ -f "${password_file}" ]; then
+    password="$(cat "${password_file}")"
+    ok "reusing password from .postgres-password"
+  else
+    password="$(openssl rand -base64 24 | tr -d '\n=+/')"
+    umask 077
+    printf "%s" "${password}" > "${password_file}"
+    chmod 0600 "${password_file}"
+    ok "password persisted to .postgres-password (mode 0600, gitignored)"
+  fi
+  kubectl -n db create secret generic postgres-credentials \
+    --from-literal=username=lab \
+    --from-literal=password="${password}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  ok "secret postgres-credentials applied"
+}
+
+deploy_postgres() {
+  step "Deploying PostgreSQL"
+  kubectl apply -f "${REPO_ROOT}/manifests/postgres-init-schemas.yaml"
+  kubectl apply -f "${REPO_ROOT}/manifests/postgres.yaml"
+  wait_for_statefulset db postgres 180s
+  ok "postgres ready"
+}
+
+deploy_kube_prometheus_stack() {
+  step "Installing kube-prometheus-stack ${KPS_CHART_VERSION}"
+  helm upgrade --install kube-prometheus-stack \
+    prometheus-community/kube-prometheus-stack \
+    -n observability \
+    --version "${KPS_CHART_VERSION}" \
+    -f "${REPO_ROOT}/helm/values/kube-prometheus-stack.yaml" \
+    --wait --timeout 10m
+  ok "kube-prometheus-stack deployed"
+}
+
+deploy_tempo() {
+  step "Deploying Tempo ${TEMPO_IMAGE_VERSION} (single-binary, hand-written manifest)"
+  kubectl apply -f "${REPO_ROOT}/manifests/tempo.yaml"
+  kubectl rollout status statefulset tempo -n observability --timeout=180s
+  ok "tempo deployed"
+}
+
+deploy_otel_collector() {
+  step "Installing OTel Collector ${OTEL_CHART_VERSION}"
+  helm upgrade --install otel-collector \
+    open-telemetry/opentelemetry-collector \
+    -n observability \
+    --version "${OTEL_CHART_VERSION}" \
+    -f "${REPO_ROOT}/helm/values/otel-collector.yaml" \
+    --wait --timeout 5m
+  ok "otel-collector deployed"
+}
+
+deploy_grafana_dashboards() {
+  step "Loading Grafana dashboards"
+  kubectl create configmap perf-sentinel-dashboards \
+    --from-file="${REPO_ROOT}/manifests/grafana-dashboards/" \
+    -n observability \
+    --dry-run=client -o yaml \
+    | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
+    | kubectl apply -f -
+  ok "dashboards configmap applied"
+}
+
+deploy_perf_sentinel_daemon() {
+  step "Deploying perf-sentinel daemon"
+  kubectl apply -f "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"
+  wait_for_deployment observability perf-sentinel-daemon 180s
+  ok "perf-sentinel daemon ready"
+}
+
+start_port_forwards() {
+  step "Starting host port-forwards"
+  # k3d's loadbalancer port mappings target NodePort/LoadBalancer
+  # services. Our services are ClusterIP and servicelb is disabled, so
+  # we route the user's host traffic through kubectl port-forward.
+  "${REPO_ROOT}/scripts/port-forward.sh" start
+  ok "port-forwards running (PIDs in tmp/pf-*.pid)"
+}
+
+print_summary() {
+  step "Bootstrap complete"
+  cat <<EOF
+
+  Cluster:       ${CLUSTER_NAME}
+  Namespaces:    observability, db, shop (empty), ci (empty)
+
+  Access (via background kubectl port-forward):
+    Grafana:           http://localhost:3000  (user: admin / password: admin)
+    perf-sentinel API: http://localhost:14318
+    Tempo query API:   http://localhost:3200
+    Postgres password: see .postgres-password (or output above)
+    Stop port-forwards: ./scripts/port-forward.sh stop
+
+  Useful targets:
+    make status     status of cluster + key endpoints (curl)
+    make logs       tail logs of the observability namespace
+    make grafana    open Grafana in the browser
+    make psql       open a psql shell against the lab database
+    make inspect    launch the perf-sentinel TUI (requires local binary)
+    make down       teardown the cluster
+
+EOF
+}
+
+main() {
+  check_prereqs
+  pull_perf_sentinel_image
+  create_cluster
+  import_image
+  add_helm_repos
+  apply_namespaces
+  generate_postgres_secret
+  deploy_postgres
+  deploy_kube_prometheus_stack
+  deploy_tempo
+  deploy_otel_collector
+  deploy_grafana_dashboards
+  deploy_perf_sentinel_daemon
+  start_port_forwards
+  print_summary
+}
+
+main "$@"
