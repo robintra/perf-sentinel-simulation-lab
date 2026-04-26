@@ -1,0 +1,38 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-schemas
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: perf-sentinel-lab
+data:
+  # Postgres runs every *.sql in /docker-entrypoint-initdb.d at first boot.
+  # Schema and role passwords are placeholders for sprint S2 services.
+  init.sql: |
+    CREATE SCHEMA IF NOT EXISTS orders;
+    CREATE SCHEMA IF NOT EXISTS payments;
+    CREATE SCHEMA IF NOT EXISTS notifications;
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'orders_user') THEN
+        CREATE ROLE orders_user LOGIN PASSWORD 'lab_orders';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'payments_user') THEN
+        CREATE ROLE payments_user LOGIN PASSWORD 'lab_payments';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'notifications_user') THEN
+        CREATE ROLE notifications_user LOGIN PASSWORD 'lab_notifications';
+      END IF;
+    END
+    $$;
+
+    GRANT USAGE, CREATE ON SCHEMA orders TO orders_user;
+    GRANT USAGE, CREATE ON SCHEMA payments TO payments_user;
+    GRANT USAGE, CREATE ON SCHEMA notifications TO notifications_user;
+
+    ALTER ROLE orders_user SET search_path = orders, public;
+    ALTER ROLE payments_user SET search_path = payments, public;
+    ALTER ROLE notifications_user SET search_path = notifications, public;
