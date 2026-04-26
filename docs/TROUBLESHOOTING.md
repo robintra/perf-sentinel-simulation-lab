@@ -270,7 +270,7 @@ exporter targeting the daemon, otherwise zero traces reached it.
 
 ## OTel JDBC sanitizer disabled to expose N+1 SQL distinct params
 
-**Resolved in perf-sentinel 0.5.7.** The daemon now recognizes when
+**Resolved in perf-sentinel 0.5.7+.** The daemon now recognizes when
 the OpenTelemetry SQL statement sanitizer has collapsed N+1 query
 parameters to `?` placeholders and reclassifies the affected groups
 from `redundant_sql` to `n_plus_one_sql` via a sanitizer-aware
@@ -280,6 +280,26 @@ variance). Reclassified findings carry a new
 longer disables the sanitizer in the Java charts and runs in a
 production-realistic configuration. The historical workaround stays
 documented below for users on 0.5.4 to 0.5.6.
+
+**Note on `strict` mode (introduced in perf-sentinel 0.5.8).** By
+default, the daemon runs `sanitizer_aware_classification = "auto"`
+which fires the heuristic on either signal (ORM scope marker OR high
+timing variance). That default matches typical production N+1
+patterns. However, applications with cache-warming patterns or
+polling repositories that issue many identical SQL queries through
+an ORM produce a false positive under `auto`: the ORM scope marker
+alone fires the reclassification even when the timing is flat
+(cached plan, no real N+1 fan-out across rows).
+
+The simulation lab opts in to `sanitizer_aware_classification = "strict"`
+in its daemon ConfigMap (`manifests/perf-sentinel-daemon.yaml`,
+section `[detection]`) which requires both signals together. The
+lab's `redundant-sql` scenario (15 cache-warmed `SELECT count(*)
+WHERE customer_id = 1` via JPA) consequently stays classified as
+`redundant_sql`, while the `n-plus-one-sql` scenario (15 hits on
+distinct `order_id`s) still triggers the heuristic because its
+timing variance crosses the CV > 0.5 threshold. Production stacks
+that observe similar false positives can adopt the same opt-in.
 
 ### Pre-0.5.7 behavior
 
