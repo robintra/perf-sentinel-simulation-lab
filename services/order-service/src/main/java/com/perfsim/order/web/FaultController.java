@@ -1,9 +1,7 @@
 package com.perfsim.order.web;
 
-import com.perfsim.order.domain.Order;
 import com.perfsim.order.domain.OrderRepository;
 import com.perfsim.shared.BaseFaultController;
-import com.perfsim.shared.FaultConstants;
 import com.perfsim.shared.FaultResponse;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -48,11 +46,12 @@ public class FaultController extends BaseFaultController {
                 "n_plus_one_sql",
                 Map.of("items", items),
                 () -> {
-                    // Native query with literal value concatenated each iteration so
-                    // the OTel JDBC instrumentation captures distinct SQL strings.
-                    // Hibernate prepared statements would all share the same `?`
-                    // template and the detector would classify the loop as
-                    // redundant_sql instead of n_plus_one_sql.
+                    // Lab-only: literal value concatenated into the SQL string
+                    // each iteration so the OTel JDBC instrumentation captures
+                    // distinct SQL strings. Prepared statements would all share
+                    // the same `?` template and the detector would classify as
+                    // redundant_sql. Never copy this pattern into any code path
+                    // that handles untrusted input.
                     int total = 0;
                     for (int orderId = 1; orderId <= items; orderId++) {
                         Object count = em.createNativeQuery(
@@ -101,8 +100,10 @@ public class FaultController extends BaseFaultController {
                 () -> {
                     double seconds = delayMs / 1000.0;
                     int executed = 0;
-                    // Native query with literal values inlined so the detector
-                    // sees distinct, slow SQL templates.
+                    // Lab-only: literals concatenated into the SQL string. The
+                    // OTel JDBC sanitizer is disabled in this lab so distinct
+                    // values reach the detector. Never copy this pattern into
+                    // any code path that handles untrusted input.
                     for (int i = 0; i < repeats; i++) {
                         em.createNativeQuery(
                                 "SELECT pg_sleep(" + seconds + "), * FROM orders.orders "
@@ -146,12 +147,4 @@ public class FaultController extends BaseFaultController {
                 });
     }
 
-    @PostMapping("/seed")
-    @Transactional
-    public ResponseEntity<FaultResponse> seed(@RequestParam(defaultValue = "50") int extra) {
-        return runFault(
-                "seed",
-                Map.of("extra", extra),
-                () -> Map.of("base_url", FaultConstants.ORDER_BASE, "extra_requested", extra));
-    }
 }

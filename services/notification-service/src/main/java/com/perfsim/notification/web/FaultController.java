@@ -18,6 +18,15 @@ import org.springframework.web.client.RestClient;
 @RequestMapping("/api/fault")
 public class FaultController extends BaseFaultController {
 
+    private static final String[] CHANNELS = {
+        "/api/dispatch/email",
+        "/api/dispatch/sms",
+        "/api/dispatch/push",
+        "/api/dispatch/webhook",
+        "/api/dispatch/slack",
+        "/api/dispatch/teams"
+    };
+
     private final RestClient selfClient;
 
     public FaultController(RestClient selfClient) {
@@ -58,8 +67,7 @@ public class FaultController extends BaseFaultController {
                 "excessive_fanout",
                 Map.of("width", width),
                 () -> {
-                    ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor();
-                    try {
+                    try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
                         List<CompletableFuture<Boolean>> futures = new java.util.ArrayList<>();
                         for (int i = 0; i < width; i++) {
                             futures.add(CompletableFuture.supplyAsync(
@@ -78,8 +86,6 @@ public class FaultController extends BaseFaultController {
                                 .filter(Boolean::booleanValue)
                                 .count();
                         return Map.of("children_launched", width, "children_ok", ok);
-                    } finally {
-                        pool.shutdown();
                     }
                 });
     }
@@ -106,15 +112,6 @@ public class FaultController extends BaseFaultController {
                     return Map.of("calls_made", calls, "calls_ok", ok);
                 });
     }
-
-    private static final String[] CHANNELS = {
-        "/api/dispatch/email",
-        "/api/dispatch/sms",
-        "/api/dispatch/push",
-        "/api/dispatch/webhook",
-        "/api/dispatch/slack",
-        "/api/dispatch/teams"
-    };
 
     @PostMapping("/serialized")
     public ResponseEntity<FaultResponse> serialized(

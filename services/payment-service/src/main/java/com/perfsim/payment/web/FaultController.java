@@ -40,10 +40,11 @@ public class FaultController extends BaseFaultController {
                 "redundant_sql",
                 Map.of("repeats", repeats),
                 () -> {
-                    // Same SQL string with the same literal value every iteration.
-                    // The detector compares (template, params) and flags as
-                    // redundant_sql when occurrences >= threshold and
-                    // distinct_params < threshold.
+                    // Lab-only: same SQL string with the same literal value
+                    // every iteration. Detector flags as redundant_sql when
+                    // occurrences >= threshold and distinct_params < threshold.
+                    // Never copy this concatenated-literal pattern into any
+                    // code path that handles untrusted input.
                     int rows = 0;
                     for (int i = 0; i < repeats; i++) {
                         Object count = em.createNativeQuery(
