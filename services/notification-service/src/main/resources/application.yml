@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: notification-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=notifications}
+    username: ${DB_USER:lab}
+    password: ${DB_PASSWORD:lab}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      pool-name: notification-pool
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 0
+        format_sql: true
+  flyway:
+    enabled: true
+    schemas: notifications
+    default-schema: notifications
+    baseline-on-migrate: true
+
+server:
+  port: ${SERVER_PORT:8082}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: notification-service
+
+perfsim:
+  self:
+    base-url: ${SELF_BASE_URL:http://notification-service.shop.svc.cluster.local:8082}
