@@ -68,7 +68,7 @@ Allocate at least 12 GiB to Docker Desktop when chaining S1 + S2 + S3.
 | Grafana | 13.0.1 | explicit image override |
 | opentelemetry-collector (chart) | 0.152.0 | helm repo open-telemetry |
 | OTel Collector contrib (image) | 0.150.1 | bundled |
-| perf-sentinel | 0.5.4 | ghcr.io/robintra/perf-sentinel |
+| perf-sentinel | 0.5.6 | ghcr.io/robintra/perf-sentinel |
 
 ## Note on daemon memory
 
