@@ -1,0 +1,44 @@
+# k3d cluster definition for the perf-sentinel simulation lab.
+# Apply with: k3d cluster create --config cluster/k3d-config.yaml
+#
+# Topology: 1 control plane (server) + 2 workers (agents).
+# Traefik and ServiceLB are disabled because we install our own ingress
+# behavior via Helm-managed components and rely on k3d port mappings.
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: perf-sentinel-lab
+servers: 1
+agents: 2
+kubeAPI:
+  host: "0.0.0.0"
+  hostIP: "127.0.0.1"
+  hostPort: "6443"
+ports:
+  - port: 80:80
+    nodeFilters:
+      - loadbalancer
+  - port: 443:443
+    nodeFilters:
+      - loadbalancer
+  - port: 3000:3000
+    nodeFilters:
+      - loadbalancer
+  - port: 14318:14318
+    nodeFilters:
+      - loadbalancer
+options:
+  k3d:
+    wait: true
+    timeout: "120s"
+  k3s:
+    extraArgs:
+      - arg: "--disable=traefik"
+        nodeFilters:
+          - server:*
+      - arg: "--disable=servicelb"
+        nodeFilters:
+          - server:*
+  kubeconfig:
+    updateDefaultKubeconfig: true
+    switchCurrentContext: true
