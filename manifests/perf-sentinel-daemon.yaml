@@ -18,7 +18,9 @@ data:
     listen_port_http = 14318
     listen_port_grpc = 14317
     max_active_traces = 10000
-    trace_ttl_ms = 60000
+    # 5s TTL so findings appear quickly during validate-findings runs.
+    # Production deployments would use 30-60s.
+    trace_ttl_ms = 5000
     api_enabled = true
     environment = "staging"
 
