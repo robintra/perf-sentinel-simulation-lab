@@ -1,0 +1,79 @@
+# Resources
+
+Estimated RAM and CPU usage once the stack is stable, with no
+application traffic. Numbers are based on a macOS Apple Silicon
+laptop (24 GiB) with Docker Desktop allocated 8 GiB.
+
+## Footprint per component (S1)
+
+| Component | Resident RAM | CPU steady state | Notes |
+| --- | --- | --- | --- |
+| k3d (3 nodes + control plane) | ~1.5 GiB | ~0.30 core | containerd + k3s overhead |
+| PostgreSQL 18.3 | ~300 MiB | ~0.05 core | 1 instance, 3 schemas |
+| Tempo single-binary 2.9 (direct manifest) | ~600 MiB | ~0.10 core | idle |
+| Prometheus | ~800 MiB | ~0.15 core | 7d retention, 15-30s scrape |
+| Grafana 13.0.1 | ~200 MiB | ~0.05 core | dashboards bundled |
+| OTel Collector contrib (DaemonSet x3) | ~600 MiB | ~0.15 core | ~200 MiB per node |
+| perf-sentinel daemon | ~150 MiB | ~0.05 core | correlation enabled |
+| **Total S1** | **~4.2 GiB** | **~0.85 core** | measured, not idle theoretical |
+
+The original brief estimated 3.8 GiB without accounting for the
+3 OTel Collector DaemonSet instances (1 per node, 200 MiB each
+instead of 200 MiB total). Real usage is closer to 4.2 GiB.
+
+## Projected S2 footprint
+
+S2 will add 3 Java 25 + Spring Boot 4 services in the `shop`
+namespace, instrumented via the OpenTelemetry Java agent. Per-service
+estimate:
+
+| Component (S2) | Resident RAM | CPU steady state |
+| --- | --- | --- |
+| `orders` (Spring Boot 4 + OTel agent) | ~500 MiB | ~0.10 core |
+| `payments` (same) | ~500 MiB | ~0.10 core |
+| `notifications` (same) | ~500 MiB | ~0.10 core |
+| Synthetic load (k6, transient) | ~200 MiB | ~0.20 core peak |
+| **S2 subtotal** | **~1.7 GiB** | **~0.40 core** |
+
+## Projected S3 footprint
+
+S3 will add GitLab CE self-hosted via Helm. Estimate:
+
+| Component (S3) | Resident RAM | CPU steady state |
+| --- | --- | --- |
+| GitLab Webservice + Sidekiq | ~3.5 GiB | ~0.40 core |
+| GitLab bundled Postgres + Redis | ~1.5 GiB | ~0.20 core |
+| GitLab Runner | ~500 MiB | ~0.05 core (idle) |
+| **S3 subtotal** | **~5.5 GiB** | **~0.65 core** |
+
+## Cumulative total
+
+| Phase | RAM | CPU | Headroom on Mac M4 24 GiB |
+| --- | --- | --- | --- |
+| S1 alone | ~4.2 GiB | ~0.85 core | comfortable |
+| S1 + S2 | ~5.9 GiB | ~1.25 core | comfortable |
+| S1 + S2 + S3 | ~11.4 GiB | ~1.90 core | tight but okay |
+
+Allocate at least 12 GiB to Docker Desktop when chaining S1 + S2 + S3.
+
+## Pinned versions (snapshot 2026-04-26)
+
+| Component | Version | Source |
+| --- | --- | --- |
+| k3d | latest 5.x | brew install k3d |
+| Kubernetes (k3s) | k3d default | bundled k3s image |
+| PostgreSQL | 18.3-alpine | docker.io/library/postgres |
+| Tempo (binary) | 2.9.0 | image grafana/tempo:2.9.0, direct manifest |
+| kube-prometheus-stack | 84.1.0 | helm repo prometheus-community |
+| Grafana | 13.0.1 | explicit image override |
+| opentelemetry-collector (chart) | 0.152.0 | helm repo open-telemetry |
+| OTel Collector contrib (image) | 0.150.1 | bundled |
+| perf-sentinel | 0.5.4 | ghcr.io/robintra/perf-sentinel |
+
+## Note on daemon memory
+
+The upstream perf-sentinel chart sets `requests: 16Mi / limits: 64Mi`.
+The lab runs with `correlation.enabled = true` and
+`max_active_traces = 10000`, which can exceed 64 MiB under S2 load.
+Limits are bumped to `requests: 128Mi / limits: 256Mi`. If OOM kills
+return in S2, raise to 512 MiB or lower `max_active_traces`.
