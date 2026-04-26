@@ -84,4 +84,23 @@ else
   fail "no perf_sentinel_* metrics found"
 fi
 
+echo "==> 8. shop services Ready (skipped if shop is empty)"
+if kubectl get namespace shop >/dev/null 2>&1; then
+  shop_pods=$(kubectl get pods -n shop --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${shop_pods}" = "0" ]; then
+    pass "shop is empty (run make seed-services to deploy the Java services)"
+  else
+    not_ready=$(kubectl get pods -n shop --no-headers 2>/dev/null \
+      | awk '$3!="Running" {print}' | wc -l | tr -d ' ')
+    if [ "${not_ready}" = "0" ]; then
+      pass "${shop_pods} shop pod(s) Running"
+    else
+      kubectl get pods -n shop --no-headers | awk '$3!="Running" {print}'
+      fail "${not_ready} shop pod(s) not Running"
+    fi
+  fi
+else
+  pass "shop namespace absent, skipping"
+fi
+
 color_green "==> Smoke test passed"

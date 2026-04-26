@@ -54,13 +54,13 @@ traffic.
 
 ## Manifest direct vs. Helm chart
 
-The lab mixes two installation styles. The split follows one rule:
+The lab mixes two installation styles. The split follows three rules:
 
 | Use direct manifest when... | Use Helm chart when... |
 | --- | --- |
 | The official chart is deprecated (Tempo) | The chart is actively maintained (kube-prometheus-stack, opentelemetry-collector) |
 | The upstream chart targets end users with knobs we do not need (perf-sentinel) | The chart's defaults already match what we want |
-| The workload is a single StatefulSet/Deployment with a small ConfigMap (Postgres) | The workload spans many resources (CRDs, RBAC, multiple workloads) |
+| The workload is a single StatefulSet/Deployment with a small ConfigMap (Postgres) | The workload spans many resources (CRDs, RBAC, multiple workloads) or we author the chart to match an enterprise pattern (Java services) |
 
 Concretely:
 
@@ -70,7 +70,10 @@ Concretely:
   Grafana dashboards (loaded as ConfigMap).
 - **Helm chart**: kube-prometheus-stack (CRDs + operator + several
   workloads), OTel Collector contrib (config rendering and DaemonSet
-  template are non-trivial).
+  template are non-trivial), the three Java services (Deployment +
+  Service + Secret + ServiceMonitor each, authored locally because the
+  brief targets parity with enterprise Spring Boot deployments where
+  per-service charts are the convention).
 
 When a chart switches status (e.g. Tempo Operator gets a maintained
 chart, or kube-prometheus-stack splits), revisit this split.
@@ -281,6 +284,11 @@ The OTel Collector exporter that targets the daemon disables gzip
 compression: the daemon's `/v1/traces` handler does not decompress
 request bodies and rejects gzipped payloads with HTTP 400.
 
-## Out of scope (S2 reminder)
+## Out of scope (still)
 
-- No application service. (Done in S2.)
+- No application service. (Done.)
+- No NetworkPolicy across namespaces. The k3s flannel CNI does enforce
+  policies, but a permissive enough rule for `make smoke` and
+  `make psql` to keep working ends up trivially satisfied. A real
+  isolation story would require a richer CNI (Calico) and is left as
+  follow-up.

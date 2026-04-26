@@ -17,10 +17,10 @@ step() { color_blue "==> $*"; }
 ok()   { color_green "    ok: $*"; }
 die()  { color_red   "    error: $*"; exit 1; }
 
-if [ ! -f "${REPO_ROOT}/.postgres-password" ]; then
+PASSWORD_FILE="${REPO_ROOT}/.postgres-password"
+if [ ! -f "${PASSWORD_FILE}" ]; then
   die "missing .postgres-password (run make up first)"
 fi
-DB_PASSWORD="$(cat "${REPO_ROOT}/.postgres-password")"
 
 step "Building Docker images for ${SERVICES[*]}"
 for svc in "${SERVICES[@]}"; do
@@ -43,9 +43,11 @@ done
 
 step "Helm upgrade --install for the 3 charts"
 for svc in "${SERVICES[@]}"; do
+  # --set-file reads the password from disk so it never appears in argv
+  # (visible to ps aux) or shell history.
   helm upgrade --install "${svc}" "${REPO_ROOT}/services/${svc}/helm/" \
     -n shop \
-    --set "database.password=${DB_PASSWORD}" \
+    --set-file "database.password=${PASSWORD_FILE}" \
     --wait --timeout 5m >/dev/null
   ok "${svc} deployed"
 done

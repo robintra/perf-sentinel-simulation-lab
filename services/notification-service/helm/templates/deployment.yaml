@@ -64,6 +64,10 @@ spec:
               value: "true"
             - name: OTEL_INSTRUMENTATION_JDBC_ENABLED
               value: "true"
+            # WARNING: lab-only. Disabling the sanitizer means SQL parameter
+            # values (potential PII) leak into trace attributes and Tempo
+            # storage. Never set this to "false" in any environment that
+            # handles real user data.
             - name: OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED
               value: "false"
             - name: OTEL_LOGS_EXPORTER

@@ -97,20 +97,35 @@ EOF
     color_blue "    waiting 15s for daemon to flush traces"
     sleep 15
 
-    local findings_json count
-    findings_json="$(curl -fsS "${DAEMON_URL}/api/findings" 2>/dev/null || echo '[]')"
-    count="$(printf "%s" "${findings_json}" | python3 -c "
-import json, sys
-items = json.load(sys.stdin)
-expected_type = '${finding_type}'
-expected_service = '${service}'
+    local findings_json count note=""
+    if ! findings_json="$(curl -fsS "${DAEMON_URL}/api/findings" 2>&1)"; then
+        color_red "    FAIL (daemon /api/findings unreachable)"
+        RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon /api/findings unreachable")
+        kubectl -n "${NAMESPACE}" delete "job/k6-${name}" --ignore-not-found >/dev/null
+        kubectl -n "${NAMESPACE}" delete "configmap/k6-scenario-${name}" --ignore-not-found >/dev/null
+        return
+    fi
+
+    count="$(printf "%s" "${findings_json}" | EXPECTED_TYPE="${finding_type}" \
+            EXPECTED_SERVICE="${service}" python3 -c "
+import json, os, sys
+try:
+    items = json.load(sys.stdin)
+except json.JSONDecodeError:
+    print(-1)
+    sys.exit(0)
+expected_type = os.environ['EXPECTED_TYPE']
+expected_service = os.environ['EXPECTED_SERVICE']
 def unwrap(it):
     return it.get('finding', it) if isinstance(it, dict) else {}
 matched = [f for it in items if (f := unwrap(it)).get('type') == expected_type and f.get('service') == expected_service]
 print(len(matched))
-" 2>/dev/null || echo 0)"
+" 2>/dev/null || echo -1)"
 
-    if [ "${count:-0}" -ge 1 ]; then
+    if [ "${count}" = "-1" ]; then
+        color_red "    FAIL (daemon returned malformed JSON)"
+        RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon returned malformed JSON")
+    elif [ "${count:-0}" -ge 1 ]; then
         color_green "    PASS (${count} matching findings)"
         RESULTS+=("PASS|${name}|${finding_type}|${service}|${count}|")
     else
