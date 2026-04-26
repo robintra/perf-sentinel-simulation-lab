@@ -11,14 +11,19 @@ RUN apk add --no-cache wget \
  && wget -q -O /opentelemetry-javaagent.jar \
     "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
 
-# Stage 2: maven build for the requested service module.
+# Stage 2: maven build. The parent pom declares all 3 service modules,
+# so we copy all of them even when building only one. With `-pl
+# ${SERVICE_NAME} -am` Maven still only compiles the requested module
+# plus its dependencies (shared-config).
 FROM eclipse-temurin:25-jdk-alpine AS builder
 ARG SERVICE_NAME
 WORKDIR /build
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
 COPY shared-config shared-config
-COPY ${SERVICE_NAME} ${SERVICE_NAME}
+COPY order-service order-service
+COPY payment-service payment-service
+COPY notification-service notification-service
 RUN chmod +x mvnw \
  && ./mvnw -B -DskipTests -pl ${SERVICE_NAME} -am package
 RUN cp ${SERVICE_NAME}/target/${SERVICE_NAME}-*.jar /build/app.jar
