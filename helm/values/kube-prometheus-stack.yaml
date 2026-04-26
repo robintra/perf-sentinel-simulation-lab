@@ -1,0 +1,106 @@
+# Helm values for prometheus-community/kube-prometheus-stack.
+#
+# Pinned chart version: 84.1.0 (operator app version v0.90.1).
+# Install: helm upgrade --install kube-prometheus-stack \
+#   prometheus-community/kube-prometheus-stack \
+#   -n observability --version 84.1.0 \
+#   -f helm/values/kube-prometheus-stack.yaml
+
+# Lab footprint trimming: no alerting, no Thanos, no admission webhooks.
+alertmanager:
+  enabled: false
+thanosRuler:
+  enabled: false
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+    certManager:
+      enabled: false
+  tls:
+    enabled: false
+
+defaultRules:
+  create: false
+
+# kube-state-metrics and node-exporter stay on (used by the cluster
+# overview dashboard).
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+
+grafana:
+  enabled: true
+  image:
+    tag: "13.0.1"
+  # Lab credentials. Do not reuse anywhere else.
+  adminUser: admin
+  adminPassword: admin
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  defaultDashboardsEnabled: true
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folder: /tmp/dashboards
+      provider:
+        foldersFromFilesStructure: false
+    datasources:
+      enabled: true
+      defaultDatasourceEnabled: true
+  additionalDataSources:
+    - name: Tempo
+      type: tempo
+      access: proxy
+      url: http://tempo.observability.svc.cluster.local:3200
+      uid: tempo
+      jsonData:
+        httpMethod: GET
+        tracesToLogs:
+          datasourceUid: ""
+          tags: ["service.name", "k8s.namespace.name"]
+        nodeGraph:
+          enabled: true
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    # Pick up every ServiceMonitor in the cluster, regardless of namespace
+    # or labels. We pair this with explicit release labels on our own
+    # ServiceMonitors so both selection paths work.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    podMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelector: {}
+    podMonitorNamespaceSelector: {}
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    probeSelectorNilUsesHelmValues: false
+    probeSelector: {}
+    scrapeConfigSelectorNilUsesHelmValues: false
+    scrapeConfigSelector: {}
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+  service:
+    type: ClusterIP
