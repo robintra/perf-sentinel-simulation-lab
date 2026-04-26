@@ -64,6 +64,8 @@ spec:
               value: "true"
             - name: OTEL_INSTRUMENTATION_JDBC_ENABLED
               value: "true"
+            - name: OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED
+              value: "false"
             - name: OTEL_LOGS_EXPORTER
               value: "none"
             - name: OTEL_METRICS_EXPORTER
