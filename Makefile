@@ -58,6 +58,12 @@ seed-services: ## Build + import + helm install the 3 Java services into shop
 teardown-services: ## Remove the 3 Java services (cluster stays up)
 	./scripts/teardown-services.sh
 
+inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)
+	./scripts/inject-all.sh
+
+validate-findings: ## Run all 10 k6 scenarios and write tmp/validation-report.md
+	./scripts/validate-findings.sh
+
 status: ## Curl-only status of cluster + perf-sentinel daemon endpoints
 	@echo "==> Pods overview"
 	@kubectl get pods -A 2>/dev/null || echo "kubectl not connected to cluster"
