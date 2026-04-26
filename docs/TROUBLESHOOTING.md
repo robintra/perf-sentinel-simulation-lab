@@ -268,6 +268,43 @@ because `prost::Message::decode` does not understand gzip. Stack
 operators on 0.5.4 had to set `compression: none` on every Collector
 exporter targeting the daemon, otherwise zero traces reached it.
 
+## OTel JDBC sanitizer disabled to expose N+1 SQL distinct params
+
+**Resolved in perf-sentinel 0.5.7.** The daemon now recognizes when
+the OpenTelemetry SQL statement sanitizer has collapsed N+1 query
+parameters to `?` placeholders and reclassifies the affected groups
+from `redundant_sql` to `n_plus_one_sql` via a sanitizer-aware
+heuristic (instrumentation scope ORM marker plus per-span timing
+variance). Reclassified findings carry a new
+`classification_method: "sanitizer_heuristic"` field. The lab no
+longer disables the sanitizer in the Java charts and runs in a
+production-realistic configuration. The historical workaround stays
+documented below for users on 0.5.4 to 0.5.6.
+
+### Pre-0.5.7 behavior
+
+The OpenTelemetry Java agent sanitizes `db.statement` by default and
+replaces literal values with `?` placeholders to avoid leaking
+parameter values (potential PII) into trace storage. perf-sentinel
+discriminates `n_plus_one_sql` from `redundant_sql` by counting
+`distinct_params` across spans in the same template group: distinct
+values mean a real N+1 (different rows fetched), identical values
+mean a redundant call. With the sanitizer active, every span exposes
+`params = ["?"]`, so `distinct_params = 1`, and any N+1 burst gets
+classified as `redundant_sql`.
+
+To demonstrate the N+1 SQL classification path, the lab used to set
+`OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED=false`
+in the three Java service Helm charts. That override never belonged
+in production (it leaks SQL literals to traces) but was the only way
+to expose the parameter values that the detector needed.
+
+If you operate a stack still on 0.5.4 to 0.5.6 and the
+classification looks wrong (real N+1 reported as `redundant_sql`),
+either upgrade to 0.5.7 or accept that the sanitizer is masking the
+discriminator and read the daemon's `suggestion` field for an
+architectural hint.
+
 ## Reset to a clean state
 
 ```bash
