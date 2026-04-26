@@ -9,7 +9,8 @@ metadata:
     app.kubernetes.io/part-of: perf-sentinel-lab
 data:
   # Postgres runs every *.sql in /docker-entrypoint-initdb.d at first boot.
-  # Schema and role passwords are placeholders for sprint S2 services.
+  # Schema and role passwords are placeholders, replaced by per-service
+  # Secrets when the Java workloads land in this cluster.
   init.sql: |
     CREATE SCHEMA IF NOT EXISTS orders;
     CREATE SCHEMA IF NOT EXISTS payments;

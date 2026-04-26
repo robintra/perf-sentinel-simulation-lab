@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Background port-forward fallback for environments where the k3d
-# loadbalancer port mappings do not work (e.g. ports already bound).
-# Sprint S1 normally relies on the k3d port mappings declared in
-# cluster/k3d-config.yaml, so this script is a manual escape hatch.
+# Primary host access mechanism for the lab. The k3d loadbalancer port
+# mappings declared in cluster/k3d-config.yaml only route to NodePort
+# and LoadBalancer services. Our services are ClusterIP and servicelb
+# is off, so kubectl port-forward is what actually reaches the
+# workloads.
+#
+# bootstrap.sh runs `start` at the end of `make up`. teardown.sh runs
+# `stop` at the beginning of `make down`. Manual invocation is
+# supported for debugging and recovery.
 #
 # Usage: ./scripts/port-forward.sh start
 #        ./scripts/port-forward.sh stop

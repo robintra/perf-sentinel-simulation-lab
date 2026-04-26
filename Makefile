@@ -9,7 +9,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate status logs grafana inspect psql ps clean-images
+.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -48,6 +48,9 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/wait-for-ready.sh
 	@bash -n scripts/port-forward.sh
 	@echo "validation ok"
+
+smoke: ## Run end-to-end smoke test against the running lab (CI-friendly)
+	./scripts/smoke-test.sh
 
 status: ## Curl-only status of cluster + perf-sentinel daemon endpoints
 	@echo "==> Pods overview"

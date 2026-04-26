@@ -100,6 +100,7 @@ spec:
         app.kubernetes.io/part-of: perf-sentinel-lab
         app.kubernetes.io/version: "2.9.0"
     spec:
+      # UID 10001 matches the upstream grafana/tempo image's tempo user.
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -146,6 +147,9 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # /ready waits for the ingester ring, use it for readiness only.
+          # /status/version just proves the HTTP server is up, use it for
+          # liveness so a transient ingester hiccup does not kill the pod.
           readinessProbe:
             httpGet:
               path: /ready
@@ -155,7 +159,7 @@ spec:
             timeoutSeconds: 5
           livenessProbe:
             httpGet:
-              path: /ready
+              path: /status/version
               port: 3200
             initialDelaySeconds: 30
             periodSeconds: 30

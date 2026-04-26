@@ -1,10 +1,10 @@
 # Reserved values file for the perf-sentinel daemon.
 #
-# Sprint S1 deploys the daemon via a hand-written manifest at
-# manifests/perf-sentinel-daemon.yaml rather than the upstream Helm chart
-# (charts/perf-sentinel/ in the perf-sentinel repo). The manifest path
-# stays explicit and avoids wrapping a chart designed for end users.
+# The daemon is currently deployed via a hand-written manifest at
+# manifests/perf-sentinel-daemon.yaml rather than the upstream Helm
+# chart (charts/perf-sentinel/ in the perf-sentinel repo). The manifest
+# path stays explicit and avoids wrapping a chart designed for end users.
 #
 # This file is kept as a placeholder so the directory layout matches the
-# brief and so a future sprint can switch to chart-based deployment by
-# populating values here. As of S1 it is intentionally empty.
+# helm/values/ convention and so a switch to chart-based deployment can
+# be done later by populating values here. Intentionally empty for now.

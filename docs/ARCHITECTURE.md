@@ -52,6 +52,29 @@ traffic.
   └──────────────────────────────────────────────────────────┘
 ```
 
+## Manifest direct vs. Helm chart
+
+The lab mixes two installation styles. The split follows one rule:
+
+| Use direct manifest when... | Use Helm chart when... |
+| --- | --- |
+| The official chart is deprecated (Tempo) | The chart is actively maintained (kube-prometheus-stack, opentelemetry-collector) |
+| The upstream chart targets end users with knobs we do not need (perf-sentinel) | The chart's defaults already match what we want |
+| The workload is a single StatefulSet/Deployment with a small ConfigMap (Postgres) | The workload spans many resources (CRDs, RBAC, multiple workloads) |
+
+Concretely:
+
+- **Direct manifest**: Tempo (both Grafana charts deprecated), perf-sentinel
+  daemon (upstream chart wraps choices we override anyway), PostgreSQL
+  (single StatefulSet, init via ConfigMap is enough), namespaces,
+  Grafana dashboards (loaded as ConfigMap).
+- **Helm chart**: kube-prometheus-stack (CRDs + operator + several
+  workloads), OTel Collector contrib (config rendering and DaemonSet
+  template are non-trivial).
+
+When a chart switches status (e.g. Tempo Operator gets a maintained
+chart, or kube-prometheus-stack splits), revisit this split.
+
 ## Components and design choices
 
 ### Tempo single-binary (direct manifest)

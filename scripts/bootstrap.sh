@@ -63,7 +63,7 @@ import_image() {
   # directly so kubelets can fall back to pulling on demand. We still
   # try the import to make the lab work offline once the image is on the
   # host.
-  if k3d image import "${PERF_SENTINEL_IMAGE}" -c "${CLUSTER_NAME}" 2>&1; then
+  if k3d image import "${PERF_SENTINEL_IMAGE}" -c "${CLUSTER_NAME}" >/dev/null 2>&1; then
     ok "image imported"
   else
     warn "k3d image import failed, kubelets will pull from GHCR at run time"
@@ -167,6 +167,15 @@ start_port_forwards() {
   # services. Our services are ClusterIP and servicelb is disabled, so
   # we route the user's host traffic through kubectl port-forward.
   "${REPO_ROOT}/scripts/port-forward.sh" start
+  # Wait for each port-forward to actually accept connections so a
+  # `make status` immediately after `make up` does not race.
+  local deadline=$(( $(date +%s) + 30 ))
+  for endpoint in "localhost:3000" "localhost:14318" "localhost:3200"; do
+    until curl -fsS --max-time 1 "http://${endpoint}" >/dev/null 2>&1 \
+       || [ "$(date +%s)" -ge "${deadline}" ]; do
+      sleep 0.5
+    done
+  done
   ok "port-forwards running (PIDs in tmp/pf-*.pid)"
 }
 

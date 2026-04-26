@@ -10,6 +10,8 @@ metadata:
 data:
   # Override default daemon ports (4317/4318) with 14317/14318 to avoid
   # confusion with the OTel Collector OTLP ports exposed on the host.
+  # `environment` only accepts "staging" or "production". We pick
+  # "staging" to keep the verbose logging path enabled in the daemon.
   config.toml: |
     [daemon]
     listen_address = "0.0.0.0"
@@ -76,6 +78,7 @@ spec:
         app.kubernetes.io/version: "0.5.4"
     spec:
       automountServiceAccountToken: false
+      # UID 65534 matches the upstream perf-sentinel scratch image USER.
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
@@ -102,6 +105,7 @@ spec:
             - name: config
               mountPath: /etc/perf-sentinel
               readOnly: true
+          # Bump to 512Mi if OOM under load. See docs/RESOURCES.md.
           resources:
             requests:
               cpu: 100m
@@ -115,12 +119,13 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # initialDelaySeconds=20 covers cold image pull from GHCR.
           livenessProbe:
             httpGet:
               path: /health
               port: 14318
               scheme: HTTP
-            initialDelaySeconds: 5
+            initialDelaySeconds: 20
             periodSeconds: 15
             timeoutSeconds: 3
           readinessProbe:

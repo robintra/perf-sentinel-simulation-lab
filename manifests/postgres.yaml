@@ -37,6 +37,8 @@ spec:
         app.kubernetes.io/name: postgres
         app.kubernetes.io/part-of: perf-sentinel-lab
     spec:
+      # GID 70 is `postgres` in the alpine image, required for the PVC
+      # mount to be writable by the postgres process.
       securityContext:
         fsGroup: 70
       containers:

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":maintainLockFilesWeekly"
+  ],
+  "labels": ["dependencies"],
+  "schedule": ["before 6am on monday"],
+  "kubernetes": {
+    "fileMatch": ["manifests/.+\\.yaml$"]
+  },
+  "helm-values": {
+    "fileMatch": ["helm/values/.+\\.yaml$"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track pinned chart and image versions in bootstrap.sh",
+      "fileMatch": ["^scripts/bootstrap\\.sh$"],
+      "matchStrings": [
+        "PERF_SENTINEL_VERSION=\"(?<currentValue>.*?)\"",
+        "KPS_CHART_VERSION=\"(?<currentValue>.*?)\"",
+        "TEMPO_IMAGE_VERSION=\"(?<currentValue>.*?)\"",
+        "OTEL_CHART_VERSION=\"(?<currentValue>.*?)\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group all Helm chart updates",
+      "matchManagers": ["helm-values", "helmv3"],
+      "groupName": "helm charts"
+    },
+    {
+      "description": "Pause major bumps on workload images, lab is version-sensitive",
+      "matchManagers": ["kubernetes"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}
