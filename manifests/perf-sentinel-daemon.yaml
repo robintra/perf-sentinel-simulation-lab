@@ -35,6 +35,15 @@ data:
 
     [detection]
     n_plus_one_min_occurrences = 5
+    # Strict mode: require both signals (ORM scope marker AND timing
+    # variance CV > 0.5) to reclassify a sanitized SQL group from
+    # redundant_sql to n_plus_one_sql. The lab opts in because the
+    # default `auto` mode misclassifies the redundant-sql scenario
+    # (15 cache-warmed SELECT count(*) via JPA) as n_plus_one_sql:
+    # the Hibernate scope marker alone fires the heuristic. With
+    # strict, the low timing variance keeps the classification
+    # correct. See docs/TROUBLESHOOTING.md.
+    sanitizer_aware_classification = "strict"
 ---
 apiVersion: v1
 kind: Service
@@ -66,7 +75,7 @@ metadata:
   labels:
     app.kubernetes.io/name: perf-sentinel-daemon
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "0.5.6"
+    app.kubernetes.io/version: "0.5.8"
 spec:
   replicas: 1
   strategy:
@@ -79,7 +88,7 @@ spec:
       labels:
         app.kubernetes.io/name: perf-sentinel-daemon
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "0.5.6"
+        app.kubernetes.io/version: "0.5.8"
     spec:
       automountServiceAccountToken: false
       # UID 65534 matches the upstream perf-sentinel scratch image USER.
@@ -92,7 +101,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: perf-sentinel
-          image: ghcr.io/robintra/perf-sentinel:0.5.6
+          image: ghcr.io/robintra/perf-sentinel:0.5.8
           imagePullPolicy: IfNotPresent
           args:
             - watch
