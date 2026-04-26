@@ -1,0 +1,43 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  # node-exporter (kube-prometheus-stack DaemonSet) needs hostNetwork,
+  # hostPID, and hostPath, which the baseline profile blocks. We drop to
+  # privileged on this namespace only.
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+    app.kubernetes.io/part-of: perf-sentinel-lab
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: db
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+    app.kubernetes.io/part-of: perf-sentinel-lab
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+    app.kubernetes.io/part-of: perf-sentinel-lab
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ci
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+    app.kubernetes.io/part-of: perf-sentinel-lab
