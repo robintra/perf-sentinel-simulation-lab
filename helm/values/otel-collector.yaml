@@ -1,0 +1,146 @@
+# Helm values for open-telemetry/opentelemetry-collector (contrib image).
+#
+# Pinned chart version: 0.152.0 (collector contrib 0.150.1).
+# Install: helm upgrade --install otel-collector \
+#   open-telemetry/opentelemetry-collector \
+#   -n observability --version 0.152.0 \
+#   -f helm/values/otel-collector.yaml
+
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  enabled: true
+  type: ClusterIP
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    hostPort: 0
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    hostPort: 0
+    protocol: TCP
+  metrics:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    hostPort: 0
+    protocol: TCP
+
+presets:
+  kubernetesAttributes:
+    enabled: true
+    extractAllPodLabels: false
+
+# Expose the collector's own /metrics endpoint to Prometheus via the
+# stack-bundled ServiceMonitor.
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+      interval: 30s
+  extraLabels:
+    release: kube-prometheus-stack
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  processors:
+    memory_limiter:
+      check_interval: 1s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    batch:
+      send_batch_size: 1024
+      timeout: 5s
+    k8sattributes:
+      auth_type: serviceAccount
+      passthrough: false
+      extract:
+        metadata:
+          - k8s.namespace.name
+          - k8s.deployment.name
+          - k8s.statefulset.name
+          - k8s.daemonset.name
+          - k8s.cronjob.name
+          - k8s.job.name
+          - k8s.node.name
+          - k8s.pod.name
+          - k8s.pod.uid
+          - k8s.pod.start_time
+      pod_association:
+        - sources:
+            - from: resource_attribute
+              name: k8s.pod.ip
+        - sources:
+            - from: resource_attribute
+              name: k8s.pod.uid
+        - sources:
+            - from: connection
+  exporters:
+    otlphttp/tempo:
+      endpoint: http://tempo.observability.svc.cluster.local:4318
+      tls:
+        insecure: true
+      # Tempo runs single-binary (target=all) with the OTLP HTTP receiver
+      # exposed on port 4318. See manifests/tempo.yaml.
+    otlphttp/perf_sentinel:
+      endpoint: http://perf-sentinel-daemon.observability.svc.cluster.local:14318
+      tls:
+        insecure: true
+    prometheus:
+      endpoint: 0.0.0.0:8889
+      send_timestamps: true
+      metric_expiration: 5m
+    debug:
+      verbosity: basic
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+  service:
+    extensions:
+      - health_check
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - k8sattributes
+          - batch
+        exporters:
+          - otlphttp/tempo
+          - otlphttp/perf_sentinel
+      metrics:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - batch
+        exporters:
+          - prometheus
+    telemetry:
+      metrics:
+        address: 0.0.0.0:8888
