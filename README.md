@@ -175,7 +175,7 @@ plus actuator health and prometheus endpoints.
 | notification-service | 8082 | notifications | n_plus_one_http, excessive_fanout, chatty_service, serialized_calls |
 
 Together they cover the ten canonical detection classes of
-perf-sentinel 0.5.4. `make validate-findings` exercises all ten
+perf-sentinel 0.5.6. `make validate-findings` exercises all ten
 through k6 Jobs running in-cluster and asserts that each scenario
 produces at least one matching finding on the expected service.
 

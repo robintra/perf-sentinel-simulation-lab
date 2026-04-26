@@ -219,6 +219,18 @@ If that works but `make psql` does not, check `.postgres-password`
 
 ## perf-sentinel reports `suggested_fix: null` and `source_endpoint: unknown`
 
+**Resolved in perf-sentinel 0.5.6.** Framework detection now uses two
+complementary signals: the OpenTelemetry instrumentation scope chain
+collected from each span's parent path (catches `spring-data`,
+`hibernate`, `quarkus`, `spring-webflux`, `r2dbc`, `helidon`, `jdbc`),
+plus user-code naming conventions on the JPA rule (`*Repository`,
+`*Repo`, `*Dao` suffixes). The lab pins 0.5.6 by default and JPA
+findings now carry `suggested_fix.framework = "java_jpa"` with a
+populated `recommendation`. Section kept below for users still on 0.5.5
+or earlier.
+
+### Pre-0.5.6 behavior
+
 perf-sentinel infers the framework (`java_jpa`, `java_quarkus`, `csharp_ef_core`, etc.) from the `code.namespace` attribute on the finding's primary span. For SQL findings the primary span is a JDBC span, which the OpenTelemetry Java agent does not currently enrich with the originating user-code namespace.
 
 In our trace tree:
@@ -230,15 +242,31 @@ HTTP span             (http.route present)
           └─ JDBC span           (no code.* attributes; perf-sentinel reads here)
 ```
 
-perf-sentinel 0.5.4 does not walk up the parent chain, so it sees no namespace and emits no `suggested_fix`. `source_endpoint` is similarly read from the immediate parent (Hibernate Query span) rather than from the HTTP server span, hence the `unknown` value.
+perf-sentinel 0.5.4 does not walk up the parent chain, so it sees no namespace and emits no `suggested_fix`. perf-sentinel 0.5.5 added the parent walker but the table `JAVA_RULES` only matched framework packages, so the user-code namespace surfaced by the walker (e.g. `com.example.OrderRepository`) still failed to match. perf-sentinel 0.5.6 closes both gaps.
 
-This is a real limitation of the framework-aware suggestion feature with typical Spring Boot + JPA stacks. The detector itself still classifies the anti-pattern correctly (the lab confirms 10/10), only the actionable hint is missing.
+`source_endpoint` is similarly read from the immediate parent (Hibernate Query span) rather than from the HTTP server span, hence the `unknown` value.
 
-Workarounds explored and dismissed:
+Historical workarounds explored and dismissed:
 
 - `OTEL_INSTRUMENTATION_COMMON_EXPERIMENTAL_CONTROLLER_TELEMETRY_ENABLED=true` and friends. Add code attributes to controller and repository spans, but not to JDBC spans, so perf-sentinel still sees nothing on the spans it inspects.
-- Modifying perf-sentinel to walk parents. Out of scope for this lab.
-- Adding a custom OTel processor that propagates `code.*` from parent to child. Possible but adds collector complexity not aligned with the lab's role as an external consumer.
+- Modifying perf-sentinel to walk parents. Implemented in 0.5.5.
+- Extending the framework rules to recognize user-code conventions and using the OpenTelemetry instrumentation scope as a primary signal. Implemented in 0.5.6.
+
+## OTel Collector exporter `compression: none` against the daemon
+
+**Resolved in perf-sentinel 0.5.5.** The daemon's `/v1/traces` handler
+now decompresses gzipped request bodies via `tower-http`'s
+`RequestDecompressionLayer`, matching the OTLP HTTP spec. The lab's
+`helm/values/otel-collector.yaml` no longer sets `compression: none`
+on the `otlphttp/perf_sentinel` exporter and lets the OTel default
+(gzip) apply.
+
+### Pre-0.5.5 behavior
+
+The daemon used to reject any gzipped OTLP HTTP body with HTTP 400
+because `prost::Message::decode` does not understand gzip. Stack
+operators on 0.5.4 had to set `compression: none` on every Collector
+exporter targeting the daemon, otherwise zero traces reached it.
 
 ## Reset to a clean state
 
