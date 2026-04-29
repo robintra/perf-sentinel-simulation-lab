@@ -87,34 +87,24 @@ if ! curl -fsS "http://localhost:${DAEMON_PORT}/health" >/dev/null 2>&1; then
 fi
 
 step "Fetching report payload and rendering HTML"
-# The default max_payload_size of 1 MiB is too small for a daemon export
-# covering hundreds of findings. 16 MiB is the upstream silent ceiling
-# (above this the binary warns), comfortably above the lab's volume.
 PAYLOAD_FILE="${ARTIFACTS_DIR}/greenops-payload.json"
-SENTINEL_CONFIG="${ARTIFACTS_DIR}/sentinel-cli.toml"
-cat > "${SENTINEL_CONFIG}" <<'EOF'
-max_payload_size = 16777216
-EOF
 curl -fsS "http://localhost:${DAEMON_PORT}/api/export/report" -o "${PAYLOAD_FILE}"
 [ -s "${PAYLOAD_FILE}" ] || die "daemon returned an empty payload"
-"${SENTINEL_BIN}" report --config "${SENTINEL_CONFIG}" --input "${PAYLOAD_FILE}" --output "${HTML_OUT}"
+"${SENTINEL_BIN}" report --input "${PAYLOAD_FILE}" --output "${HTML_OUT}"
 ok "${HTML_OUT}"
 
 step "Capturing PNG via Chrome headless"
-# The dashboard's GreenOps tab is registered only when the input has a
-# computed `co2` block. The daemon's /api/export/report emits
-# `GreenSummary::disabled(0)` (no co2) by design (see query_api.rs),
-# so the GreenOps tab is hidden in this rendering. The chip banner
-# (`Carbon scoring: Electricity Maps v4, direct, 5_minutes`) is only
-# visible when running `analyze` on raw traces with the EM token in
-# env. The PNG below captures the Findings tab as visual proof that
-# the daemon's report dashboard renders end-to-end with version 0.5.12.
+# Capture the GreenOps tab via the #green URL fragment. Daemon 0.5.13
+# emits a live green_summary on /api/export/report (regions,
+# top_offenders, co2 non-null), which is what registers the tab in the
+# rendered HTML. --virtual-time-budget gives the dashboard JS the
+# window it needs to read location.hash and switch panels before paint.
 CHROME_LOG="${ARTIFACTS_DIR}/chrome.log"
 if ! "${CHROME_BIN}" --headless=new --disable-gpu \
   --window-size=1600,2400 \
   --virtual-time-budget=2000 \
   --screenshot="${PNG_OUT}" \
-  "file://${HTML_OUT}" >"${CHROME_LOG}" 2>&1; then
+  "file://${HTML_OUT}#green" >"${CHROME_LOG}" 2>&1; then
   color_red "    chrome stderr:"
   sed 's/^/      /' "${CHROME_LOG}" >&2
   die "chrome headless exited non-zero, see ${CHROME_LOG}"

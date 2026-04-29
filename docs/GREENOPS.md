@@ -102,40 +102,24 @@ Produces `artifacts/greenops-bandeau.png` via the documented export
 pipeline:
 
 1. `kubectl port-forward` on the daemon Service.
-2. `curl /api/export/report` returns the analyzed Report JSON.
+2. `curl /api/export/report` returns the live Report JSON. Since
+   daemon 0.5.13, `green_summary.regions`, `top_offenders`, and `co2`
+   are all populated by the event loop after the daemon has processed
+   at least one batch.
 3. The host-side `perf-sentinel report --input - --output ...` binary
    renders a self-contained HTML dashboard.
-4. Chrome headless captures the rendered HTML to PNG.
+4. Chrome headless captures the GreenOps tab to PNG (the URL fragment
+   `#green` activates that tab on load).
 
-What the PNG actually shows: the Findings tab of the report dashboard,
-running on data from the daemon, with version `0.5.12` in the header.
+The PNG shows:
 
-What the PNG does **not** show, and why: the Carbon scoring chip
-banner (`Electricity Maps v4 / direct / 5_minutes`) lives on the
-GreenOps tab, which only registers when the rendered input has a
-computed `co2` block. The daemon's `/api/export/report` emits
-`GreenSummary::disabled(0)` by design (see
-`crates/sentinel-core/src/daemon/query_api.rs::handle_export_report`),
-so the GreenOps tab is hidden in this specific rendering path even
-when the integration is fully wired.
-
-To capture the chip banner specifically, run `analyze` on raw traces
-with the token in env:
-
-```bash
-# 1. Pull a non-actuator trace from Tempo (Tempo returns OTLP, you'll
-#    need a converter to native JSON or a Jaeger v1 export).
-# 2. analyze it host-side, with the token in env.
-PERF_SENTINEL_EMAPS_TOKEN="$(cat .electricity-maps-token)" \
-  perf-sentinel analyze --config .perf-sentinel.toml \
-    --input traces.json --format text
-# Look for the line: `Carbon scoring: Electricity Maps v4, direct, 5_minutes`
-```
-
-The lab does not ship the OTLP -> native JSON converter, since the
-daemon-side proof (`make verify-electricity-maps` reading
-`scoring_config` from the JSON export) is the canonical evidence the
-integration is wired.
+- A `Carbon scoring:` bandeau above the green-regions table, with
+  three chips: one neutral `Electricity Maps v4`, one accent `direct`,
+  one accent `5_minutes`.
+- The green-regions table populated with at least one row (the lab
+  configures `eu-west-3 -> FR`).
+- An orange `Estimated` badge on each region row when the sandbox key
+  is in use (the sandbox always returns `isEstimated: true`).
 
 The screenshot script needs both the `perf-sentinel` binary (resolved
 from `$PERF_SENTINEL_REPO_PATH/target/release/perf-sentinel`, then
@@ -146,7 +130,10 @@ if either is missing.
 
 The literal `Carbon scoring: Electricity Maps v4, direct, 5_minutes`
 text is printed by the perf-sentinel CLI when it renders a report in
-text form, not by the daemon process. To see it on the host:
+text form. The same content surfaces in the rendered HTML dashboard
+(captured by `make capture-greenops-screenshot`, see above) and in
+the JSON returned by `/api/export/report` (under
+`green_summary.scoring_config`). To see the text form on the host:
 
 ```bash
 kubectl -n observability port-forward svc/perf-sentinel-daemon 14318:14318 &
@@ -209,16 +196,21 @@ open artifacts/greenops-report.html
 
 ### GreenOps tab missing from the rendered HTML
 
-This is expected when the HTML is rendered from the daemon's export
-endpoint. See "Visual proof" above for the explanation and the
-workaround using `analyze` on raw traces.
+The GreenOps tab registers only when the report payload carries a
+non-null `green_summary.co2`. Daemon 0.5.13 emits a live green_summary
+on `/api/export/report`, so the tab should appear after the daemon has
+processed at least one batch. Possible causes if it's missing:
 
-If the banner is missing in a context where you do feed `analyze` raw
-traces with the token, confirm the daemon image tag in
-`manifests/perf-sentinel-daemon.yaml` is `0.5.12` or higher, and that
-the running pod is on that image:
+1. The daemon has not processed any events yet. `/api/export/report`
+   returns `503` in that state. Push some traffic with
+   `make validate-findings` and retry.
+2. The running pod is on an older image. Confirm:
 
 ```bash
 kubectl -n observability get pod -l app.kubernetes.io/name=perf-sentinel-daemon \
   -o jsonpath='{.items[*].spec.containers[*].image}'
 ```
+
+The image tag should be `0.5.13` or higher. If it's older, run
+`kubectl apply -f manifests/perf-sentinel-daemon.yaml` and wait for
+the rollout.
