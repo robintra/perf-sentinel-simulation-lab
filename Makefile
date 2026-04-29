@@ -9,10 +9,10 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings
+.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot
 
 help: ## List available targets
-	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 up: ## Bootstrap the cluster and the full observability stack
 	./scripts/bootstrap.sh
@@ -47,6 +47,9 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/teardown.sh
 	@bash -n scripts/wait-for-ready.sh
 	@bash -n scripts/port-forward.sh
+	@bash -n scripts/seed-electricity-maps.sh
+	@bash -n scripts/verify-electricity-maps.sh
+	@bash -n scripts/capture-greenops-screenshot.sh
 	@echo "validation ok"
 
 smoke: ## Run end-to-end smoke test against the running lab (CI-friendly)
@@ -115,3 +118,12 @@ ps: ## docker ps for k3d containers of the lab cluster
 
 clean-images: ## Remove dangling docker images
 	docker image prune -f
+
+seed-electricity-maps: ## Provision the Electricity Maps token Secret from .electricity-maps-token
+	./scripts/seed-electricity-maps.sh
+
+verify-electricity-maps: ## Confirm the daemon picked up the Electricity Maps token
+	./scripts/verify-electricity-maps.sh
+
+capture-greenops-screenshot: ## Capture the daemon report banner to artifacts/greenops-bandeau.png
+	./scripts/capture-greenops-screenshot.sh

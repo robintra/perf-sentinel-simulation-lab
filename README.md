@@ -50,8 +50,8 @@ High-level view:
 
 ```
   Java services (S2)  ─┐
-                        │ OTLP gRPC/HTTP
-                        ▼
+                       │ OTLP gRPC/HTTP
+                       ▼
                   OTel Collector (DaemonSet)
                   ├─ otlphttp ──> Tempo  (trace storage)
                   ├─ otlphttp ──> perf-sentinel daemon  (findings)
@@ -66,10 +66,10 @@ Full details and rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## What you get
 
-| Service | URL | Credentials |
-| --- | --- | --- |
-| Grafana | http://localhost:3000 | admin / admin |
-| perf-sentinel daemon API | http://localhost:14318 | none (local lab) |
+| Service                     | URL                                | Credentials                          |
+|-----------------------------|------------------------------------|--------------------------------------|
+| Grafana                     | http://localhost:3000              | admin / admin                        |
+| perf-sentinel daemon API    | http://localhost:14318             | none (local lab)                     |
 | Postgres (cluster-internal) | postgres.db.svc.cluster.local:5432 | user `lab`, see `.postgres-password` |
 
 The host endpoints rely on `kubectl port-forward` started in the
@@ -106,6 +106,11 @@ make seed-services       # build, import, helm install the 3 Java services
 make teardown-services   # helm uninstall the 3 services
 make inject-all          # alias of validate-findings
 make validate-findings   # run 10 k6 scenarios, assert findings, write tmp/validation-report.md
+
+# GreenOps integration (optional, requires an Electricity Maps token)
+make seed-electricity-maps        # provision the token Secret
+make verify-electricity-maps      # confirm the integration is live
+make capture-greenops-screenshot  # render a PNG of the report banner
 ```
 
 ## Verifications after `make up`
@@ -137,7 +142,8 @@ curl -s http://localhost:14318/metrics | grep '^perf_sentinel_'
 ## perf-sentinel configuration
 
 The daemon is configured via the `perf-sentinel-daemon-config`
-ConfigMap (mounted on `/etc/perf-sentinel/config.toml`). Lab defaults:
+ConfigMap (mounted on `/etc/perf-sentinel/config.toml`). Lab defaults
+relevant to operations:
 
 ```toml
 [daemon]
@@ -145,7 +151,9 @@ listen_address = "0.0.0.0"
 listen_port_http = 14318
 listen_port_grpc = 14317
 max_active_traces = 10000
-trace_ttl_ms = 60000
+trace_ttl_ms = 5000               # lab-only short TTL, see manifest comment
+api_enabled = true
+environment = "staging"
 
 [daemon.correlation]
 enabled = true
@@ -153,8 +161,19 @@ window_minutes = 5
 
 [detection]
 n_plus_one_min_occurrences = 5
+sanitizer_aware_classification = "strict"
+
+[green.electricity_maps]           # opt-in, see docs/GREENOPS.md
+endpoint = "https://api.electricitymaps.com/v4"
+emission_factor_type = "direct"
+temporal_granularity = "5_minutes"
+
+[green.electricity_maps.region_map]
+"eu-west-3" = "FR"
 ```
 
+The full ConfigMap with inline comments lives in
+[`manifests/perf-sentinel-daemon.yaml`](manifests/perf-sentinel-daemon.yaml).
 Ports 14317/14318 (instead of the defaults 4317/4318) avoid confusion
 with the standard OTLP ports used by Tempo and the OTel Collector.
 
@@ -168,16 +187,27 @@ Three Spring Boot 4 services live in the `shop` namespace. Each
 exposes one `/api/fault/<pattern>` endpoint per anti-pattern it owns,
 plus actuator health and prometheus endpoints.
 
-| Service | Port | Postgres schema | Faults exposed |
-| --- | --- | --- | --- |
-| order-service | 8080 | orders | n_plus_one_sql, redundant_http, slow_sql, pool_saturation |
-| payment-service | 8081 | payments | redundant_sql, slow_http |
-| notification-service | 8082 | notifications | n_plus_one_http, excessive_fanout, chatty_service, serialized_calls |
+| Service              | Port | Postgres schema | Faults exposed                                                      |
+|----------------------|------|-----------------|---------------------------------------------------------------------|
+| order-service        | 8080 | orders          | n_plus_one_sql, redundant_http, slow_sql, pool_saturation           |
+| payment-service      | 8081 | payments        | redundant_sql, slow_http                                            |
+| notification-service | 8082 | notifications   | n_plus_one_http, excessive_fanout, chatty_service, serialized_calls |
 
 Together they cover the ten canonical detection classes of
 perf-sentinel 0.5.6. `make validate-findings` exercises all ten
 through k6 Jobs running in-cluster and asserts that each scenario
 produces at least one matching finding on the expected service.
+
+## GreenOps integration
+
+The daemon can pull real-time grid carbon intensity from Electricity
+Maps to enrich findings (`intensity_source: "real_time"`) and surface
+the configured scoring policy in the report dashboard. Optional, the
+lab works fine on the bundled `annual` source when no token is
+provisioned.
+
+Setup, sandbox vs trial differences, configuration knobs, and visual
+proof: [docs/GREENOPS.md](docs/GREENOPS.md).
 
 ## Roadmap
 

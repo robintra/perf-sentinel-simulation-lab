@@ -17,6 +17,7 @@ kubeconfig*
 
 # Secrets generated at bootstrap
 .postgres-password
+.electricity-maps-token
 *.pem
 *.key
 *.crt
@@ -33,3 +34,6 @@ services/**/*.iml
 *.swp
 *.swo
 *~
+
+# Visual proof artifacts produced by make capture-greenops-screenshot
+artifacts/

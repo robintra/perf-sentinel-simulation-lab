@@ -44,6 +44,23 @@ data:
     # strict, the low timing variance keeps the classification
     # correct. See docs/TROUBLESHOOTING.md.
     sanitizer_aware_classification = "strict"
+
+    [green.electricity_maps]
+    # Default v4 endpoint, spelled out so the ConfigMap reads as a
+    # usable example for readers learning the integration.
+    endpoint = "https://api.electricitymaps.com/v4"
+    # `direct` and `5_minutes` are opt-in 0.5.11 knobs that surface as
+    # accent chips in the daemon dashboard banner. The Electricity Maps
+    # sandbox key silently coarsens the temporal granularity to hourly,
+    # but the chip still renders the configured value, which is what we
+    # want for the lab. See docs/GREENOPS.md.
+    emission_factor_type = "direct"
+    temporal_granularity = "5_minutes"
+
+    [green.electricity_maps.region_map]
+    # One zone is enough to exercise the mapping without hitting the
+    # sandbox key quota. Add more entries when validating multi-region.
+    "eu-west-3" = "FR"
 ---
 apiVersion: v1
 kind: Service
@@ -75,7 +92,7 @@ metadata:
   labels:
     app.kubernetes.io/name: perf-sentinel-daemon
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "0.5.8"
+    app.kubernetes.io/version: "0.5.12"
 spec:
   replicas: 1
   strategy:
@@ -88,7 +105,7 @@ spec:
       labels:
         app.kubernetes.io/name: perf-sentinel-daemon
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "0.5.8"
+        app.kubernetes.io/version: "0.5.12"
     spec:
       automountServiceAccountToken: false
       # UID 65534 matches the upstream perf-sentinel scratch image USER.
@@ -101,7 +118,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: perf-sentinel
-          image: ghcr.io/robintra/perf-sentinel:0.5.8
+          image: ghcr.io/robintra/perf-sentinel:0.5.12
           imagePullPolicy: IfNotPresent
           args:
             - watch
@@ -114,6 +131,17 @@ spec:
             - name: grpc
               containerPort: 14317
               protocol: TCP
+          env:
+            # Token for the Electricity Maps API. `optional: true` lets the
+            # pod start without the Secret: the daemon then falls back to
+            # the bundled `annual` carbon intensity source. Run
+            # `make seed-electricity-maps` to provision the Secret.
+            - name: PERF_SENTINEL_EMAPS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-electricity-maps
+                  key: token
+                  optional: true
           volumeMounts:
             - name: config
               mountPath: /etc/perf-sentinel
