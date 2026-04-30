@@ -37,26 +37,45 @@ step "Resolving project id"
 PROJECT_ID="$(api "${GITLAB_URL}/api/v4/projects?owned=true&search=${PROJECT_NAME}" \
   | python3 -c 'import json,sys
 projects=json.load(sys.stdin)
-match=[p for p in projects if p["path"]=="'"${PROJECT_NAME}"'"]
-print(match[0]["id"] if match else "")')"
+match=[p for p in projects if p["path"]==sys.argv[1]]
+print(match[0]["id"] if match else "")' "${PROJECT_NAME}")"
 [ -n "${PROJECT_ID}" ] || die "project ${PROJECT_NAME} not found"
 ok "project id ${PROJECT_ID}"
 
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "${WORK_DIR}"' EXIT
+ASKPASS_SCRIPT="$(mktemp)"
+# Same askpass pattern as seed-gitlab-project.sh: keep the PAT out of
+# the URL (and out of argv) by feeding it via env to git's askpass.
+trap 'rm -rf "${WORK_DIR}"; rm -f "${ASKPASS_SCRIPT}"' EXIT
+cat > "${ASKPASS_SCRIPT}" <<'ASKPASS'
+#!/usr/bin/env bash
+case "$1" in
+  Username*) echo oauth2 ;;
+  Password*) echo "${LAB_GIT_TOKEN}" ;;
+esac
+ASKPASS
+chmod 700 "${ASKPASS_SCRIPT}"
+export LAB_GIT_TOKEN="${TOKEN}"
+export GIT_ASKPASS="${ASKPASS_SCRIPT}"
+
 step "Cloning project to ${WORK_DIR}"
-git clone -q "http://oauth2:${TOKEN}@localhost:8181/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}"
+git clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}"
 cd "${WORK_DIR}"
 git config user.email "lab-verify@example.com"
 git config user.name "lab-verify"
 
 wait_for_pipeline() {
   local sha="$1"
-  local timeout_secs="${2:-600}"
+  local source_filter="${2:-}"
+  local timeout_secs="${3:-600}"
+  local query="${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/pipelines?sha=${sha}"
+  if [ -n "${source_filter}" ]; then
+    query="${query}&source=${source_filter}"
+  fi
   local elapsed=0
   local pipeline_id=""
   while [ "${elapsed}" -lt "${timeout_secs}" ]; do
-    pipeline_id="$(api "${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/pipelines?sha=${sha}" \
+    pipeline_id="$(api "${query}" \
       | python3 -c 'import json,sys
 pipes=json.load(sys.stdin)
 print(pipes[0]["id"] if pipes else "")')"
@@ -66,7 +85,8 @@ print(pipes[0]["id"] if pipes else "")')"
     sleep 5
     elapsed=$((elapsed + 5))
   done
-  [ -n "${pipeline_id}" ] || die "no pipeline picked up sha ${sha} within ${timeout_secs}s"
+  [ -n "${pipeline_id}" ] \
+    || die "no ${source_filter:-any}-source pipeline picked up sha ${sha} within ${timeout_secs}s"
 
   local status=""
   while [ "${elapsed}" -lt "${timeout_secs}" ]; do
@@ -101,7 +121,13 @@ git add README.md
 git commit -q -m "verify: bump README"
 git push -q origin HEAD:main
 SHA_MAIN="$(git rev-parse HEAD)"
-read -r MAIN_PIPELINE MAIN_STATUS < <(wait_for_pipeline "${SHA_MAIN}")
+# Capture wait_for_pipeline output through a variable so the function's
+# `set -e`-induced exit propagates with its own die() message instead of
+# turning into a cryptic `read` failure on EOF. The source filter pins
+# us to the push-event pipeline on main (the only one created for a
+# direct push to the default branch).
+MAIN_RESULT="$(wait_for_pipeline "${SHA_MAIN}" push)"
+read -r MAIN_PIPELINE MAIN_STATUS <<< "${MAIN_RESULT}"
 ok "main pipeline ${MAIN_PIPELINE} ended in ${MAIN_STATUS}"
 [ "${MAIN_STATUS}" = "success" ] \
   || die "expected success on main (allow_failure: true), got ${MAIN_STATUS}"
@@ -113,22 +139,22 @@ api "${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/jobs/${PERF_JOB_ID}/artifacts" 
   -o "${RESULTS_DIR}/main-artifacts.zip"
 unzip -oq "${RESULTS_DIR}/main-artifacts.zip" -d "${RESULTS_DIR}/main"
 [ -s "${RESULTS_DIR}/main/findings.sarif" ] || die "findings.sarif missing or empty"
-python3 -c '
+python3 - "${RESULTS_DIR}/main/findings.sarif" <<'PY'
 import json,sys
-sarif=json.load(open("'"${RESULTS_DIR}"'/main/findings.sarif"))
+sarif=json.load(open(sys.argv[1]))
 assert sarif.get("version")=="2.1.0", sarif.get("version")
 runs=sarif.get("runs",[])
 assert runs and runs[0]["tool"]["driver"]["name"]=="perf-sentinel"
 print("    sarif ok, findings:", sum(len(r.get("results",[])) for r in runs))
-'
+PY
 [ -s "${RESULTS_DIR}/main/perf-sentinel-report.json" ] || die "perf-sentinel-report.json missing"
-python3 -c '
-import json
-rep=json.load(open("'"${RESULTS_DIR}"'/main/perf-sentinel-report.json"))
+python3 - "${RESULTS_DIR}/main/perf-sentinel-report.json" <<'PY'
+import json,sys
+rep=json.load(open(sys.argv[1]))
 for k in ("findings","green_summary","quality_gate"):
     assert k in rep, k
 print("    report ok, findings:", len(rep["findings"]))
-'
+PY
 
 step "2. Push a fresh branch and open a merge request"
 MR_BRANCH="feat/verify-mr-$(date -u +%Y%m%dT%H%M%SZ)"
@@ -142,7 +168,13 @@ api -X POST "${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/merge_requests" \
   -H "Content-Type: application/json" \
   -d "$(printf '{"source_branch":"%s","target_branch":"main","title":"verify: MR pipeline"}' "${MR_BRANCH}")" \
   > "${RESULTS_DIR}/mr.json"
-read -r MR_PIPELINE MR_STATUS < <(wait_for_pipeline "${SHA_MR}")
+# Pin the wait to the merge_request_event pipeline so the verify
+# observes the gate-enforced run. GitLab also creates a push-event
+# pipeline on the source branch in parallel; that one would skip the
+# perf-sentinel job on its own rules and report success even when the
+# gate is breached.
+MR_RESULT="$(wait_for_pipeline "${SHA_MR}" merge_request_event)"
+read -r MR_PIPELINE MR_STATUS <<< "${MR_RESULT}"
 ok "MR pipeline ${MR_PIPELINE} ended in ${MR_STATUS}"
 [ "${MR_STATUS}" = "failed" ] \
   || die "expected failed on MR (allow_failure: false), got ${MR_STATUS}"
@@ -161,16 +193,25 @@ unzip -oq "${RESULTS_DIR}/mr-artifacts.zip" -d "${RESULTS_DIR}/mr"
 # codequality` entry proves the report was accepted by the GitLab UI.
 api "${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/jobs/${PERF_JOB_ID_MR}" \
   > "${RESULTS_DIR}/mr/job-meta.json"
-python3 -c '
+python3 - "${RESULTS_DIR}/mr/job-meta.json" <<'PY'
 import json,sys
-meta=json.load(open("'"${RESULTS_DIR}"'/mr/job-meta.json"))
+meta=json.load(open(sys.argv[1]))
 arts=meta.get("artifacts",[])
 cq=[a for a in arts if a.get("file_type")=="codequality"]
 assert cq, "codequality artifact missing from job metadata"
 size=cq[0]["size"]
-assert size>0, f"codequality artifact has zero size"
+assert size>0, "codequality artifact has zero size"
 print(f"    code quality ok, {size} bytes uploaded as reports.codequality")
-'
+PY
+
+step "Cleaning up the MR branch on the server"
+# Encode the slash in feat/verify-mr-* so the branch deletion API
+# accepts it. Best-effort: a leftover branch would only show up as
+# noise in the project, not a functional issue.
+ENCODED_BRANCH="$(printf '%s' "${MR_BRANCH}" | python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.stdin.read(), safe=""))')"
+api -X DELETE \
+  "${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/repository/branches/${ENCODED_BRANCH}" \
+  >/dev/null 2>&1 || color_red "    warn: failed to delete ${MR_BRANCH} on the remote (non-fatal)"
 
 step "Summary"
 color_green "  main pipeline (${MAIN_PIPELINE}): ${MAIN_STATUS}"

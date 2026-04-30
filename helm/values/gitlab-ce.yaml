@@ -88,7 +88,9 @@ gitlab-runner:
   # Point the runner at the in-cluster webservice service. Without an
   # Ingress, the chart's default `http://gitlab.localhost` URL is
   # unreachable from the runner pod (resolves to the pod's own
-  # 127.0.0.1).
+  # 127.0.0.1). The same URL (minus trailing slash) is templated into
+  # `clone_url` below via Helm `tpl`, so this is the single source of
+  # truth.
   gitlabUrl: http://gitlab-webservice-default.gitlab-ce.svc.cluster.local:8181/
   runners:
     # The runner-helper image defaults to the x86_64 tag, which is not
@@ -102,7 +104,7 @@ gitlab-runner:
         # http://gitlab.localhost (the chart's external URL) which
         # has no Ingress to route it. Using the in-cluster service
         # FQDN makes git clone resolve to the workhorse port.
-        clone_url = "http://gitlab-webservice-default.gitlab-ce.svc.cluster.local:8181"
+        clone_url = {{ .Values.gitlabUrl | trimSuffix "/" | quote }}
         [runners.kubernetes]
         image = "ubuntu:22.04"
         helper_image = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v18.11.0"

@@ -182,6 +182,14 @@ ok "fixture written: ${OUTPUT_FILE}"
 
 step "Validating fixture with perf-sentinel analyze --input"
 [ -x "${PERF_SENTINEL_BIN}" ] || die "perf-sentinel binary not found at ${PERF_SENTINEL_BIN}"
+# Pin the supported family so an old binary can't silently produce a
+# fixture in a format the lab daemon no longer accepts. Bump alongside
+# the daemon image in manifests/perf-sentinel-daemon.yaml.
+PSV="$("${PERF_SENTINEL_BIN}" --version | awk '{print $2}')"
+case "${PSV}" in
+  0.5.*) ;;
+  *) die "perf-sentinel ${PSV} not supported, expected 0.5.x to match the lab daemon" ;;
+esac
 ANALYZE_OUT="${WORK_DIR}/analyze.json"
 ANALYZE_ERR="${WORK_DIR}/analyze.err"
 if ! "${PERF_SENTINEL_BIN}" analyze --input "${OUTPUT_FILE}" --format json \

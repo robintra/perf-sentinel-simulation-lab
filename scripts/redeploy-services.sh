@@ -24,6 +24,12 @@ if [ ! -f "${PASSWORD_FILE}" ]; then
 fi
 
 step "Helm upgrade --install for the 3 charts"
+# This deliberately re-evaluates each chart's values.yaml from scratch.
+# Any ad-hoc `helm upgrade --set otel.cloudRegion=us-east-1` overrides
+# applied previously will be reset to the value baked into the chart
+# directory. That is the lab's intended behaviour: values.yaml in the
+# repo is the source of truth. Use `--reuse-values` here instead if you
+# need to preserve out-of-band overrides between redeploys.
 for svc in "${SERVICES[@]}"; do
   helm upgrade --install "${svc}" "${REPO_ROOT}/services/${svc}/helm/" \
     -n shop \

@@ -27,6 +27,30 @@ self-hosted GitLab without leaving the cluster.
    not assert HTTP fetches via `${CI_PAGES_URL}` because the
    in-cluster GitLab CE has no Ingress (see Limitations).
 
+## The fixture
+
+The test project consumes a static fixture set under
+`artifacts/fixtures/`:
+
+- `em-real-time-traces.json` was captured against a daemon configured
+  with the Electricity Maps sandbox key, so the analyzed report carries
+  `green_summary.co2.total.model = "electricity_maps_api"`. It is
+  re-captured by `scripts/capture-trace-fixture.sh` after `make up`,
+  `make seed-services`, `make seed-electricity-maps`,
+  `make validate-findings`. The script queries the lab's Tempo, fetches
+  raw OTLP-JSON traces, converts them to Jaeger format, and validates
+  the result with `perf-sentinel analyze --input`. Re-capture after
+  every daemon-image bump or after major detector changes upstream so
+  the verify keeps exercising the current code path.
+- `perf-sentinel-test.toml` is calibrated with strict thresholds so the
+  fixture trips `analyze --ci` (exit 1) and the MR pipeline observes a
+  failed quality gate.
+- `gitlab-ci-from-upstream.yml` is a copy of
+  `docs/ci-templates/gitlab-ci.yml` from the perf-sentinel repo with
+  the version pin bumped, the `dependencies:` line decommented, and a
+  factice `integration-tests` job added that republishes the trace
+  fixture as an artefact for the next stage.
+
 ## Install
 
 ```bash

@@ -33,10 +33,14 @@ helm upgrade --install "${RELEASE_NAME}" gitlab/gitlab \
   --timeout 15m --wait
 
 step "Starting background port-forward on :${DAEMON_PORT}"
-# Stop any prior port-forward to avoid stacking.
+# Stop any prior port-forward and wait for it to release the socket
+# before binding a new one. Without the wait, the new kubectl can race
+# the kernel's TIME_WAIT and bail out on "address already in use".
 if [ -f "${PORT_FORWARD_PID_FILE}" ]; then
-  kill "$(cat "${PORT_FORWARD_PID_FILE}")" 2>/dev/null || true
+  OLD_PID="$(cat "${PORT_FORWARD_PID_FILE}")"
+  kill "${OLD_PID}" 2>/dev/null || true
   rm -f "${PORT_FORWARD_PID_FILE}"
+  while kill -0 "${OLD_PID}" 2>/dev/null; do sleep 0.1; done
 fi
 kubectl -n "${NAMESPACE}" port-forward "svc/${RELEASE_NAME}-webservice-default" \
   "${DAEMON_PORT}:${DAEMON_PORT}" >"${PORT_FORWARD_LOG}" 2>&1 &
@@ -48,7 +52,7 @@ for _ in $(seq 1 60); do
     ok "GitLab API ready at http://localhost:${DAEMON_PORT}"
     color_green ""
     color_green "Login as root with the password from the Secret:"
-    color_green "  kubectl -n ${NAMESPACE} get secret ${RELEASE_NAME}-gitlab-initial-root-password \\"
+    color_green "  kubectl -n ${NAMESPACE} get secret gitlab-initial-root-password \\"
     color_green "    -o jsonpath='{.data.password}' | base64 -d; echo"
     exit 0
   fi

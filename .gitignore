@@ -35,15 +35,16 @@ services/**/*.iml
 *.swo
 *~
 
-# Visual proof artifacts produced by make capture-greenops-screenshot.
-# `artifacts/fixtures/` is the exception: it carries the GitLab CI
-# template test project fixtures and must stay tracked. Per gitignore
-# semantics we cannot un-ignore a path inside an ignored directory, so
-# enumerate the files we want to keep tracked instead of ignoring the
-# whole `artifacts/` directory.
+# Visual proof artifacts produced by make capture-greenops-screenshot
+# (PNG, HTML, Chrome logs) stay untracked. `artifacts/fixtures/` is the
+# exception: it carries the GitLab CI template test project fixtures
+# and must stay versioned. Tracked extensions are .json, .toml, .yml,
+# .yaml — adding a new fixture in one of those formats is automatically
+# picked up by git, no .gitignore edit required.
 artifacts/*
 !artifacts/fixtures/
 artifacts/fixtures/*
-!artifacts/fixtures/em-real-time-traces.json
-!artifacts/fixtures/perf-sentinel-test.toml
-!artifacts/fixtures/gitlab-ci-from-upstream.yml
+!artifacts/fixtures/*.json
+!artifacts/fixtures/*.toml
+!artifacts/fixtures/*.yml
+!artifacts/fixtures/*.yaml

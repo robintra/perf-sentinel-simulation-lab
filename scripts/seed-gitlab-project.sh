@@ -68,8 +68,8 @@ EXISTING="$(curl -fsS -H "Authorization: Bearer ${TOKEN}" \
   "${GITLAB_URL}/api/v4/projects?owned=true&search=${PROJECT_NAME}" \
   | python3 -c 'import json,sys
 projects=json.load(sys.stdin)
-match=[p for p in projects if p["path"]=="'"${PROJECT_NAME}"'"]
-print(match[0]["id"] if match else "")')"
+match=[p for p in projects if p["path"]==sys.argv[1]]
+print(match[0]["id"] if match else "")' "${PROJECT_NAME}")"
 
 if [ -n "${EXISTING}" ]; then
   ok "project exists with id ${EXISTING}, skipping creation"
@@ -82,14 +82,43 @@ else
     -d "$(printf '{"name":"%s","path":"%s","initialize_with_readme":true,"visibility":"public"}' \
           "${PROJECT_NAME}" "${PROJECT_NAME}")" \
     > "${PROJECT_FILE}"
-  PROJECT_ID="$(python3 -c 'import json,sys;print(json.load(open("'"${PROJECT_FILE}"'"))["id"])')"
+  PROJECT_ID="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["id"])' "${PROJECT_FILE}")"
   ok "project ${PROJECT_NAME} created with id ${PROJECT_ID}"
 fi
 
 step "Cloning project and populating it with fixtures"
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf "${WORK_DIR}"' EXIT
-git clone -q "http://oauth2:${TOKEN}@localhost:8181/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}"
+ASKPASS_SCRIPT="$(mktemp)"
+# Trap removes both the work dir and the askpass shim. The token never
+# lands in argv: git reads it from the env-only LAB_GIT_TOKEN var via
+# the askpass script, instead of the historical
+# `http://oauth2:${TOKEN}@localhost/...` URL pattern.
+trap 'rm -rf "${WORK_DIR}"; rm -f "${ASKPASS_SCRIPT}"' EXIT
+cat > "${ASKPASS_SCRIPT}" <<'ASKPASS'
+#!/usr/bin/env bash
+case "$1" in
+  Username*) echo oauth2 ;;
+  Password*) echo "${LAB_GIT_TOKEN}" ;;
+esac
+ASKPASS
+chmod 700 "${ASKPASS_SCRIPT}"
+export LAB_GIT_TOKEN="${TOKEN}"
+export GIT_ASKPASS="${ASKPASS_SCRIPT}"
+# After a fresh project create, GitLab finalizes the repo via Sidekiq
+# (initial commit, default branch). Until that finishes, git Basic
+# auth can return 401/403 even though the API and the token are fine.
+# Retry the clone for up to 60 s.
+for attempt in $(seq 1 30); do
+  if git clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}" 2>/dev/null; then
+    break
+  fi
+  if [ "${attempt}" -eq 30 ]; then
+    die "git clone never succeeded after 60 s, check Sidekiq logs"
+  fi
+  rm -rf "${WORK_DIR}"
+  WORK_DIR="$(mktemp -d)"
+  sleep 2
+done
 pushd "${WORK_DIR}" >/dev/null
 
 cp "${FIXTURES_DIR}/em-real-time-traces.json" test-traces.json
@@ -106,6 +135,7 @@ else
   git push -q origin HEAD:main
   ok "initial commit pushed to main"
 fi
+unset LAB_GIT_TOKEN GIT_ASKPASS
 popd >/dev/null
 
 color_green ""
