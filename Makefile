@@ -9,7 +9,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot
+.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -50,6 +50,15 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/seed-electricity-maps.sh
 	@bash -n scripts/verify-electricity-maps.sh
 	@bash -n scripts/capture-greenops-screenshot.sh
+	@bash -n scripts/redeploy-services.sh
+	@bash -n scripts/capture-trace-fixture.sh
+	@bash -n scripts/up-gitlab.sh
+	@bash -n scripts/down-gitlab.sh
+	@bash -n scripts/seed-gitlab-project.sh
+	@bash -n scripts/verify-gitlab-perf-sentinel.sh
+	@echo "==> yaml parse on gitlab-ce values"
+	@python3 -c "import yaml,sys; list(yaml.safe_load_all(open(sys.argv[1])))" \
+	  helm/values/gitlab-ce.yaml
 	@echo "validation ok"
 
 smoke: ## Run end-to-end smoke test against the running lab (CI-friendly)
@@ -127,3 +136,18 @@ verify-electricity-maps: ## Confirm the daemon picked up the Electricity Maps to
 
 capture-greenops-screenshot: ## Capture the daemon report banner to artifacts/greenops-bandeau.png
 	./scripts/capture-greenops-screenshot.sh
+
+redeploy-services: ## Re-apply Helm values for the 3 Java services
+	./scripts/redeploy-services.sh
+
+up-gitlab: ## Deploy GitLab CE in namespace gitlab-ce (~10 min)
+	./scripts/up-gitlab.sh
+
+down-gitlab: ## Tear down GitLab CE
+	./scripts/down-gitlab.sh
+
+seed-gitlab-project: ## Bootstrap perf-sentinel-template-test project
+	./scripts/seed-gitlab-project.sh
+
+verify-gitlab-perf-sentinel: ## Validate the GitLab CI template end-to-end
+	./scripts/verify-gitlab-perf-sentinel.sh

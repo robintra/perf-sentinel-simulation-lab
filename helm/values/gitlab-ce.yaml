@@ -1,0 +1,121 @@
+# Helm values for gitlab/gitlab (Community Edition).
+#
+# Pinned chart version: 9.11.2 (app version v18.11.2).
+# Install: helm upgrade --install gitlab gitlab/gitlab \
+#   -n gitlab-ce --create-namespace --version 9.11.2 \
+#   -f helm/values/gitlab-ce.yaml
+#
+# Lab footprint: registry, certmanager, nginx-ingress and prometheus
+# sub-charts are off. The runner sub-chart stays on so pipelines can
+# execute without manual registration. Resource caps target ~6 GiB
+# resident on the M4 Pro 24 GiB host. See docs/GITLAB-CI.md.
+
+global:
+  edition: ce
+  hosts:
+    domain: localhost
+    https: false
+  ingress:
+    enabled: false
+    configureCertmanager: false
+  pages:
+    enabled: true
+  initialRootPassword:
+    secret: gitlab-initial-root-password
+
+installCertmanager: false
+nginx-ingress:
+  enabled: false
+prometheus:
+  install: false
+registry:
+  enabled: false
+
+postgresql:
+  install: true
+  primary:
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+
+redis:
+  master:
+    resources:
+      limits:
+        memory: 512Mi
+        cpu: 500m
+
+gitlab:
+  webservice:
+    minReplicas: 1
+    maxReplicas: 1
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+  sidekiq:
+    minReplicas: 1
+    maxReplicas: 1
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 250m
+      limits:
+        memory: 2Gi
+        cpu: 1000m
+  gitaly:
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 500m
+  gitlab-pages:
+    enabled: true
+
+gitlab-runner:
+  install: true
+  rbac:
+    create: true
+  # Point the runner at the in-cluster webservice service. Without an
+  # Ingress, the chart's default `http://gitlab.localhost` URL is
+  # unreachable from the runner pod (resolves to the pod's own
+  # 127.0.0.1).
+  gitlabUrl: http://gitlab-webservice-default.gitlab-ce.svc.cluster.local:8181/
+  runners:
+    # The runner-helper image defaults to the x86_64 tag, which is not
+    # published for arm64. The lab runs on Apple Silicon, so we pin the
+    # arm64 helper tag explicitly. Bump in lockstep with the runner
+    # chart's appVersion.
+    config: |
+      [[runners]]
+        # Override the clone URL emitted by the GitLab API. Without
+        # this, the runner pod tries to clone from
+        # http://gitlab.localhost (the chart's external URL) which
+        # has no Ingress to route it. Using the in-cluster service
+        # FQDN makes git clone resolve to the workhorse port.
+        clone_url = "http://gitlab-webservice-default.gitlab-ce.svc.cluster.local:8181"
+        [runners.kubernetes]
+        image = "ubuntu:22.04"
+        helper_image = "registry.gitlab.com/gitlab-org/gitlab-runner/gitlab-runner-helper:arm64-v18.11.0"
+        # if-not-present uses the local containerd cache when available,
+        # avoiding the flaky outbound DNS path on Docker Desktop. The lab
+        # pre-imports the helper and debian:bookworm-slim images via
+        # `k3d image import` to the cluster.
+        pull_policy = "if-not-present"
+        # Append public resolvers as DNS fallbacks. CoreDNS in this lab
+        # talks to Docker Desktop's upstream resolver (192.168.65.254)
+        # which times out intermittently when the host's network state
+        # changes. Pod resolv.conf gets CoreDNS first, then 8.8.8.8 and
+        # 1.1.1.1, so external lookups (github.com release downloads)
+        # survive a CoreDNS hiccup.
+        [runners.kubernetes.dns_config]
+          nameservers = ["8.8.8.8", "1.1.1.1"]

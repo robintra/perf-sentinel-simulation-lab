@@ -1,0 +1,16 @@
+# perf-sentinel config used by the GitLab CI template test project.
+# Thresholds are deliberately strict so that `analyze --ci` exits 1 on
+# the captured fixture, exercising the quality-gate failure path.
+
+[thresholds]
+n_plus_one_sql_critical_max = 0
+n_plus_one_http_warning_max = 0
+io_waste_ratio_max = 0.1
+
+[detection]
+n_plus_one_min_occurrences = 5
+window_duration_ms = 500
+
+[green]
+enabled = true
+default_region = "eu-west-3"

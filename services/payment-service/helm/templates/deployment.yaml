@@ -57,7 +57,7 @@ spec:
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
               value: {{ .Values.otel.protocol | quote }}
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "service.namespace=shop,deployment.environment=lab"
+              value: "service.namespace=shop,deployment.environment=lab,cloud.region={{ .Values.otel.cloudRegion }},cloud.provider={{ .Values.otel.cloudProvider }}"
             - name: OTEL_TRACES_SAMPLER
               value: "always_on"
             - name: OTEL_INSTRUMENTATION_HIKARICP_ENABLED
