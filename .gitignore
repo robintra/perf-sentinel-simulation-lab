@@ -14,6 +14,8 @@ tmp/
 *.log
 kubeconfig*
 .kube-config-perf-sentinel-lab
+# CNI marker written by scripts/install-cni.sh (cilium or calico)
+cluster/.cni-active
 
 # Secrets generated at bootstrap
 .postgres-password

@@ -325,6 +325,75 @@ either upgrade to 0.5.7 or accept that the sanitizer is masking the
 discriminator and read the daemon's `suggestion` field for an
 architectural hint.
 
+## NetworkPolicy denials (Cilium path only)
+
+These symptoms apply to clusters bootstrapped via `make up-cni`
+(Cilium + NetworkPolicy). The default `make up` (Flannel) path is
+unaffected because Flannel ignores NetworkPolicy.
+
+### Symptom: connection hangs
+
+A pod attempts to reach another service and the connection just
+hangs (or times out after 30+ seconds). That is the NetworkPolicy
+fingerprint: the policy drops the SYN packet without sending RST,
+so the client retries until the kernel gives up.
+
+```bash
+kubectl exec -n shop deploy/order-service -- timeout 5 nc -z postgres.db 5432
+# exit 1 if dropped, exit 0 if reachable
+```
+
+If `nc` exits 1 on a pod that should reach Postgres, inspect the
+live drop in Hubble:
+
+```bash
+cilium hubble observe --verdict DROPPED \
+  --pod observability/perf-sentinel-daemon \
+  --last 50
+```
+
+The output names the policy that did the drop and the labels on the
+source and destination, so you can reconcile against
+`manifests/network-policies.yaml`.
+
+### Symptom: DNS resolution fails
+
+Pods cannot resolve cluster-internal or external hostnames. Almost
+always the `allow-dns-egress` policy is missing for that namespace.
+NetworkPolicy is namespaced, so each namespace that runs workloads
+needs its own copy.
+
+```bash
+kubectl get networkpolicy -A | grep allow-dns
+```
+
+### Symptom: GitLab webservice unreachable from the host
+
+The kubectl port-forward routes via the API server, which Cilium
+tags as host-network. The lab's `gitlab-webservice-ingress` policy
+allows port 8181 from any source for that reason. Tightening this
+policy to internal pods only breaks the host port-forward.
+
+### Symptom: Prometheus targets show DOWN
+
+The `allow-prometheus-scrape` policy applies per namespace. Adding
+a new namespace with monitored workloads requires extending
+`manifests/network-policies.yaml` accordingly.
+
+### Iterating without recreating the cluster
+
+```bash
+make remove-network-policies   # drop all policies
+# edit manifests/network-policies.yaml
+make apply-network-policies
+make verify-network-policies
+```
+
+`verify-network-policies.sh` asserts both the deny path (unlabeled
+probe blocked) and the allow paths (lab pods reach Postgres, daemon
+reaches Electricity Maps, runner reaches GitHub, Prometheus scrapes
+the daemon).
+
 ## Reset to a clean state
 
 ```bash

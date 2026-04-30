@@ -284,11 +284,31 @@ The OTel Collector exporter that targets the daemon disables gzip
 compression: the daemon's `/v1/traces` handler does not decompress
 request bodies and rejects gzipped payloads with HTTP 400.
 
+## Network segmentation
+
+The lab supports two CNI paths:
+
+- **`make up` (default Flannel path)**: keeps the original flat
+  network from k3s's bundled Flannel. NetworkPolicy is silently
+  ignored. Useful for debugging non-network issues without the
+  policy noise.
+- **`make up-cni` (Cilium with NetworkPolicy)**: drops Flannel,
+  installs Cilium 1.17.6, and applies zero-trust policies that
+  match a typical Onepoint customer's production network shape.
+  Calico is documented as a manual fallback. See
+  `docs/NETWORK-POLICIES.md` for the policy matrix and debugging
+  procedure.
+
+The `cluster/k3d-config.yaml` carries `--flannel-backend=none` and
+`--disable-network-policy`, so a fresh cluster waits for a CNI
+install before pods become Ready. `make up` still works because the
+k3s flags only take effect on the first cluster create; existing
+clusters from before this change keep their old Flannel.
+
 ## Out of scope (still)
 
-- No application service. (Done.)
-- No NetworkPolicy across namespaces. The k3s flannel CNI does enforce
-  policies, but a permissive enough rule for `make smoke` and
-  `make psql` to keep working ends up trivially satisfied. A real
-  isolation story would require a richer CNI (Calico) and is left as
-  follow-up.
+- No service mesh (Istio, Linkerd). NetworkPolicy + Cilium covers
+  the segmentation story; HTTP-aware policy is left to a later
+  loop.
+- No IPv6 dual-stack.
+- No multi-cluster (Cilium ClusterMesh) deployment.

@@ -41,3 +41,16 @@ metadata:
     pod-security.kubernetes.io/audit: baseline
     pod-security.kubernetes.io/warn: baseline
     app.kubernetes.io/part-of: perf-sentinel-lab
+---
+# Pre-created so that NetworkPolicy bound to gitlab-ce can be applied
+# at bootstrap time, before `make up-gitlab` runs. The Helm install
+# of GitLab CE later treats the namespace as already existing.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gitlab-ce
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+    app.kubernetes.io/part-of: perf-sentinel-lab

@@ -9,7 +9,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel
+.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel up-cni reset-cni install-cni apply-network-policies remove-network-policies hubble-ui verify-network-policies
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -56,9 +56,16 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/down-gitlab.sh
 	@bash -n scripts/seed-gitlab-project.sh
 	@bash -n scripts/verify-gitlab-perf-sentinel.sh
+	@bash -n scripts/install-cni.sh
+	@bash -n scripts/up-cni.sh
+	@bash -n scripts/hubble-ui.sh
+	@bash -n scripts/verify-network-policies.sh
 	@echo "==> yaml parse on gitlab-ce values"
 	@python3 -c "import yaml,sys; list(yaml.safe_load_all(open(sys.argv[1])))" \
 	  helm/values/gitlab-ce.yaml
+	@echo "==> yaml parse on network-policies"
+	@python3 -c "import yaml,sys; list(yaml.safe_load_all(open(sys.argv[1])))" \
+	  manifests/network-policies.yaml
 	@echo "validation ok"
 
 smoke: ## Run end-to-end smoke test against the running lab (CI-friendly)
@@ -151,3 +158,23 @@ seed-gitlab-project: ## Bootstrap perf-sentinel-template-test project
 
 verify-gitlab-perf-sentinel: ## Validate the GitLab CI template end-to-end
 	./scripts/verify-gitlab-perf-sentinel.sh
+
+up-cni: ## Bootstrap with Cilium (or Calico) instead of Flannel
+	./scripts/up-cni.sh
+
+reset-cni: down up-cni ## Teardown then bootstrap with CNI
+
+install-cni: ## Install Cilium (default) or Calico on a fresh cluster
+	./scripts/install-cni.sh
+
+apply-network-policies: ## Apply zero-trust NetworkPolicy
+	kubectl apply -f manifests/network-policies.yaml
+
+remove-network-policies: ## Remove NetworkPolicy (debug iteration)
+	kubectl delete -f manifests/network-policies.yaml --ignore-not-found
+
+hubble-ui: ## Enable Hubble UI on the active Cilium release
+	./scripts/hubble-ui.sh
+
+verify-network-policies: ## Probe the policy contract end-to-end
+	./scripts/verify-network-policies.sh

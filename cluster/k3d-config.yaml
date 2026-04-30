@@ -4,6 +4,10 @@
 # Topology: 1 control plane (server) + 2 workers (agents).
 # Traefik and ServiceLB are disabled because we install our own ingress
 # behavior via Helm-managed components and rely on k3d port mappings.
+# Flannel and the k3s NetworkPolicy controller are disabled so a real
+# CNI (Cilium by default, Calico fallback) can take over and enforce
+# NetworkPolicy. Without a CNI installed after `k3d cluster create`,
+# pods stay Pending. See scripts/install-cni.sh and docs/NETWORK-POLICIES.md.
 apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
@@ -37,6 +41,12 @@ options:
         nodeFilters:
           - server:*
       - arg: "--disable=servicelb"
+        nodeFilters:
+          - server:*
+      - arg: "--flannel-backend=none"
+        nodeFilters:
+          - server:*
+      - arg: "--disable-network-policy"
         nodeFilters:
           - server:*
   kubeconfig:

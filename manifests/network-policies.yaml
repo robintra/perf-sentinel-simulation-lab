@@ -1,0 +1,756 @@
+# Zero-trust NetworkPolicy for the perf-sentinel simulation lab.
+#
+# Strategy: deny-all by default in every namespace, then explicitly
+# allow the connections we know are legitimate. CNI must be Cilium or
+# Calico (Flannel ignores these resources silently). The CiliumNetwork
+# Policy entries in the lower half use FQDN-based egress and require
+# Cilium's DNS proxy. If you fall back to Calico, replace those
+# entries with CIDR-based egress (see docs/NETWORK-POLICIES.md).
+---
+# 4.A.1 default-deny in shop
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: shop
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 4.A.2 default-deny in db
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: db
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 4.A.3 default-deny in observability
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 4.A.4 default-deny in gitlab-ce
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: gitlab-ce
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 4.B DNS egress to kube-system kube-dns from every namespace.
+# Without this, no pod can resolve cluster-internal or external
+# hostnames. Repeated per namespace because NetworkPolicy is namespaced.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: shop
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: db
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: gitlab-ce
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# 4.B.bis kube-apiserver egress. Many in-cluster components
+# (kube-state-metrics, Grafana, OTel collector with the k8sattributes
+# processor, Prometheus, GitLab kas) call the API server for service
+# discovery or k8s metadata enrichment. The apiserver runs in the
+# host network on 6443, not as a regular pod, so we authorize the
+# Cilium entity. Calico fallback would use ipBlock with the node IPs.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-kube-apiserver-egress
+  namespace: observability
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-kube-apiserver-egress
+  namespace: gitlab-ce
+spec:
+  endpointSelector: {}
+  egress:
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "6443"
+              protocol: TCP
+        - ports:
+            - port: "443"
+              protocol: TCP
+---
+# 4.C shop services: egress to Postgres + OTel collector. Match by the
+# `app.kubernetes.io/part-of: perf-sentinel-lab` label that the 3 Java
+# service Helm charts inject on every pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shop-services-egress
+  namespace: shop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: perf-sentinel-lab
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: db
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - protocol: TCP
+          port: 4318
+        - protocol: TCP
+          port: 4317
+---
+# 4.C.intra shop intra-namespace traffic. The k6 load jobs spawned
+# by validate-findings.sh do not carry the `perf-sentinel-lab`
+# label and would otherwise be denied. Allow any pod in shop to
+# reach the 3 lab service ports, plus service-to-service HTTP
+# calls (order calls notification, etc.) for the n+1-http and
+# chatty scenarios.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shop-intra-namespace
+  namespace: shop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: perf-sentinel-lab
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+---
+# 4.C.bis-egress allow shop pods (including k6 jobs without lab
+# label) to reach the 3 services intra-namespace. This is broader
+# than the `app.kubernetes.io/part-of` selector because k6 pods
+# are ephemeral and not labeled.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shop-intra-egress
+  namespace: shop
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+---
+# 4.C.bis ingress on Postgres limited to the lab's shop pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-shop
+  namespace: db
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: perf-sentinel-lab
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# 4.D OTel collector egress to Tempo and the perf-sentinel daemon.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: tempo
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 14318
+        - protocol: TCP
+          port: 14317
+---
+# 4.D.bis OTel collector ingress from shop pods (pairs with 4.C).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-ingress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+      ports:
+        - protocol: TCP
+          port: 4318
+        - protocol: TCP
+          port: 4317
+---
+# 4.D.ter ingress on Tempo limited to OTel + Prometheus.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tempo-allow-internal
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: tempo
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+        - protocol: TCP
+          port: 3200
+---
+# 4.D.quater ingress on perf-sentinel daemon limited to OTel.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-allow-otel
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - protocol: TCP
+          port: 14317
+        - protocol: TCP
+          port: 14318
+---
+# 4.E perf-sentinel daemon egress to Electricity Maps.
+# Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
+# replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: perf-sentinel-emaps-egress
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  egress:
+    - toFQDNs:
+        - matchName: "api.electricitymaps.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    # DNS resolution path: Cilium intercepts on UDP/53, but the
+    # destination is still kube-dns in kube-system.
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 4.F GitLab runner egress to GitHub + GitLab registries.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gitlab-runner-egress
+  namespace: gitlab-ce
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: gitlab-runner
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.github.com"
+        - matchName: "github.com"
+        - matchName: "registry.gitlab.com"
+        - matchName: "objects.githubusercontent.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 4.G.egress Prometheus needs egress to every namespace it scrapes.
+# The default-deny-all in observability blocks Prometheus from
+# initiating connections, so we explicitly authorize it to reach the
+# 4 lab namespaces plus kube-system (kube-state-metrics + kubelet
+# scrape). Restricted to common metric ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 14318
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+        - protocol: TCP
+          port: 9090
+        - protocol: TCP
+          port: 9100
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 8888
+        - protocol: TCP
+          port: 9252
+        - protocol: TCP
+          port: 9187
+---
+# 4.G Prometheus scrapes targets across namespaces. Authorize the
+# Prometheus pod (label app.kubernetes.io/name=prometheus, instance=
+# kube-prometheus-stack-prometheus) to ingress-scrape every pod with
+# a ServiceMonitor in shop, db, gitlab-ce, observability. Repeated
+# per namespace because the CNI namespaceSelector + podSelector
+# combination is the source filter, not the target.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: observability
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: shop
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: db
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: gitlab-ce
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+---
+# 4.H GitLab CE internal mesh. The chart uses two label families:
+# bitnami sub-charts (postgresql, redis) expose
+# `app.kubernetes.io/instance=gitlab` while gitlab-org components
+# (webservice, sidekiq, gitaly, kas, minio, runner) expose
+# `app=<component>` plus `release=gitlab`. Allow either family to
+# reach the other so e.g. webservice can hit postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gitlab-internal
+  namespace: gitlab-ce
+spec:
+  podSelector:
+    matchLabels:
+      release: gitlab
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              release: gitlab
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: gitlab
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              release: gitlab
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: gitlab
+---
+# 4.H.bis postgres + redis sub-charts use app.kubernetes.io/instance
+# instead of release. Cover them explicitly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gitlab-bitnami-internal
+  namespace: gitlab-ce
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: gitlab
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              release: gitlab
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: gitlab
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              release: gitlab
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: gitlab
+---
+# 4.H.runner runner build pods need egress to webservice (git fetch),
+# gitaly (sometimes direct), and DNS. The build pods are spawned by
+# the runner controller with dynamic labels (no `release=gitlab`
+# nor `instance=gitlab`), so the chart-mesh policies do not match
+# them. This rule covers any pod in gitlab-ce that lacks those
+# labels (i.e., build pods only) and authorizes egress to the
+# chart-mesh and to GitHub release downloads.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gitlab-build-pods-egress
+  namespace: gitlab-ce
+spec:
+  podSelector:
+    matchExpressions:
+      - key: release
+        operator: NotIn
+        values: [gitlab]
+      - key: app.kubernetes.io/instance
+        operator: NotIn
+        values: [gitlab]
+  policyTypes: [Egress]
+  egress:
+    # Reach the chart's webservice, gitaly, redis, postgres pods.
+    - to:
+        - podSelector:
+            matchLabels:
+              release: gitlab
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: gitlab
+    # DNS so the runner build pods can resolve hostnames in their
+    # before_script (apt-get update, sha256sum download, etc.).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# 4.H.runner.fqdn build pods download perf-sentinel binaries from
+# github.com via curl. Authorize the FQDN egress on top of the chart
+# mesh so the script section of the perf-sentinel job succeeds.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gitlab-build-pods-fqdn-egress
+  namespace: gitlab-ce
+spec:
+  endpointSelector:
+    matchExpressions:
+      - key: release
+        operator: NotIn
+        values: [gitlab]
+      - key: app.kubernetes.io/instance
+        operator: NotIn
+        values: [gitlab]
+  egress:
+    - toFQDNs:
+        - matchPattern: "*.github.com"
+        - matchName: "github.com"
+        - matchName: "objects.githubusercontent.com"
+        - matchPattern: "*.githubusercontent.com"
+        - matchPattern: "*.debian.org"
+        - matchName: "deb.debian.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "80"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 4.I GitLab webservice ingress from the host (port-forward) and from
+# the in-cluster runner registration path. The kubectl port-forward
+# source IP is the API server's local proxy, which appears as the
+# control-plane node IP. We allow ingress on workhorse port 8181
+# from every namespace's pods (the runner pod can be in gitlab-ce
+# or another ns, depending on chart layout).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gitlab-webservice-ingress
+  namespace: gitlab-ce
+spec:
+  podSelector:
+    matchLabels:
+      app: webservice
+  policyTypes: [Ingress]
+  ingress:
+    # Internal: same-namespace pods (runner, sidekiq, gitaly callbacks).
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8181
+        - protocol: TCP
+          port: 8080
+    # External: kubectl port-forward arrives via apiserver, which Cilium
+    # tags as host-network. Accept on the workhorse port. Calico users
+    # may need to extend with a 0.0.0.0/0 ipBlock entry if they do not
+    # allow host-network ingress by default.
+    - ports:
+        - protocol: TCP
+          port: 8181
+        - protocol: TCP
+          port: 8080
