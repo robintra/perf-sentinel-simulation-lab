@@ -389,6 +389,30 @@ make apply-network-policies
 make verify-network-policies
 ```
 
+### Symptom: pods crashloop on database/DNS errors after a docker restart
+
+When Docker Desktop sleeps or the host hits memory pressure, the k3d
+control plane container can restart. On wake, Cilium agents re-init
+but their endpoint cache can drift, leaving pod-to-pod policy
+enforcement out of sync. Typical signature: shop pods CrashLoopBackOff
+with Postgres connection refused, an `nslookup postgres.db.svc.cluster.local`
+from inside the shop namespace times out, and `cilium hubble observe
+--verdict DROPPED` shows shop → kube-system DNS getting denied even
+though the `allow-dns-egress` policy is in place.
+
+Recovery without recreating the cluster:
+
+```bash
+kubectl -n kube-system rollout restart daemonset/cilium
+kubectl -n kube-system rollout restart deployment/cilium-operator
+kubectl -n kube-system rollout restart deployment/coredns
+kubectl -n shop rollout restart deployment/order-service \
+  deployment/payment-service deployment/notification-service
+```
+
+About 2-3 minutes total. Falls back to `make reset-cni` if the
+endpoint drift is too deep (e.g. agents themselves crashloop).
+
 `verify-network-policies.sh` asserts both the deny path (unlabeled
 probe blocked) and the allow paths (lab pods reach Postgres, daemon
 reaches Electricity Maps, runner reaches GitHub, Prometheus scrapes

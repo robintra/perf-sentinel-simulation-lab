@@ -144,6 +144,13 @@ spec:
 # discovery or k8s metadata enrichment. The apiserver runs in the
 # host network on 6443, not as a regular pod, so we authorize the
 # Cilium entity. Calico fallback would use ipBlock with the node IPs.
+#
+# Note for prod-shape deployments: `endpointSelector: {}` is broad
+# (any pod in the namespace can call the API). In a real
+# production cluster, narrow this to the specific service accounts
+# or labels that legitimately need apiserver access. Acceptable as
+# a lab default because the namespace already filters to known
+# operators (kube-prometheus-stack, OTel, GitLab).
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -463,6 +470,13 @@ spec:
 # initiating connections, so we explicitly authorize it to reach the
 # 4 lab namespaces plus kube-system (kube-state-metrics + kubelet
 # scrape). Restricted to common metric ports.
+#
+# Adding a new exporter on a non-listed port? Append the port here
+# AND on its target namespace's allow-prometheus-scrape rule, then
+# `make apply-network-policies`. Without this, the scrape silently
+# stays in `up=0` with a connection-refused error in the Prometheus
+# target page, with no NetworkPolicy denial visible in the kubelet
+# events.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

@@ -32,13 +32,21 @@ choice is recorded in `cluster/.cni-active` (gitignored).
 
 ## Install
 
+The order below matters: `make up-gitlab` and
+`make seed-electricity-maps` must run AFTER `make up-cni` so the
+NetworkPolicy is in place when these workloads first start. If you
+flip the order, GitLab CE pods will boot under deny-by-default and
+some of them (kas, runner) will hit retries and crashloops while the
+chart-mesh policies catch up.
+
 ```bash
-make down                 # tear down any prior cluster
-make up-cni               # k3d + Cilium + observability + apply policies
-make seed-services
-make seed-electricity-maps   # optional
-make up-gitlab               # optional
-make seed-gitlab-project     # optional
+make down                    # tear down any prior cluster
+make up-cni                  # k3d + Cilium + bootstrap + apply-network-policies
+make seed-services           # 3 Java services in shop, segmented
+make seed-electricity-maps   # optional, EM token Secret
+make up-gitlab               # optional, GitLab CE in gitlab-ce ns
+make seed-gitlab-project     # optional, perf-sentinel-template-test
+make verify-network-policies # confirm deny-by-default + allowed paths
 ```
 
 `make up-cni` chains `k3d cluster create` (Flannel disabled),
@@ -46,6 +54,26 @@ make seed-gitlab-project     # optional
 `kubectl apply -f manifests/network-policies.yaml`. The chart's
 default `make up` (Flannel) is preserved for debugging non-network
 issues.
+
+### Recovery after a docker container restart
+
+When Docker Desktop sleeps or the host runs out of memory, the k3d
+control plane container may restart. On wake, Cilium agents re-init
+their eBPF programs but the endpoint cache can drift, leaving pod-
+to-pod NetworkPolicy enforcement desynced (typical symptom: shop
+pods cannot resolve `postgres.db.svc.cluster.local`, `nslookup`
+times out from inside the namespace).
+
+```bash
+kubectl -n kube-system rollout restart daemonset/cilium
+kubectl -n kube-system rollout restart deployment/cilium-operator
+kubectl -n kube-system rollout restart deployment/coredns
+kubectl -n shop rollout restart deployment/order-service \
+  deployment/payment-service deployment/notification-service
+```
+
+This is faster than `make reset-cni` (full teardown) when the
+underlying cluster state is otherwise healthy.
 
 ## What the policies do, namespace by namespace
 

@@ -51,6 +51,12 @@ case "${CNI}" in
     ;;
   calico)
     step "Installing Calico via tigera-operator (fallback path)"
+    # NOTE: this path is documented but not exercised end-to-end in
+    # this lab. Tigera operator alone does not bring Calico up; you
+    # also need to apply an `Installation` custom resource (cf.
+    # https://docs.tigera.io/calico/latest/getting-started/kubernetes/helm).
+    # The current implementation installs the operator only; flesh
+    # out the Installation CR before running this branch in anger.
     helm repo add projectcalico https://docs.tigera.io/calico/charts >/dev/null 2>&1 || true
     helm repo update projectcalico >/dev/null
     helm upgrade --install calico projectcalico/tigera-operator \

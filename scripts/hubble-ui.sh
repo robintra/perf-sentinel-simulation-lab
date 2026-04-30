@@ -22,6 +22,10 @@ die()  { color_red   "    error: $*"; exit 1; }
   || die "Hubble UI is Cilium-only. Active CNI: $(cat "${CNI_MARKER}")"
 
 step "Enabling Hubble UI in the Cilium release"
+# Defensive helm repo add: a fresh shell session may not have the
+# cilium repo cached, even though the release was installed earlier.
+helm repo add cilium https://helm.cilium.io >/dev/null 2>&1 || true
+helm repo update cilium >/dev/null
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
