@@ -2,7 +2,7 @@
 #
 # Derived from docs/ci-templates/gitlab-ci.yml in the perf-sentinel
 # repo. Differences vs the upstream template:
-#   - PERF_SENTINEL_VERSION pinned to 0.5.13 (the lab's daemon version)
+#   - PERF_SENTINEL_VERSION pinned to 0.5.14 (the lab's daemon version)
 #   - integration-tests dummy job that publishes test-traces.json so
 #     the perf-sentinel job picks it up via dependencies
 #   - dependencies: [integration-tests] uncommented on perf-sentinel
@@ -18,7 +18,7 @@ stages:
   - perf-sentinel
 
 variables:
-  PERF_SENTINEL_VERSION: "0.5.13"
+  PERF_SENTINEL_VERSION: "0.5.14"
   PERF_SENTINEL_TRACES: "test-traces.json"
   PERF_SENTINEL_CONFIG: ".perf-sentinel.toml"
 
@@ -134,22 +134,23 @@ perf-sentinel-pages-simple:
       install -m 0755 perf-sentinel-linux-amd64 "${CI_PROJECT_DIR}/bin/perf-sentinel"
       "${CI_PROJECT_DIR}/bin/perf-sentinel" --version
   script:
-    # The upstream template feeds the trace file straight to
-    # `perf-sentinel report --input`. As of 0.5.13 the binary only
-    # tries Report JSON on that path and fails on raw trace files,
-    # despite its --help claiming format auto-detection. Workaround:
-    # pipe `analyze --format json` through `report --input -`.
+    # Renders the trace file straight to HTML. Since 0.5.14 the binary
+    # honors its --help contract and auto-detects Jaeger inputs on the
+    # report path, so no analyze-then-report dance is needed. Also
+    # archives the raw analyze JSON next to the HTML for downstream
+    # tooling and audit (Scope 2 reporters, baseline diffing, etc.).
     - |
       set -euo pipefail
       mkdir -p public/perf-sentinel-reports
+      "${CI_PROJECT_DIR}/bin/perf-sentinel" report \
+        --input "${PERF_SENTINEL_TRACES}" \
+        --config "${PERF_SENTINEL_CONFIG}" \
+        --output public/index.html
       "${CI_PROJECT_DIR}/bin/perf-sentinel" analyze \
         --input "${PERF_SENTINEL_TRACES}" \
         --config "${PERF_SENTINEL_CONFIG}" \
         --format json \
         > public/perf-sentinel-reports/baseline.json
-      "${CI_PROJECT_DIR}/bin/perf-sentinel" report \
-        --input public/perf-sentinel-reports/baseline.json \
-        --output public/index.html
   artifacts:
     paths: [public]
   pages: true
