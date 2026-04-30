@@ -107,13 +107,20 @@ export GIT_ASKPASS="${ASKPASS_SCRIPT}"
 # After a fresh project create, GitLab finalizes the repo via Sidekiq
 # (initial commit, default branch). Until that finishes, git Basic
 # auth can return 401/403 even though the API and the token are fine.
-# Retry the clone for up to 60 s.
+# Retry the clone for up to 60 s, and on the final attempt surface
+# the real stderr so a definitive failure (revoked token, deleted
+# project, DNS down) is not buried under the Sidekiq race assumption.
+CLONE_ERR="$(mktemp)"
 for attempt in $(seq 1 30); do
-  if git clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}" 2>/dev/null; then
+  if git clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}" 2>"${CLONE_ERR}"; then
+    rm -f "${CLONE_ERR}"
     break
   fi
   if [ "${attempt}" -eq 30 ]; then
-    die "git clone never succeeded after 60 s, check Sidekiq logs"
+    color_red "    git clone stderr:"
+    sed 's/^/      /' "${CLONE_ERR}" >&2
+    rm -f "${CLONE_ERR}"
+    die "git clone never succeeded after 60 s"
   fi
   rm -rf "${WORK_DIR}"
   WORK_DIR="$(mktemp -d)"

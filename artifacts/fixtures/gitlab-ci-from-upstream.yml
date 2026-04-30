@@ -136,9 +136,10 @@ perf-sentinel-pages-simple:
   script:
     # Renders the trace file straight to HTML. Since 0.5.14 the binary
     # honors its --help contract and auto-detects Jaeger inputs on the
-    # report path, so no analyze-then-report dance is needed. Also
-    # archives the raw analyze JSON next to the HTML for downstream
-    # tooling and audit (Scope 2 reporters, baseline diffing, etc.).
+    # report path, no analyze-then-report dance is needed. The raw
+    # analyze JSON is also archived next to the HTML so downstream
+    # tooling (baseline diffing, dashboards, custom reports) can
+    # consume it without re-parsing the HTML.
     - |
       set -euo pipefail
       mkdir -p public/perf-sentinel-reports

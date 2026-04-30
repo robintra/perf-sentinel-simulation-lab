@@ -41,7 +41,12 @@ The test project consumes a static fixture set under
   raw OTLP-JSON traces, converts them to Jaeger format, and validates
   the result with `perf-sentinel analyze --input`. Re-capture after
   every daemon-image bump or after major detector changes upstream so
-  the verify keeps exercising the current code path.
+  the verify keeps exercising the current code path. The fixture grows
+  with each capture as the lab adds resource attributes (the 0.5.14
+  capture is around 7 MiB, vs around 1 MiB before the cloud.region tag
+  rollout). If the fixture exceeds 20 MiB or git pack growth becomes a
+  concern, consider lowering `LIMIT_PER_SERVICE` in
+  `scripts/capture-trace-fixture.sh` or moving the fixture to Git LFS.
 - `perf-sentinel-test.toml` is calibrated with strict thresholds so the
   fixture trips `analyze --ci` (exit 1) and the MR pipeline observes a
   failed quality gate.
