@@ -1,0 +1,35 @@
+# Helm values overlay applied on top of helm/values/otel-collector.yaml.
+# Adds Jaeger + Zipkin exporters in parallel to the existing Tempo and
+# perf_sentinel exporters in the traces pipeline.
+#
+# Apply with:
+#   helm upgrade otel-collector open-telemetry/opentelemetry-collector \
+#     --version 0.153.0 \
+#     -n observability \
+#     -f helm/values/otel-collector.yaml \
+#     -f scenarios/multiformat-input/collector-overlay.yaml
+
+config:
+  exporters:
+    otlphttp/jaeger:
+      endpoint: http://jaeger.observability.svc.cluster.local:4319
+      tls:
+        insecure: true
+    zipkin:
+      endpoint: http://zipkin.observability.svc.cluster.local:9411/api/v2/spans
+      tls:
+        insecure: true
+  service:
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - k8sattributes
+          - batch
+        exporters:
+          - otlphttp/tempo
+          - otlphttp/perf_sentinel
+          - otlphttp/jaeger
+          - zipkin

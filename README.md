@@ -62,7 +62,7 @@ High-level view:
        └──> Grafana datasources: Prometheus + Tempo
 ```
 
-Full details and rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Full details and rationale: [docs/ARCHITECTURE.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/ARCHITECTURE.md).
 
 ## What you get
 
@@ -173,7 +173,7 @@ temporal_granularity = "5_minutes"
 ```
 
 The full ConfigMap with inline comments lives in
-[`manifests/perf-sentinel-daemon.yaml`](manifests/perf-sentinel-daemon.yaml).
+[`manifests/perf-sentinel-daemon.yaml`](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/manifests/perf-sentinel-daemon.yaml).
 Ports 14317/14318 (instead of the defaults 4317/4318) avoid confusion
 with the standard OTLP ports used by Tempo and the OTel Collector.
 
@@ -207,7 +207,7 @@ lab works fine on the bundled `annual` source when no token is
 provisioned.
 
 Setup, sandbox vs trial differences, configuration knobs, and visual
-proof: [docs/GREENOPS.md](docs/GREENOPS.md).
+proof: [docs/GREENOPS.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/GREENOPS.md).
 
 ## Roadmap
 
@@ -223,13 +223,13 @@ proof: [docs/GREENOPS.md](docs/GREENOPS.md).
 ## Troubleshooting
 
 Common errors (port already bound, GHCR pull failure, OOM, blank
-dashboard, etc.) and fixes: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+dashboard, etc.) and fixes: [docs/TROUBLESHOOTING.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/TROUBLESHOOTING.md).
 
 ## Resources
 
 RAM/CPU estimate per component and per sprint:
-[docs/RESOURCES.md](docs/RESOURCES.md).
+[docs/RESOURCES.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/RESOURCES.md).
 
 ## License
 
-AGPL v3, aligned with perf-sentinel. See [LICENSE](LICENSE).
+AGPL v3, aligned with perf-sentinel. See [LICENSE](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/LICENSE).

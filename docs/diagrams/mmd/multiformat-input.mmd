@@ -1,0 +1,34 @@
+flowchart LR
+    APP[Instrumented services]
+    subgraph col["OTel Collector"]
+        REC[OTLP receiver]
+        EXP_T[exporter: otlp/tempo]
+        EXP_J[exporter: otlphttp/jaeger]
+        EXP_Z[exporter: zipkin]
+        REC --> EXP_T
+        REC --> EXP_J
+        REC --> EXP_Z
+    end
+    TEMPO[(Tempo)]
+    JAEGER[(Jaeger all-in-one<br/>MEMORY_MAX_TRACES=50000)]
+    ZIPKIN[(Zipkin<br/>MEM_MAX_SPANS=500000)]
+    APP -- OTLP/protobuf --> REC
+    EXP_T --> TEMPO
+    EXP_J --> JAEGER
+    EXP_Z --> ZIPKIN
+
+    subgraph ci["CI batch run"]
+        CLI_J[[perf-sentinel analyze<br/>--input jaeger.json]]
+        CLI_Z[[perf-sentinel analyze<br/>--input zipkin.json]]
+        FIND_J[Jaeger findings]
+        FIND_Z[Zipkin findings]
+        CMP{Findings coherent?}
+        CLI_J --> FIND_J
+        CLI_Z --> FIND_Z
+        FIND_J --> CMP
+        FIND_Z --> CMP
+    end
+    JAEGER -. "Jaeger v1 JSON" .-> CLI_J
+    ZIPKIN -. "Zipkin v2 JSON" .-> CLI_Z
+    classDef sentinel stroke:#1a73e8,stroke-width:2px
+    class CLI_J,CLI_Z sentinel

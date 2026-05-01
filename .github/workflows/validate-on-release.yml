@@ -145,11 +145,11 @@ jobs:
           done
           ./scripts/verify-network-policies.sh
 
-      # B2 scenarios (8 total, all PASS locally) are not wired into this
-      # workflow yet. They require additional cluster footprint (Jaeger,
-      # Zipkin, dedicated daemons, sidecars) that exceeds GHA runner
-      # capacity. See docs/SCENARIOS-B2.md for the adoption guide and
-      # `make verify-b2-all` for the local meta-target.
+      # Deployment-mode scenarios (8 total, all PASS locally) are not wired
+      # into this workflow yet. They require additional cluster footprint
+      # (Jaeger, Zipkin, dedicated daemons, sidecars) that exceeds GHA
+      # runner capacity. See docs/SCENARIOS.md for the adoption guide and
+      # `make verify-all-scenarios` for the local meta-target.
 
       - name: Show daemon logs (debug)
         if: always()
