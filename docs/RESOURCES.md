@@ -42,6 +42,14 @@ the body containing the exact reproduction commands.
 
 Logs and `/tmp` reports are uploaded as artifacts for 14 days.
 
+Beyond the nominal validation, the lab ships a B2 suite of scenarios
+that cover other perf-sentinel operational modes (hybrid daemon to
+batch HTML, batch over Tempo, calibrate, daemon OTLP direct, multi-
+format input, sidecar pattern). See [SCENARIOS-B2.md](SCENARIOS-B2.md)
+for the coverage matrix and the per-scenario `make verify-b2-*`
+targets. Three scenarios pass today, three are deferred to a follow-up
+session because of local Docker Desktop RAM constraints.
+
 The Electricity Maps token is read from the repo secret
 `ELECTRICITY_MAPS_TOKEN`. Set it once with:
 

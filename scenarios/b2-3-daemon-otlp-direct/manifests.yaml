@@ -1,0 +1,212 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: b2-3-direct-otlp
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab-b2
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: perf-sentinel-daemon-config
+  namespace: b2-3-direct-otlp
+data:
+  config.toml: |
+    [daemon]
+    listen_address = "0.0.0.0"
+    listen_port_http = 14318
+    listen_port_grpc = 14317
+    max_active_traces = 1000
+    trace_ttl_ms = 5000
+    api_enabled = true
+    environment = "staging"
+
+    [daemon.correlation]
+    enabled = false
+
+    [detection]
+    n_plus_one_min_occurrences = 5
+    sanitizer_aware_classification = "strict"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: perf-sentinel-daemon-direct
+  namespace: b2-3-direct-otlp
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: perf-sentinel-daemon-direct
+  ports:
+    - name: http
+      port: 14318
+      targetPort: 14318
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perf-sentinel-daemon-direct
+  namespace: b2-3-direct-otlp
+  labels:
+    app.kubernetes.io/name: perf-sentinel-daemon-direct
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon-direct
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: perf-sentinel-daemon-direct
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: perf-sentinel
+          image: ghcr.io/robintra/perf-sentinel:0.5.16
+          imagePullPolicy: IfNotPresent
+          args:
+            - watch
+            - --config
+            - /etc/perf-sentinel/config.toml
+          ports:
+            - name: http
+              containerPort: 14318
+            - name: grpc
+              containerPort: 14317
+          env:
+            - name: RUST_LOG
+              value: info
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/perf-sentinel
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 14318
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: perf-sentinel-daemon-config
+---
+# Minimal order-service clone that pushes OTLP HTTP traces straight to
+# the dedicated daemon, bypassing any OTel Collector.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-direct
+  namespace: b2-3-direct-otlp
+  labels:
+    app.kubernetes.io/name: order-service-direct
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: order-service-direct
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: order-service-direct
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: order-service
+          image: order-service:s2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: lab
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres.db.svc.cluster.local:5432/orders
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://perf-sentinel-daemon-direct.b2-3-direct-otlp.svc.cluster.local:14318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_SERVICE_NAME
+              value: order-service
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.name=order-service,deployment.environment=b2-3,cloud.provider=aws,cloud.region=eu-west-3
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_METRICS_EXPORTER
+              value: none
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+---
+# Mirror the postgres-credentials secret from the db namespace so the
+# cloned order-service can reach the shared lab database. The secret is
+# created by scripts/seed-services.sh in the shop namespace already, we
+# duplicate it here for namespace isolation.
+# (Filled by verify.sh before kubectl apply.)
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: b2-3-direct-otlp
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: order-service-direct
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
