@@ -91,7 +91,14 @@ print("    ok (retry): scoring_config:", sc.get("api_version"))' \
 fi
 
 step "4. GitLab runner must reach github.com:443"
-RUNNER_POD="$(kubectl -n gitlab-ce get pods -l app.kubernetes.io/name=gitlab-runner \
+# The chart's gitlab-org components expose `app=<component>` plus
+# `release=gitlab` (cf. manifests/network-policies.yaml comment 4.H),
+# not the recommended `app.kubernetes.io/name` label family. The
+# gitlab-runner sub-chart specifically lands on
+# `app=gitlab-gitlab-runner` (release name + chart name). Match on
+# both labels to be specific (avoids matching a build pod or any other
+# component named gitlab-gitlab-runner that would lack release=gitlab).
+RUNNER_POD="$(kubectl -n gitlab-ce get pods -l app=gitlab-gitlab-runner,release=gitlab \
   -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
 if [ -z "${RUNNER_POD}" ]; then
   warn "no gitlab-runner pod, skipping (run make up-gitlab to enable)"

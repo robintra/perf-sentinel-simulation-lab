@@ -433,7 +433,12 @@ spec:
             dns:
               - matchPattern: "*"
 ---
-# 4.F GitLab runner egress to GitHub + GitLab registries.
+# 4.F GitLab runner egress to GitHub + GitLab registries. The chart's
+# gitlab-runner sub-chart sets `app=<release>-<chart>` on its pod, which
+# resolves to `gitlab-gitlab-runner` here (release=gitlab, chart name
+# gitlab-runner). The recommended `app.kubernetes.io/name` label family
+# is not emitted, so we match the runner via its actual `app` label
+# plus `release=gitlab` for defense in depth.
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
@@ -442,7 +447,8 @@ metadata:
 spec:
   endpointSelector:
     matchLabels:
-      app.kubernetes.io/name: gitlab-runner
+      app: gitlab-gitlab-runner
+      release: gitlab
   egress:
     - toFQDNs:
         - matchPattern: "*.github.com"
@@ -585,10 +591,16 @@ spec:
 ---
 # 4.H GitLab CE internal mesh. The chart uses two label families:
 # bitnami sub-charts (postgresql, redis) expose
-# `app.kubernetes.io/instance=gitlab` while gitlab-org components
-# (webservice, sidekiq, gitaly, kas, minio, runner) expose
-# `app=<component>` plus `release=gitlab`. Allow either family to
-# reach the other so e.g. webservice can hit postgres.
+# `app.kubernetes.io/instance=gitlab` (no `release` label) while
+# gitlab-org components (webservice, sidekiq, gitaly, kas, minio,
+# toolbox, etc.) expose `app=<bare-component>` plus `release=gitlab`.
+# A few components break the bare-name rule and ship with a `gitlab-`
+# prefix (gitlab-shell, gitlab-pages, gitlab-exporter), and the runner
+# sub-chart goes one further with `app=gitlab-gitlab-runner` (release
+# name + chart name). The `release=gitlab` label is the only stable
+# common selector across the gitlab-org family, so we use it here to
+# allow the internal mesh, and rely on per-component `app=` selectors
+# elsewhere when we need to single out a specific pod.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
