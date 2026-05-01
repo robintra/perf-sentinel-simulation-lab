@@ -2,8 +2,14 @@
 # Apply with: k3d cluster create --config cluster/k3d-config.yaml
 #
 # Topology: 1 control plane (server) + 2 workers (agents).
-# Traefik and ServiceLB are disabled because we install our own ingress
-# behavior via Helm-managed components and rely on k3d port mappings.
+# Traefik and ServiceLB are disabled because the lab does not use an
+# Ingress: host access is provided by `scripts/port-forward.sh` running
+# `kubectl port-forward` against the relevant ClusterIP services. No k3d
+# loadbalancer port mappings are declared on purpose: they would bind
+# the host ports without actually routing traffic (no Ingress controller
+# behind them) and would conflict with `kubectl port-forward` on strict
+# Linux hosts (the CI runner saw "address already in use" before this
+# was cleaned up; macOS Docker Desktop is lenient enough to mask it).
 # Flannel and the k3s NetworkPolicy controller are disabled so a real
 # CNI (Cilium by default, Calico fallback) can take over and enforce
 # NetworkPolicy. Without a CNI installed after `k3d cluster create`,
@@ -22,19 +28,6 @@ kubeAPI:
   host: "0.0.0.0"
   hostIP: "127.0.0.1"
   hostPort: "6443"
-ports:
-  - port: 80:80
-    nodeFilters:
-      - loadbalancer
-  - port: 443:443
-    nodeFilters:
-      - loadbalancer
-  - port: 3000:3000
-    nodeFilters:
-      - loadbalancer
-  - port: 14318:14318
-    nodeFilters:
-      - loadbalancer
 options:
   k3d:
     wait: true
