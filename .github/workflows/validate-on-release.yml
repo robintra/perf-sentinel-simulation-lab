@@ -95,18 +95,31 @@ jobs:
 
       - name: make validate-findings (10/10 anti-patterns)
         # GHA kills background processes at step boundaries, so the
-        # port-forwards spawned by `make up-cni` are dead by now. The
+        # port-forwards spawned by `make up-cni` are dead here. The
         # port-forward.sh script is idempotent (pid file + kill -0 check)
-        # and re-spawns any missing tunnel.
+        # and re-spawns the tunnel. Then we poll for the daemon to be
+        # reachable rather than sleeping a fixed delay (kubectl
+        # port-forward needs ~5-10s to bind on a slow runner).
         run: |
           ./scripts/port-forward.sh start
-          sleep 3
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
+              echo "daemon reachable after ${i}s"
+              break
+            fi
+            sleep 1
+          done
           make validate-findings
 
       - name: make verify-electricity-maps (EM scoring)
         run: |
           ./scripts/port-forward.sh start
-          sleep 3
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
           make verify-electricity-maps
 
       - name: make verify-network-policies (assertion 4 SKIPPED, GitLab CE out of CI scope)
@@ -114,7 +127,14 @@ jobs:
           ./scripts/port-forward.sh start
           kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 \
             > /tmp/pf-prom.log 2>&1 &
-          sleep 5
+          for i in $(seq 1 60); do
+            daemon_ok=$(curl -fsS http://localhost:14318/api/status >/dev/null 2>&1 && echo y || echo n)
+            prom_ok=$(curl -fsS http://localhost:9090/-/ready >/dev/null 2>&1 && echo y || echo n)
+            if [ "${daemon_ok}" = "y" ] && [ "${prom_ok}" = "y" ]; then
+              break
+            fi
+            sleep 1
+          done
           ./scripts/verify-network-policies.sh
 
       - name: Show daemon logs (debug)
