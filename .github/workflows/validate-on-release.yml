@@ -94,13 +94,15 @@ jobs:
         run: make seed-electricity-maps
 
       - name: make validate-findings (10/10 anti-patterns)
-        # GHA kills background processes at step boundaries, so the
-        # port-forwards spawned by `make up-cni` are dead here. The
-        # port-forward.sh script is idempotent (pid file + kill -0 check)
-        # and re-spawns the tunnel. Then we poll for the daemon to be
-        # reachable rather than sleeping a fixed delay (kubectl
-        # port-forward needs ~5-10s to bind on a slow runner).
+        # Background kubectl port-forwards spawned by make up-cni survive
+        # in the runner container but the seed-electricity-maps daemon
+        # rollout leaves them in a zombie state holding the local port.
+        # Force-kill them, drop the stale pid files, then re-spawn fresh
+        # tunnels and poll the daemon HTTP /api/status until it answers.
         run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
           ./scripts/port-forward.sh start
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
@@ -113,6 +115,9 @@ jobs:
 
       - name: make verify-electricity-maps (EM scoring)
         run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
           ./scripts/port-forward.sh start
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
@@ -124,6 +129,9 @@ jobs:
 
       - name: make verify-network-policies (assertion 4 SKIPPED, GitLab CE out of CI scope)
         run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
           ./scripts/port-forward.sh start
           kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 \
             > /tmp/pf-prom.log 2>&1 &
