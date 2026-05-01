@@ -1,9 +1,9 @@
 # Helm values for prometheus-community/kube-prometheus-stack.
 #
-# Pinned chart version: 84.1.0 (operator app version v0.90.1).
+# Pinned chart version: 84.4.0 (operator app version v0.90.1).
 # Install: helm upgrade --install kube-prometheus-stack \
 #   prometheus-community/kube-prometheus-stack \
-#   -n observability --version 84.1.0 \
+#   -n observability --version 84.4.0 \
 #   -f helm/values/kube-prometheus-stack.yaml
 
 # Lab footprint trimming: no alerting, no Thanos, no admission webhooks.

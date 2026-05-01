@@ -34,10 +34,10 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	  helm/values/kube-prometheus-stack.yaml \
 	  helm/values/otel-collector.yaml
 	@echo "==> helm template kube-prometheus-stack"
-	@helm template lab-kps prometheus-community/kube-prometheus-stack --version 84.1.0 \
+	@helm template lab-kps prometheus-community/kube-prometheus-stack --version 84.4.0 \
 	  -f helm/values/kube-prometheus-stack.yaml >/dev/null
 	@echo "==> helm template otel-collector"
-	@helm template lab-otel open-telemetry/opentelemetry-collector --version 0.152.0 \
+	@helm template lab-otel open-telemetry/opentelemetry-collector --version 0.153.0 \
 	  -f helm/values/otel-collector.yaml >/dev/null
 	@echo "==> json parse on dashboards"
 	@python3 -m json.tool < manifests/grafana-dashboards/perf-sentinel-overview.json >/dev/null

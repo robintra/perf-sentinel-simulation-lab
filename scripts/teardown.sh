@@ -3,8 +3,14 @@
 # Usage: ./scripts/teardown.sh [--clean-images]
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 CLUSTER_NAME="perf-sentinel-lab"
-PERF_SENTINEL_VERSION="0.5.4"
+# Derived from the deployment manifest so teardown --clean-images always
+# targets the same tag the daemon is shipping.
+PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/perf-sentinel:/ { print $2; exit }' \
+  "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")
+PERF_SENTINEL_VERSION="${PERF_SENTINEL_IMAGE##*:}"
 CLEAN_IMAGES="false"
 
 for arg in "$@"; do
@@ -24,7 +30,6 @@ warn() { color_red  "    warn: $*"; }
 
 stop_port_forwards() {
   step "Stopping host port-forwards"
-  REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   "${REPO_ROOT}/scripts/port-forward.sh" stop 2>/dev/null || true
   ok "port-forwards stopped"
 }

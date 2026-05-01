@@ -7,13 +7,21 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 
-# Pinned versions. Update together with helm/values/*.yaml comments.
+# Pinned versions. Keep in sync with cluster/k3d-config.yaml (k3s image),
+# scripts/install-cni.sh (cilium), manifests/tempo.yaml, helm/values/*.yaml
+# comments, and docs/RESOURCES.md. The perf-sentinel image is derived from
+# the deployment manifest so the daemon and bootstrap pre-pull never drift.
 CLUSTER_NAME="perf-sentinel-lab"
-PERF_SENTINEL_VERSION="0.5.4"
-PERF_SENTINEL_IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
-KPS_CHART_VERSION="84.1.0"
-TEMPO_IMAGE_VERSION="2.9.0"
-OTEL_CHART_VERSION="0.152.0"
+PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/perf-sentinel:/ { print $2; exit }' \
+  "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")
+[ -n "${PERF_SENTINEL_IMAGE}" ] || {
+  printf "\033[31m    error: failed to extract perf-sentinel image from manifests/perf-sentinel-daemon.yaml\033[0m\n" >&2
+  exit 1
+}
+PERF_SENTINEL_VERSION="${PERF_SENTINEL_IMAGE##*:}"
+KPS_CHART_VERSION="84.4.0"
+TEMPO_IMAGE_VERSION="2.10.5"
+OTEL_CHART_VERSION="0.153.0"
 
 # shellcheck source=./wait-for-ready.sh
 . "${REPO_ROOT}/scripts/wait-for-ready.sh"

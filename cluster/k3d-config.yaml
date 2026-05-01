@@ -12,6 +12,10 @@ apiVersion: k3d.io/v1alpha5
 kind: Simple
 metadata:
   name: perf-sentinel-lab
+# Pin the k3s server image to a stable Kubernetes minor. Without an
+# explicit pin, k3d picks its bundled default (currently v1.33.6+k3s1
+# for k3d v5.8.3). The lab tracks the latest k3s stable.
+image: rancher/k3s:v1.35.4-k3s1
 servers: 1
 agents: 2
 kubeAPI:

@@ -56,19 +56,26 @@ S3 will add GitLab CE self-hosted via Helm. Estimate:
 
 Allocate at least 12 GiB to Docker Desktop when chaining S1 + S2 + S3.
 
-## Pinned versions (snapshot 2026-04-26)
+## Pinned versions (snapshot 2026-05-01)
 
 | Component | Version | Source |
 | --- | --- | --- |
-| k3d | latest 5.x | brew install k3d |
-| Kubernetes (k3s) | k3d default | bundled k3s image |
+| k3d | 5.x (5.8.3 verifie 2026-05-01) | brew install k3d |
+| Kubernetes (k3s) | v1.35.4-k3s1 | pinned in cluster/k3d-config.yaml |
+| Cilium | 1.19.3 | helm repo cilium |
 | PostgreSQL | 18.3-alpine | docker.io/library/postgres |
-| Tempo (binary) | 2.9.0 | image grafana/tempo:2.9.0, direct manifest |
-| kube-prometheus-stack | 84.1.0 | helm repo prometheus-community |
+| Tempo (binary) | 2.10.5 | image grafana/tempo:2.10.5, direct manifest |
+| kube-prometheus-stack | 84.4.0 | helm repo prometheus-community |
 | Grafana | 13.0.1 | explicit image override |
-| opentelemetry-collector (chart) | 0.152.0 | helm repo open-telemetry |
-| OTel Collector contrib (image) | 0.150.1 | bundled |
-| perf-sentinel | 0.5.6 | ghcr.io/robintra/perf-sentinel |
+| opentelemetry-collector (chart) | 0.153.0 | helm repo open-telemetry |
+| OTel Collector contrib (image) | 0.151.0 | bundled |
+| OTel Java agent | 2.27.0 | services/shared-dockerfile/Dockerfile |
+| Spring Boot starter parent | 4.0.6 | services/pom.xml (latest GA) |
+| eclipse-temurin (Java build) | 25-jdk-alpine | docker.io/library/eclipse-temurin |
+| distroless/java25 (runtime) | nonroot | gcr.io/distroless/java25 |
+| k6 | 1.7.1 | grafana/k6:1.7.1 |
+| GitLab CE chart | 9.11.2 | helm repo gitlab |
+| perf-sentinel | 0.5.16 | ghcr.io/robintra/perf-sentinel |
 
 ## Note on daemon memory
 

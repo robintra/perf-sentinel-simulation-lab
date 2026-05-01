@@ -5,7 +5,7 @@
 
 # Stage 1: download the OpenTelemetry Java agent. Cached independently
 # from the maven build so source changes do not refetch the jar.
-FROM alpine:3.20 AS otel-agent
+FROM alpine:3.23 AS otel-agent
 ARG OTEL_AGENT_VERSION=2.27.0
 RUN apk add --no-cache wget \
  && wget -q -O /opentelemetry-javaagent.jar \

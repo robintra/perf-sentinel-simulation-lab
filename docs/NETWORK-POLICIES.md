@@ -19,7 +19,7 @@ perf-sentinel will actually be deployed under.
 
 ## CNI choice
 
-Cilium 1.17.6 is the default. It runs in eBPF mode with
+Cilium 1.19.3 is the default. It runs in eBPF mode with
 `kubeProxyReplacement=false` (kept this way because Docker Desktop's
 host networking does not handle Cilium's full kube-proxy
 replacement reliably on arm64). Hubble is enabled with the relay

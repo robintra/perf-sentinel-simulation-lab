@@ -82,7 +82,7 @@ chart, or kube-prometheus-stack splits), revisit this split.
 
 ### Tempo single-binary (direct manifest)
 
-Tempo 2.9.0 is deployed via `manifests/tempo.yaml` in single-binary
+Tempo 2.10.5 is deployed via `manifests/tempo.yaml` in single-binary
 mode (`-target=all`). No Helm chart: both official Grafana charts
 (`grafana/tempo` and `grafana/tempo-distributed`) are flagged
 `deprecated: true` and Grafana points to the Tempo Operator, which
@@ -105,7 +105,7 @@ ServiceMonitors).
 
 ### kube-prometheus-stack
 
-Pinned chart 84.1.0 (operator v0.90.1). Components disabled to reduce
+Pinned chart 84.4.0 (operator v0.90.1). Components disabled to reduce
 memory footprint and avoid k3d failures:
 
 - Alertmanager: not relevant in a lab.
@@ -130,7 +130,7 @@ forbids.
 
 ### OTel Collector contrib
 
-Chart 0.152.0, contrib image 0.150.1. `daemonset` mode: one instance
+Chart 0.153.0, contrib image 0.151.0. `daemonset` mode: one instance
 per node, simplifies node-level metric collection and prevents the
 Collector from becoming a bottleneck when traffic ramps up in S2.
 
@@ -152,7 +152,7 @@ produce findings.
 
 ### perf-sentinel daemon
 
-Image `ghcr.io/robintra/perf-sentinel:0.5.4`. The upstream image is
+Image `ghcr.io/robintra/perf-sentinel:0.5.16`. The upstream image is
 `FROM scratch`, which means:
 
 - No `kubectl exec` (no shell).
@@ -293,7 +293,7 @@ The lab supports two CNI paths:
   ignored. Useful for debugging non-network issues without the
   policy noise.
 - **`make up-cni` (Cilium with NetworkPolicy)**: drops Flannel,
-  installs Cilium 1.17.6, and applies zero-trust policies that
+  installs Cilium 1.19.3, and applies zero-trust policies that
   match a typical Onepoint customer's production network shape.
   Calico is documented as a manual fallback. See
   `docs/NETWORK-POLICIES.md` for the policy matrix and debugging

@@ -6,8 +6,8 @@ script and repeated in a comment at the top of each file.
 
 | File | Chart | Pinned version | Role |
 | --- | --- | --- | --- |
-| `kube-prometheus-stack.yaml` | `prometheus-community/kube-prometheus-stack` | 84.1.0 | Prometheus + Grafana + operator, no Alertmanager nor Thanos. |
-| `otel-collector.yaml` | `open-telemetry/opentelemetry-collector` | 0.152.0 | DaemonSet contrib Collector, exports to Tempo and the daemon. |
+| `kube-prometheus-stack.yaml` | `prometheus-community/kube-prometheus-stack` | 84.4.0 | Prometheus + Grafana + operator, no Alertmanager nor Thanos. |
+| `otel-collector.yaml` | `open-telemetry/opentelemetry-collector` | 0.153.0 | DaemonSet contrib Collector, exports to Tempo and the daemon. |
 | `perf-sentinel-daemon.yaml` | (reserved) | n/a | Placeholder. The daemon ships via `manifests/perf-sentinel-daemon.yaml`. |
 
 Tempo and the perf-sentinel daemon are deployed via direct manifests
@@ -27,7 +27,7 @@ helm search repo open-telemetry/opentelemetry-collector --versions | head
 For Tempo, check the new image tags:
 
 ```bash
-docker run --rm grafana/tempo:2.9.0 -version
+docker run --rm grafana/tempo:2.10.5 -version
 # or look at https://github.com/grafana/tempo/releases
 ```
 

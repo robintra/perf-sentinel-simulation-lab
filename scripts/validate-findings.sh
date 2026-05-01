@@ -10,7 +10,7 @@ cd "${REPO_ROOT}"
 
 DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
 NAMESPACE="${NAMESPACE:-shop}"
-K6_IMAGE="${K6_IMAGE:-grafana/k6:0.55.0}"
+K6_IMAGE="${K6_IMAGE:-grafana/k6:1.7.1}"
 TMP_DIR="${REPO_ROOT}/tmp"
 REPORT="${TMP_DIR}/validation-report.md"
 mkdir -p "${TMP_DIR}"

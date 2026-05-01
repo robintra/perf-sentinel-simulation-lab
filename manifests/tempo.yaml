@@ -86,7 +86,7 @@ metadata:
   labels:
     app.kubernetes.io/name: tempo
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "2.9.0"
+    app.kubernetes.io/version: "2.10.5"
 spec:
   serviceName: tempo
   replicas: 1
@@ -98,7 +98,7 @@ spec:
       labels:
         app.kubernetes.io/name: tempo
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "2.9.0"
+        app.kubernetes.io/version: "2.10.5"
     spec:
       # UID 10001 matches the upstream grafana/tempo image's tempo user.
       securityContext:
@@ -110,7 +110,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: tempo
-          image: grafana/tempo:2.9.0
+          image: grafana/tempo:2.10.5
           imagePullPolicy: IfNotPresent
           args:
             - -config.file=/etc/tempo/tempo.yaml

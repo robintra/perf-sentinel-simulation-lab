@@ -22,7 +22,7 @@ Either free the port or edit `cluster/k3d-config.yaml` to map a
 different host port (for example `3001:3000`), then run
 `make reset`.
 
-## `docker pull ghcr.io/robintra/perf-sentinel:0.5.4` fails
+## `docker pull ghcr.io/robintra/perf-sentinel:0.5.16` fails
 
 Most likely the GHCR image is private or requires a specific account.
 Authenticate docker against GHCR:
@@ -40,7 +40,7 @@ cross build --release --target x86_64-unknown-linux-gnu -p sentinel-cli
 mkdir -p build/linux-amd64
 cp target/x86_64-unknown-linux-gnu/release/perf-sentinel build/linux-amd64/
 docker buildx build --platform linux/amd64 --build-arg TARGETARCH=amd64 \
-  -t perf-sentinel:0.5.4 .
+  -t perf-sentinel:0.5.16 .
 ```
 
 Then re-run `make up`.
