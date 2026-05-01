@@ -145,10 +145,11 @@ jobs:
           done
           ./scripts/verify-network-policies.sh
 
-      # B2 scenarios are not wired into this workflow yet. Three of the six
-      # PASS locally (B2-1, B2-2, B2-5), three are DEFERRED to a follow-up
-      # session because of local Docker Desktop RAM constraints. See
-      # docs/SCENARIOS-B2.md for the coverage matrix and resume plan.
+      # B2 scenarios (8 total, all PASS locally) are not wired into this
+      # workflow yet. They require additional cluster footprint (Jaeger,
+      # Zipkin, dedicated daemons, sidecars) that exceeds GHA runner
+      # capacity. See docs/SCENARIOS-B2.md for the adoption guide and
+      # `make verify-b2-all` for the local meta-target.
 
       - name: Show daemon logs (debug)
         if: always()

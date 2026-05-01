@@ -1,0 +1,189 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: b2-6-sidecar
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab-b2
+    pod-security.kubernetes.io/enforce: restricted
+    name: b2-6-sidecar
+---
+# Additive NP: extend `postgres-allow-shop` (db namespace) so the
+# sidecar's order-service container can reach Postgres.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-b2-6-sidecar
+  namespace: db
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: b2-6-sidecar
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: order-service-sidecar
+      ports:
+        - { protocol: TCP, port: 5432 }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: perf-sentinel-sidecar-config
+  namespace: b2-6-sidecar
+data:
+  config.toml: |
+    [daemon]
+    # The sidecar daemon listens on 0.0.0.0 so the Kubernetes Service can
+    # route to it for verification (a 127.0.0.1 bind would only be
+    # reachable from inside the pod). Strict pod-level isolation is then
+    # enforced by NetworkPolicy: no other pod has a Service that selects
+    # the sidecar daemon, so cross-pod ingestion is impossible by design.
+    listen_address = "0.0.0.0"
+    listen_port_http = 14318
+    listen_port_grpc = 14317
+    max_active_traces = 2000
+    # Bumped to 30s to give the OTel agent's BatchSpanProcessor enough
+    # window to flush all children before the parent's trace expires.
+    trace_ttl_ms = 30000
+    api_enabled = true
+    environment = "staging"
+
+    [daemon.correlation]
+    enabled = false
+
+    [detection]
+    n_plus_one_min_occurrences = 5
+    sanitizer_aware_classification = "strict"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service-sidecar
+  namespace: b2-6-sidecar
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: order-service-sidecar
+  ports:
+    - { name: http,        port: 8080,  targetPort: 8080,  protocol: TCP }
+    - { name: daemon-http, port: 14318, targetPort: 14318, protocol: TCP }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service-sidecar
+  namespace: b2-6-sidecar
+  labels:
+    app.kubernetes.io/name: order-service-sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: order-service-sidecar
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: order-service-sidecar
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        # Application container.
+        - name: order-service
+          image: order-service:s2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SERVER_PORT
+              value: "8080"
+            - name: DB_URL
+              value: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=orders
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-db
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: order-service-db
+                  key: password
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://localhost:14318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_SERVICE_NAME
+              value: order-service
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: service.name=order-service,deployment.environment=b2-6,cloud.provider=aws,cloud.region=eu-west-3
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_METRICS_EXPORTER
+              value: none
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+          resources:
+            requests:
+              cpu: 100m
+              memory: 384Mi
+            limits:
+              cpu: 500m
+              memory: 768Mi
+          securityContext:
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: [ALL]
+        # perf-sentinel daemon sidecar, listening on the pod's loopback.
+        - name: perf-sentinel
+          image: ghcr.io/robintra/perf-sentinel:0.5.16
+          imagePullPolicy: IfNotPresent
+          args:
+            - watch
+            - --config
+            - /etc/perf-sentinel/config.toml
+          ports:
+            - { name: daemon-http, containerPort: 14318 }
+          env:
+            - name: RUST_LOG
+              value: info
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/perf-sentinel
+              readOnly: true
+          securityContext:
+            runAsUser: 65534
+            runAsGroup: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # No readinessProbe: the daemon binds 127.0.0.1 only (pod-level
+          # isolation by design), so an httpGet probe from the kubelet
+          # against the pod IP would not reach it. The daemon starts in
+          # ~50ms, the rollout signal from the application container is
+          # sufficient.
+      volumes:
+        - name: config
+          configMap:
+            name: perf-sentinel-sidecar-config

@@ -6,6 +6,33 @@ metadata:
   labels:
     app.kubernetes.io/part-of: perf-sentinel-lab-b2
     pod-security.kubernetes.io/enforce: restricted
+    name: b2-3-direct-otlp
+---
+# Additive NP: the cluster-wide `postgres-allow-shop` (in db namespace)
+# only allows ingress from the `shop` namespace. We extend the contract
+# with a parallel ingress allowlist for the b2-3 namespace, scoped to
+# the cloned order-service-direct pod via its `app.kubernetes.io/name`
+# label.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-b2-3-direct-otlp
+  namespace: db
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: b2-3-direct-otlp
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: order-service-direct
+      ports:
+        - { protocol: TCP, port: 5432 }
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -150,19 +177,19 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: lab
-            - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://postgres.db.svc.cluster.local:5432/orders
-            - name: SPRING_DATASOURCE_USERNAME
+            - name: SERVER_PORT
+              value: "8080"
+            - name: DB_URL
+              value: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=orders
+            - name: DB_USER
               valueFrom:
                 secretKeyRef:
-                  name: postgres-credentials
+                  name: order-service-db
                   key: username
-            - name: SPRING_DATASOURCE_PASSWORD
+            - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: postgres-credentials
+                  name: order-service-db
                   key: password
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://perf-sentinel-daemon-direct.b2-3-direct-otlp.svc.cluster.local:14318

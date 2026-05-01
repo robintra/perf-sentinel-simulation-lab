@@ -16,6 +16,13 @@ data:
     CREATE SCHEMA IF NOT EXISTS payments;
     CREATE SCHEMA IF NOT EXISTS notifications;
 
+    -- Enable pg_stat_statements (paired with shared_preload_libraries
+    -- set via -c args in manifests/postgres.yaml). The extension exposes
+    -- one row per normalized SQL template with calls, exec time, rows,
+    -- shared_blks counters. perf-sentinel `report --pg-stat` consumes
+    -- these to enrich the dashboard with a hotspot tab.
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
     DO $$
     BEGIN
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'orders_user') THEN

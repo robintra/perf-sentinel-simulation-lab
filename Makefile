@@ -9,7 +9,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel up-cni reset-cni install-cni apply-network-policies remove-network-policies hubble-ui verify-network-policies verify-b2-1-hybrid-daemon-batch verify-b2-2-batch-tempo-scrape verify-b2-3-daemon-otlp-direct verify-b2-4-multiformat-input verify-b2-5-calibrate-mode verify-b2-6-sidecar-pattern verify-b2-all
+.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images seed-services teardown-services inject-all validate-findings seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel up-cni reset-cni install-cni apply-network-policies remove-network-policies hubble-ui verify-network-policies verify-b2-1-hybrid-daemon-batch verify-b2-2-batch-tempo-scrape verify-b2-3-daemon-otlp-direct verify-b2-4-multiformat-input verify-b2-5-calibrate-mode verify-b2-6-sidecar-pattern verify-b2-7-correlation-finding verify-b2-8-pg-stat verify-b2-all
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  %-32s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -198,20 +198,26 @@ verify-b2-1-hybrid-daemon-batch: ## B2-1 daemon Report -> HTML dashboard via rep
 verify-b2-2-batch-tempo-scrape: ## B2-2 batch over Tempo via perf-sentinel tempo subcommand
 	./scenarios/b2-2-batch-tempo-scrape/verify.sh
 
-verify-b2-3-daemon-otlp-direct: ## B2-3 services push OTLP straight to a dedicated daemon (DEFERRED)
+verify-b2-3-daemon-otlp-direct: ## B2-3 services push OTLP straight to a dedicated daemon (no collector)
 	./scenarios/b2-3-daemon-otlp-direct/verify.sh
 
-verify-b2-4-multiformat-input: ## B2-4 batch ingests Native + Jaeger + Zipkin coherently (DEFERRED)
+verify-b2-4-multiformat-input: ## B2-4 batch ingests Native + Jaeger + Zipkin coherently
 	./scenarios/b2-4-multiformat-input/verify.sh
 
 verify-b2-5-calibrate-mode: ## B2-5 calibrate energy coefficients from baseline traces + power CSV
 	./scenarios/b2-5-calibrate-mode/verify.sh
 
-verify-b2-6-sidecar-pattern: ## B2-6 perf-sentinel daemon as a per-service pod sidecar (DEFERRED)
+verify-b2-6-sidecar-pattern: ## B2-6 perf-sentinel daemon as a per-service pod sidecar
 	./scenarios/b2-6-sidecar-pattern/verify.sh
 
-verify-b2-all: ## Run all 6 B2 scenarios sequentially (3 PASS, 3 DEFERRED at present, see docs/SCENARIOS-B2.md)
-	@for s in 1-hybrid-daemon-batch 2-batch-tempo-scrape 3-daemon-otlp-direct 4-multiformat-input 5-calibrate-mode 6-sidecar-pattern; do \
+verify-b2-7-correlation-finding: ## B2-7 cross-trace correlation finding via /api/correlations
+	./scenarios/b2-7-correlation-finding/verify.sh
+
+verify-b2-8-pg-stat: ## B2-8 perf-sentinel report --pg-stat live integration
+	./scenarios/b2-8-pg-stat/verify.sh
+
+verify-b2-all: ## Run all 8 B2 scenarios sequentially (see docs/SCENARIOS-B2.md)
+	@for s in 1-hybrid-daemon-batch 2-batch-tempo-scrape 3-daemon-otlp-direct 4-multiformat-input 5-calibrate-mode 6-sidecar-pattern 7-correlation-finding 8-pg-stat; do \
 	  echo "==> verify-b2-$$s"; \
 	  $(MAKE) verify-b2-$$s || echo "B2-$$s FAILED"; \
 	done

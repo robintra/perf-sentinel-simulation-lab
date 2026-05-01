@@ -1,0 +1,1 @@
+{"data": [{"traceID": "abc", "spans": [{"spanID": "fedc", "operationName": "GET /test", "startTime": 1777000000000000, "duration": 1000, "processID": "p1", "tags": [{"key": "deep", "type": "json", "value": [[[[[[[[[[[[[[[[[[[[[[[["leaf"]]]]]]]]]]]]]]]]]]]]]]]]}]}], "processes": {"p1": {"serviceName": "order-service"}}}]}

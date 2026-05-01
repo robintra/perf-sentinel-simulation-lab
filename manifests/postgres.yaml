@@ -45,6 +45,17 @@ spec:
         - name: postgres
           image: postgres:18.3-alpine
           imagePullPolicy: IfNotPresent
+          # Enable pg_stat_statements at startup. The extension is bundled
+          # with the postgres:18.3-alpine image, but only loads when listed
+          # in shared_preload_libraries (a startup-time config). The
+          # extension is then created in each schema by the init script.
+          args:
+            - -c
+            - shared_preload_libraries=pg_stat_statements
+            - -c
+            - pg_stat_statements.track=all
+            - -c
+            - pg_stat_statements.max=10000
           ports:
             - name: postgres
               containerPort: 5432

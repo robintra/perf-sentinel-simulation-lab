@@ -1,8 +1,4 @@
-# B2-3 daemon receives OTLP HTTP directly (no Collector) - DEFERRED
-
-## Status
-
-DEFERRED to follow-up session.
+# B2-3 daemon receives OTLP HTTP directly (no Collector)
 
 ## Use case
 
@@ -12,38 +8,42 @@ HTTP endpoint (port 14318). The daemon ingests, correlates, and exposes
 findings via `/api/export/report`. Validates that the daemon's native
 OTLP HTTP receiver works without an external collector.
 
-## Why deferred
-
-The first attempt in this session crashed the local k3d cluster API
-(TLS handshake timeout) under cumulative load: 3 Java services in
-`shop` plus GitLab CE plus observability stack plus the new dedicated
-daemon and cloned service in `b2-3-direct-otlp`. The cluster
-recovered after cleanup, but the headroom is too thin to safely add
-B2-3 plus B2-4 plus B2-6 in the same session on a 7 GB Docker
-Desktop allocation.
-
-A follow-up session with a freshly reset cluster (`make reset-cni` +
-seed) will retry B2-3 with more room.
-
-## Files in this folder
-
-- `manifests.yaml` : namespace + dedicated daemon Deployment + cloned
-  order-service Deployment that pushes OTLP HTTP straight to the
-  dedicated daemon. Kept as a template for the follow-up session.
-- `verify.sh` : currently a DEFERRED placeholder that prints a status
-  line and exits 0. The full verify logic (apply manifests, port-forward,
-  send traffic, snapshot, cleanup) is planned but not run in this
-  session.
-
-## Resume in follow-up
+## Run
 
 ```bash
-# 1. Reset cluster cleanly
-make reset-cni
-make seed-services
-make seed-electricity-maps
-
-# 2. Run the full B2-3 (requires the verify.sh body to be filled in
-#    from the in-flight version archived in this folder's git history)
 make verify-b2-3-daemon-otlp-direct
 ```
+
+## What is verified
+
+The verify script applies a dedicated namespace `b2-3-direct-otlp`
+with:
+
+- A standalone perf-sentinel daemon Deployment (own correlator state,
+  isolated from the lab daemon in `observability`).
+- A cloned `order-service` Deployment with
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://perf-sentinel-daemon-direct.b2-3-direct-otlp.svc.cluster.local:14318`.
+- An additive NetworkPolicy (`postgres-allow-b2-3-direct-otlp` in `db`)
+  so the cloned service can reach Postgres.
+
+It then sends 50 POST requests to `/api/fault/n-plus-one-sql`, snapshots
+`/api/export/report` from the dedicated daemon, and asserts non-zero
+events and traces.
+
+## Configuration
+
+The cloned service's manifest pins the OTLP endpoint to the daemon's
+ClusterIP service, not localhost. The daemon listens on `0.0.0.0:14318`
+inside the pod (no Collector to mediate). For reference, the lab path
+uses 14317 (gRPC) and 14318 (HTTP) custom ports rather than the OTLP
+defaults 4317/4318 to avoid clashes if both daemons run side by side.
+
+## Output
+
+`/tmp/scenario-b2-3-daemon-otlp-direct-report.md` plus
+`/tmp/b2-3-daemon-otlp-direct/direct-report.json` (raw daemon report).
+
+## Cleanup
+
+The verify script deletes the namespace at exit. Set
+`KEEP_NAMESPACE=yes` to inspect the running pods.
