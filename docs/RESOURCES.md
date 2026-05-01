@@ -23,6 +23,49 @@ For ad-hoc debug of a non-network problem, run `scripts/bootstrap.sh`
 directly on a cluster you have prepared with another CNI yourself. There
 is no supported `make up` Flannel path anymore.
 
+## Continuous validation
+
+A GitHub Actions workflow at `.github/workflows/validate-on-release.yml`
+validates the lab on every perf-sentinel release plus a daily cron on
+main. Triggers:
+
+- `repository_dispatch` event `perf-sentinel-released` from the
+  perf-sentinel repo on tag publication.
+- `workflow_dispatch` manually with a `perf_sentinel_version` input.
+- Daily cron at 02:00 UTC.
+
+The workflow boots a minimal lab (no GitLab CE, GHA free tier RAM
+constraint) and runs 4/5 of the verification suite (assertion 4
+GitLab runner egress is SKIPPED in CI). On failure, an issue is
+auto-created or updated under labels `automation,regression`, with
+the body containing the exact reproduction commands.
+
+Logs and `/tmp` reports are uploaded as artifacts for 14 days.
+
+The Electricity Maps token is read from the repo secret
+`ELECTRICITY_MAPS_TOKEN`. Set it once with:
+
+```bash
+gh secret set ELECTRICITY_MAPS_TOKEN < .electricity-maps-token
+```
+
+To activate the `perf-sentinel-released` cross-repo trigger, add a
+step in the perf-sentinel release workflow:
+
+```yaml
+- name: Notify simulation-lab
+  uses: peter-evans/repository-dispatch@v3
+  with:
+    token: ${{ secrets.LAB_DISPATCH_TOKEN }}
+    repository: robintra/perf-sentinel-simulation-lab
+    event-type: perf-sentinel-released
+    client-payload: '{"version": "${{ github.event.release.tag_name }}"}'
+```
+
+`LAB_DISPATCH_TOKEN` is a classic PAT with `repo` scope on the lab
+repo. Until that step lands, `workflow_dispatch` (manual) and the
+daily cron remain the active triggers.
+
 ## Footprint per component (S1)
 
 | Component | Resident RAM | CPU steady state | Notes |
