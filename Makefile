@@ -14,8 +14,15 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-28s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-up: ## Bootstrap the cluster and the full observability stack
-	./scripts/bootstrap.sh
+up: ## Bootstrap the cluster (redirects to up-cni since the CNI migration)
+	@echo "Note: 'make up' is deprecated since the Cilium CNI migration."
+	@echo "      The k3d config disables Flannel and the default network"
+	@echo "      policy controller, so plain bootstrap.sh produces NotReady"
+	@echo "      nodes. Redirecting to 'make up-cni' which installs Cilium"
+	@echo "      first, then runs bootstrap.sh, then applies the zero-trust"
+	@echo "      NetworkPolicy."
+	@echo
+	@$(MAKE) up-cni
 
 down: ## Tear down the cluster
 	./scripts/teardown.sh
