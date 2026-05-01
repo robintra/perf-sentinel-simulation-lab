@@ -57,6 +57,10 @@ Every scenario diagram uses a consistent vocabulary:
   `Tempo OTLP-JSON`, `Jaeger v1`, `Zipkin v2`, `Report JSON`, `pg_stat
   CSV`).
 
+The diagrams are also available as standalone Mermaid sources under
+[`diagrams/`](diagrams/) (`b2-N-<name>.mmd`), useful for rendering to
+SVG/PNG or copying into other docs.
+
 ## Capture format cheat sheet
 
 Adoption decisions usually start with "what trace format do I have?".

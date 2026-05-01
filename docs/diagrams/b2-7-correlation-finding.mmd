@@ -1,0 +1,20 @@
+flowchart LR
+    subgraph cluster["Production cluster"]
+        ORDER[order-service]
+        PAY[payment-service]
+        NOTIF[notification-service]
+        ORDER -- charge() --> PAY
+        PAY -- notify() --> NOTIF
+    end
+    COL[OTel Collector] --> DAEMON
+    ORDER --> COL
+    PAY --> COL
+    NOTIF --> COL
+    subgraph daemon_box["perf-sentinel daemon"]
+        DAEMON[[Rolling window correlator<br/>window_minutes=5<br/>min_co_occurrences=2<br/>min_confidence=0.5]]
+        API[/api/correlations]
+        DAEMON --> API
+    end
+    OPS[Operator / dashboard] -. "GET /api/correlations" .-> API
+    classDef sentinel fill:#e8f4fc,stroke:#1a73e8,stroke-width:2px
+    class DAEMON,API sentinel

@@ -1,0 +1,13 @@
+flowchart LR
+    subgraph pod1["Pod: app"]
+        APP[Java service<br/>OTel agent v2.27]
+    end
+    subgraph pod2["Pod: perf-sentinel-daemon"]
+        DAEMON[[perf-sentinel daemon<br/>OTLP HTTP receiver<br/>:14318]]
+        API[/api/export/report<br/>/api/findings<br/>/api/status/]
+        DAEMON -- exposes --> API
+    end
+    APP -- OTLP/HTTP/protobuf --> DAEMON
+    OPS[Operator / CI] -. "GET /api/findings" .-> API
+    classDef sentinel fill:#e8f4fc,stroke:#1a73e8,stroke-width:2px
+    class DAEMON,API sentinel

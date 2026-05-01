@@ -1,0 +1,12 @@
+flowchart LR
+    subgraph pod["Single Kubernetes Pod"]
+        direction LR
+        APP[order-service<br/>Spring Boot + OTel agent]
+        DAEMON[[perf-sentinel daemon<br/>:14318 on pod loopback]]
+        APP -- OTLP/HTTP<br/>localhost:14318 --> DAEMON
+    end
+    SVC{{Service<br/>order-service-sidecar:14318}}
+    OPS[Operator] -. "kubectl port-forward" .-> SVC
+    SVC -. "GET /api/export/report" .-> DAEMON
+    classDef sentinel fill:#e8f4fc,stroke:#1a73e8,stroke-width:2px
+    class DAEMON sentinel
