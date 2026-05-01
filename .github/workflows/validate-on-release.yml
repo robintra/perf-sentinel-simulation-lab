@@ -1,0 +1,199 @@
+name: validate lab on perf-sentinel release
+
+on:
+  repository_dispatch:
+    types: [perf-sentinel-released]
+  workflow_dispatch:
+    inputs:
+      perf_sentinel_version:
+        description: 'perf-sentinel version to validate (default: latest)'
+        required: false
+        default: 'latest'
+        type: string
+  schedule:
+    # Daily at 02:00 UTC, catch upstream environment drift on main.
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: lab-validation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      PERF_SENTINEL_VERSION: >-
+        ${{ github.event.client_payload.version
+            || github.event.inputs.perf_sentinel_version
+            || 'latest' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show resolved version
+        run: |
+          echo "PERF_SENTINEL_VERSION=${PERF_SENTINEL_VERSION}"
+          echo "Trigger: ${{ github.event_name }}"
+
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d version
+
+      - name: Install helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'latest'
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Patch perf-sentinel image to validated version
+        if: env.PERF_SENTINEL_VERSION != 'latest'
+        run: |
+          sed -i "s|ghcr.io/robintra/perf-sentinel:[0-9.]*|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
+            manifests/perf-sentinel-daemon.yaml
+          grep "ghcr.io/robintra/perf-sentinel" manifests/perf-sentinel-daemon.yaml
+
+      - name: Provision Electricity Maps token file from repo secret
+        env:
+          EM_TOKEN: ${{ secrets.ELECTRICITY_MAPS_TOKEN }}
+        run: |
+          if [ -z "${EM_TOKEN}" ]; then
+            echo "::error::ELECTRICITY_MAPS_TOKEN repo secret is empty. Set it via: gh secret set ELECTRICITY_MAPS_TOKEN"
+            exit 1
+          fi
+          printf '%s' "${EM_TOKEN}" > .electricity-maps-token
+          chmod 600 .electricity-maps-token
+
+      - name: make validate (offline)
+        run: make validate
+
+      - name: make up-cni (k3d + Cilium + observability + daemon)
+        run: |
+          make up-cni
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: make seed-services (Java services + traffic stack)
+        run: make seed-services
+
+      - name: make seed-electricity-maps
+        run: make seed-electricity-maps
+
+      - name: make validate-findings (10/10 anti-patterns)
+        run: make validate-findings
+
+      - name: make verify-electricity-maps (EM scoring)
+        run: make verify-electricity-maps
+
+      - name: make verify-network-policies (assertion 4 SKIPPED, GitLab CE out of CI scope)
+        run: ./scripts/verify-network-policies.sh
+
+      - name: Show daemon logs (debug)
+        if: always()
+        run: |
+          kubectl -n observability logs deploy/perf-sentinel-daemon --tail=200 || true
+
+      - name: Show pod overview (debug)
+        if: always()
+        run: kubectl get pods -A || true
+
+      - name: Upload lab artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-validation-logs-${{ env.PERF_SENTINEL_VERSION }}-${{ github.run_id }}
+          path: |
+            tmp/*.log
+            tmp/*.md
+            /tmp/perf-sentinel-simulation-lab-*.md
+          retention-days: 14
+          if-no-files-found: warn
+
+  notify-on-failure:
+    needs: validate
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    env:
+      PERF_SENTINEL_VERSION: >-
+        ${{ github.event.client_payload.version
+            || github.event.inputs.perf_sentinel_version
+            || 'latest' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create or update regression issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = process.env.PERF_SENTINEL_VERSION || 'unknown';
+            const trigger = context.eventName;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = `lab validation failed for perf-sentinel ${version}`;
+            const body = [
+              `Lab validation workflow failed for perf-sentinel version \`${version}\`.`,
+              ``,
+              `**Trigger**: ${trigger}`,
+              `**Run**: ${runUrl}`,
+              `**Tag perf-sentinel**: https://github.com/robintra/perf-sentinel/releases/tag/v${version}`,
+              ``,
+              `Check the run logs for the failed step. Common causes:`,
+              ``,
+              `- Upstream regression on \`/metrics\` format, \`/api/export/report\`, or ingest path`,
+              `- Environment drift: Helm chart bump that changed labels or selectors`,
+              `- Lab fixture obsolete after a stack bump`,
+              ``,
+              `<details><summary>Reproduction locale</summary>`,
+              ``,
+              '```bash',
+              `cd ~/IdeaProjects/perf-sentinel-simulation-lab`,
+              `# Patch perf-sentinel image to ${version}`,
+              `sed -i '' "s|ghcr.io/robintra/perf-sentinel:[0-9.]*|ghcr.io/robintra/perf-sentinel:${version}|g" manifests/perf-sentinel-daemon.yaml`,
+              `make reset-cni  # ou make up-cni si pas de cluster`,
+              `make seed-services && make seed-electricity-maps`,
+              `make validate-findings`,
+              `make verify-electricity-maps`,
+              `make verify-network-policies`,
+              '```',
+              ``,
+              `</details>`,
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'automation,regression',
+              state: 'open',
+            });
+            const dup = existing.data.find(i => i.title === title);
+
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: dup.number,
+                body: `Re-occurrence: ${runUrl}`,
+              });
+              console.log(`Commented on existing issue #${dup.number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['automation', 'regression'],
+                assignees: ['robintra'],
+              });
+              console.log(`Created new issue: ${title}`);
+            }
