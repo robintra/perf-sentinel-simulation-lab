@@ -34,7 +34,7 @@ jobs:
             || 'latest' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Show resolved version
         run: |
@@ -47,12 +47,18 @@ jobs:
           k3d version
 
       - name: Install helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
         with:
           version: 'latest'
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
+
+      - name: Add helm repos used by make validate
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
 
       - name: Patch perf-sentinel image to validated version
         if: env.PERF_SENTINEL_VERSION != 'latest'
@@ -107,7 +113,7 @@ jobs:
 
       - name: Upload lab artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lab-validation-logs-${{ env.PERF_SENTINEL_VERSION }}-${{ github.run_id }}
           path: |
@@ -131,10 +137,10 @@ jobs:
             || 'latest' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Create or update regression issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const version = process.env.PERF_SENTINEL_VERSION || 'unknown';
