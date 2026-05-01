@@ -4,6 +4,25 @@ Estimated RAM and CPU usage once the stack is stable, with no
 application traffic. Numbers are based on a macOS Apple Silicon
 laptop (24 GiB) with Docker Desktop allocated 8 GiB.
 
+## Bootstrap path
+
+Since the CNI migration to Cilium (see [NETWORK-POLICIES.md](NETWORK-POLICIES.md)),
+the default bootstrap target is `make up-cni`. The legacy `make up`
+redirects to it with a deprecation note. The reason: `cluster/k3d-config.yaml`
+disables Flannel and the k3s NetworkPolicy controller, so a plain
+`scripts/bootstrap.sh` run produces NotReady nodes (no CNI installed).
+
+`make up-cni` chains four steps:
+
+1. `k3d cluster create --config cluster/k3d-config.yaml`.
+2. `scripts/install-cni.sh` (Cilium 1.19.3 by default, Calico fallback).
+3. `scripts/bootstrap.sh` (observability stack, Postgres, perf-sentinel daemon).
+4. `kubectl apply -f manifests/network-policies.yaml` (zero-trust NetworkPolicy).
+
+For ad-hoc debug of a non-network problem, run `scripts/bootstrap.sh`
+directly on a cluster you have prepared with another CNI yourself. There
+is no supported `make up` Flannel path anymore.
+
 ## Footprint per component (S1)
 
 | Component | Resident RAM | CPU steady state | Notes |
