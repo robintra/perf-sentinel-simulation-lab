@@ -31,7 +31,7 @@ fi
 # Warn if the token file is world-readable. The Secret in Kubernetes is
 # the authoritative copy, but the on-disk file ends up there if anything
 # ever logs the bootstrap output, so 0600 is the right default.
-TOKEN_MODE="$(stat -f '%Lp' "${TOKEN_FILE}" 2>/dev/null || stat -c '%a' "${TOKEN_FILE}" 2>/dev/null || echo "?")"
+TOKEN_MODE="$(stat -c '%a' "${TOKEN_FILE}" 2>/dev/null || stat -f '%Lp' "${TOKEN_FILE}" 2>/dev/null || echo "?")"
 if [ "${TOKEN_MODE}" != "600" ] && [ "${TOKEN_MODE}" != "?" ]; then
   color_red "    warn: ${TOKEN_FILE} mode is ${TOKEN_MODE}, expected 600 (run: chmod 600 ${TOKEN_FILE})"
 fi
