@@ -808,12 +808,12 @@ psql -U lab -d lab -c "\copy (
 ## Grafana dashboard validation
 
 The upstream perf-sentinel repo ships
-`examples/grafana-dashboard.json` (8 panels, GreenOps-tagged) but the
+`examples/grafana-dashboard.json` (17 panels, GreenOps-tagged) but the
 lab has never validated it end-to-end. This scenario does, audits
-which daemon metrics it does and does not cover, ships an extended
-overlay covering every metric upstream does not use, loads 5
-PrometheusRules, and deploys `postgres-exporter` so the
-`--pg-stat-prometheus` path becomes available.
+which daemon metrics it does and does not cover, ships a
+postgres-exporter-specific overlay (the daemon metric panels live
+upstream now), loads 5 PrometheusRules, and deploys `postgres-exporter`
+so the `--pg-stat-prometheus` path becomes available.
 
 ### Use case
 
@@ -826,30 +826,32 @@ Prometheus path.
 
 ### Coverage audit
 
-Daemon 0.5.16 exposes 12 perf_sentinel_* metrics
-(`crates/sentinel-core/src/report/metrics.rs`). The 8 upstream panels
-reference 6 distinct metrics, all exposed (zero broken references).
-The other 6 metrics are extension targets, all consumed by the lab's
-extended overlay.
+Daemon 0.5.16 registers 11 perf_sentinel_* metric families
+(`crates/sentinel-core/src/report/metrics.rs`, the histogram
+`perf_sentinel_slow_duration_seconds` accounts for one family with
+`_bucket`, `_count`, `_sum` suffixes). The upstream dashboard now
+covers 11/11 (was 6/11 before
+`feat(examples): expand grafana-dashboard.json from 8 to 17 panels`),
+so there is no need for an extended overlay on the daemon side. The
+lab overlay only carries the 2 postgres-exporter panels.
 
-| Metric | Upstream | Extended overlay |
+| Metric | Used by upstream | Used by lab overlay |
 | --- | --- | --- |
-| `perf_sentinel_findings_total` | 3 panels | no |
+| `perf_sentinel_findings_total` | 4 panels | no |
 | `perf_sentinel_io_waste_ratio` | 1 panel | no |
 | `perf_sentinel_active_traces` | 1 panel | no |
 | `perf_sentinel_events_processed_total` | 1 panel | no |
 | `perf_sentinel_service_io_ops_total` | 1 panel | no |
-| `perf_sentinel_slow_duration_seconds` | 1 panel (histogram) | no |
-| `perf_sentinel_traces_analyzed_total` | no | yes |
-| `perf_sentinel_total_io_ops` | no | yes |
-| `perf_sentinel_avoidable_io_ops` | no | yes |
-| `perf_sentinel_scaphandre_last_scrape_age_seconds` | no | yes |
-| `perf_sentinel_cloud_energy_last_scrape_age_seconds` | no | yes |
-| `perf_sentinel_export_report_requests_total` | no | yes |
-
-The extended overlay also adds 2 standard panels (`up` daemon health,
-`process_start_time_seconds` cold-start indicator) and 2
-postgres-exporter panels (Top 10 slow queries, DB query rate).
+| `perf_sentinel_slow_duration_seconds` | 2 panels (p95 + heatmap) | no |
+| `perf_sentinel_traces_analyzed_total` | 1 panel | no |
+| `perf_sentinel_total_io_ops` | 1 panel | no |
+| `perf_sentinel_avoidable_io_ops` | 1 panel | no |
+| `perf_sentinel_scaphandre_last_scrape_age_seconds` | shared panel | no |
+| `perf_sentinel_cloud_energy_last_scrape_age_seconds` | shared panel | no |
+| `perf_sentinel_export_report_requests_total` | 1 panel | no |
+| `up{job="perf-sentinel-daemon"}` | 1 panel (Daemon health) | no |
+| `pg_stat_statements_seconds_total` | no | yes (Top 10 slow queries) |
+| `pg_stat_statements_calls_total` | no | yes (DB query rate) |
 
 ### Upstream backlog
 
@@ -869,17 +871,22 @@ a user concern via Alertmanager `route` and `receivers`.
 
 | Alert | Severity | Trigger | End-to-end test |
 | --- | --- | --- | --- |
-| `PerfSentinelDaemonDown` | critical | `up{} == 0` for 2m | yes (verify scales daemon to 0) |
+| `PerfSentinelDaemonDown` | critical | `up == 0 or absent(up) == 1` for 2m | yes (verify scales daemon to 0) |
 | `PerfSentinelHighIOWasteRatio` | warning | `io_waste_ratio > 0.30` for 10m | rule loaded only |
-| `PerfSentinelCriticalFindingsSurge` | critical | `> 5 critical/h` for 5m | rule loaded only |
+| `PerfSentinelCriticalFindingsSurge` | critical | `> 50 critical/h` for 5m | rule loaded only |
 | `PerfSentinelActiveTracesNearCapacity` | warning | `active_traces > 8000` for 5m | rule loaded only |
 | `PerfSentinelEventProcessingStalled` | warning | `rate(events_processed) == 0` for 5m | rule loaded only |
 
 The 4 non-trigger-tested rules require crafted load (waste ratio,
 trace count, critical findings) or stopping the OTLP pipeline. The
 `PerfSentinelDaemonDown` test scales the daemon Deployment to 0,
-waits 180s for the `for: 2m` to elapse, asserts the alert is firing
-via `/api/v1/alerts`, then restores the daemon.
+polls `/api/v1/rules` every 15s up to 240s for the alert state to
+flip from `inactive` to `firing`, then restores the daemon. A trap
+on `EXIT INT TERM` restores the daemon to replicas=1 even if the
+script is interrupted between scale-down and restore. The alert
+expression uses `absent(up{...}) == 1` in addition to `up == 0` so
+it fires both when the daemon is broken (scrape returns failure)
+and when the daemon Deployment has 0 replicas (no scrape target).
 
 ### postgres-exporter integration
 
@@ -920,10 +927,9 @@ on drift, so the lab tracks upstream automatically. Two dashboards
 visible in Grafana :
 
 - `perf-sentinel-overview` (loaded by `bootstrap.sh`, identical to
-  upstream)
-- `perf-sentinel-extended` (lab overlay, 9 panels covering the
-  daemon metrics upstream does not use plus 2 postgres-exporter
-  panels)
+  upstream, 17 panels)
+- `perf-sentinel-extended` (lab overlay, 2 postgres-exporter panels :
+  Top 10 slow queries, DB query rate)
 
 ### Watch out
 

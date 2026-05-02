@@ -25,6 +25,13 @@ ok()   { color_green "    ok: $*"; }
 die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 1; }
 
 verdict="UNKNOWN"
+PIDS=()
+cleanup() {
+  for pid in "${PIDS[@]+"${PIDS[@]}"}"; do
+    kill "${pid}" 2>/dev/null || true
+  done
+}
+trap cleanup EXIT INT TERM
 
 step "Verify pg_stat_statements extension is loaded"
 EXT_OK=$(kubectl -n db exec sts/postgres -- psql -U lab -d lab -tAc \
@@ -100,8 +107,7 @@ if kubectl -n db get deploy postgres-exporter >/dev/null 2>&1; then
   step "Path 2: --pg-stat-prometheus (Prometheus scraping postgres-exporter)"
   kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 \
     > "${TMP_DIR}/prom-pf.log" 2>&1 &
-  PF_PROM=$!
-  trap "kill ${PF_PROM} 2>/dev/null" EXIT
+  PIDS+=($!)
   sleep 3
   # On macOS Docker Desktop, --network host does NOT bridge to the
   # macOS host (docker engine runs in a Linux VM). Use
@@ -140,8 +146,7 @@ if kubectl -n db get deploy postgres-exporter >/dev/null 2>&1; then
     color_red "    fail: report --pg-stat-prometheus exited non-zero, see ${TMP_DIR}/report-prom.log"
     tail -10 "${TMP_DIR}/report-prom.log" || true
   fi
-  kill ${PF_PROM} 2>/dev/null || true
-  trap - EXIT
+  # Port-forward will be killed by the cleanup trap on EXIT.
 else
   step "Path 2: --pg-stat-prometheus"
   ok "SKIP: postgres-exporter not deployed (run make verify-grafana-dashboard first to unlock Path 2)"

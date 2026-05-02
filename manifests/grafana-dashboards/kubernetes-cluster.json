@@ -18,7 +18,10 @@
     {
       "type": "stat",
       "title": "Pods Running by namespace",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "expr": "sum by (namespace) (kube_pod_status_phase{phase=\"Running\"})",
@@ -27,14 +30,26 @@
           "instant": true
         }
       ],
-      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
       "id": 1
     },
     {
       "type": "stat",
       "title": "Nodes Ready",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "expr": "sum(kube_node_status_condition{condition=\"Ready\",status=\"true\"})",
@@ -42,14 +57,26 @@
           "instant": true
         }
       ],
-      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
       "id": 2
     },
     {
       "type": "timeseries",
       "title": "CPU usage by node",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "expr": "sum by (instance) (rate(node_cpu_seconds_total{mode!=\"idle\"}[5m]))",
@@ -57,14 +84,26 @@
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6},
-      "fieldConfig": {"defaults": {"unit": "percentunit"}},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        }
+      },
       "id": 3
     },
     {
       "type": "timeseries",
       "title": "RAM used by node",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
@@ -72,14 +111,26 @@
           "legendFormat": "{{instance}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6},
-      "fieldConfig": {"defaults": {"unit": "bytes"}},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      },
       "id": 4
     },
     {
       "type": "timeseries",
       "title": "Container restarts (15m)",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "targets": [
         {
           "expr": "sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[15m]))",
@@ -87,19 +138,56 @@
           "legendFormat": "{{namespace}}/{{pod}}"
         }
       ],
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14},
-      "fieldConfig": {"defaults": {"unit": "short"}},
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
       "id": 5
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["kubernetes", "lab"],
-  "templating": {"list": []},
-  "time": {"from": "now-1h", "to": "now"},
+  "tags": [
+    "kubernetes",
+    "lab"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "prometheus"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Datasource",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "timezone": "browser",
   "title": "Kubernetes cluster overview",
   "uid": "kubernetes-cluster-lab",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }

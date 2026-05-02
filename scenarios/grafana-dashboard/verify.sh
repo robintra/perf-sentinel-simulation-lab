@@ -1,23 +1,43 @@
 #!/usr/bin/env bash
-# Grafana dashboard import + coverage audit + alert rules + postgres-exporter.
+# Grafana dashboard validation, coverage audit, alert rules, postgres-exporter.
 #
-# Use case: a user clones perf-sentinel and imports the upstream
-# `examples/grafana-dashboard.json`. They want to know (a) every panel
-# renders against the lab's Prometheus, (b) which daemon metrics are
-# exposed but unused, (c) what alert rules cover the daemon, (d) how
-# pg_stat hooks in via postgres-exporter.
+# What this scenario does, from the perspective of a user importing the
+# upstream `examples/grafana-dashboard.json` into their Grafana:
 #
-# This scenario imports the upstream dashboard verbatim (with mutated
-# uid+title to avoid collision with the lab's custom French
-# `perf-sentinel-overview` dashboard), ships an `extended` overlay with
-# 9 panels covering every daemon metric upstream does not use plus
-# 2 postgres-exporter panels, loads 5 PrometheusRules, deploys
-# postgres-exporter and tests the PerfSentinelDaemonDown alert end-to-end.
+# 1. Parity. Diffs `manifests/grafana-dashboards/perf-sentinel-overview.json`
+#    (lab) against `examples/grafana-dashboard.json` (upstream). The lab
+#    copy is byte-identical to upstream after `jq --sort-keys`; drift
+#    fails the scenario.
+# 2. Coverage audit. Reads daemon /metrics and the dashboard JSON, lists
+#    metrics the dashboard references, metrics the daemon exposes, and
+#    the diff in both directions. Surfaces extension targets.
+# 3. Panel render. For every panel `expr`, queries Prometheus
+#    historical data and asserts at least one time series. Catches
+#    "No data" tiles in CI.
+# 4. Extended overlay. Applies a separate ConfigMap
+#    `perf-sentinel-extended-dashboard` with 2 postgres-exporter panels
+#    that are lab-specific (Top 10 slow queries, DB query rate). All
+#    daemon-only panels live in the upstream dashboard, no overlap.
+# 5. Alert rules. Applies 5 PrometheusRules and polls the operator
+#    until they are loaded. Triggers PerfSentinelDaemonDown end-to-end
+#    by scaling the daemon Deployment to 0; restores it via a trap so
+#    a Ctrl+C never leaves the cluster in a degraded state.
+# 6. postgres-exporter. Deploys the v0.17 image with credentials
+#    sourced from the lab's `postgres-credentials` Secret, asserts
+#    `pg_stat_statements_seconds_total` is exposed and Prometheus
+#    scrapes it. Unlocks the `--pg-stat-prometheus` path validated by
+#    `scenarios/pg-stat/verify.sh`.
 #
 # Optional knobs:
-# - SKIP_TRIGGER_TEST=1   skip the ~3 min daemon-down alert trigger test.
-# - SKIP_TRAFFIC=1        skip make seed-services + validate-findings (use
-#                         this when traffic was already driven recently).
+#   SKIP_TRIGGER_TEST=1      skip the ~3 min daemon-down alert trigger.
+#   SKIP_TRAFFIC=1           skip validate-findings (use when traffic
+#                            was already driven recently).
+#   UPSTREAM_DASHBOARD_PATH  override the upstream JSON location for the
+#                            parity check. Default targets the user's
+#                            common clone layout, see line below. When
+#                            absent, the parity step is SKIPPED (not
+#                            failed) so the scenario still runs on a
+#                            machine without the upstream clone.
 
 set -euo pipefail
 
@@ -46,12 +66,37 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 
 verdict="UNKNOWN"
 PIDS=()
+DAEMON_SCALED_DOWN=0
 cleanup() {
   for pid in "${PIDS[@]+"${PIDS[@]}"}"; do
     kill "${pid}" 2>/dev/null || true
   done
+  # If the script exits between scale --replicas=0 and scale --replicas=1
+  # (Ctrl+C, set -e early-exit, OOM kill, etc.), restore the daemon to
+  # 1 replica so the cluster is not left degraded for the next scenario.
+  if [ "${DAEMON_SCALED_DOWN}" = "1" ]; then
+    color_red "    interrupted mid-trigger: restoring daemon to replicas=1"
+    kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=1 \
+      >/dev/null 2>&1 || true
+  fi
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
+
+# Helper to query the in-cluster Prometheus HTTP API. Reused 5x below.
+# Use POST so panel exprs containing braces, quotes, and parentheses
+# survive shell quoting.
+prom_api_get() {
+  # Usage: prom_api_get <endpoint-path>
+  # Example: prom_api_get rules
+  kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
+    wget -qO- "http://localhost:9090/api/v1/$1" 2>/dev/null
+}
+prom_api_post() {
+  # Usage: prom_api_post <endpoint-path> <encoded-body>
+  # Example: prom_api_post query "query=up%7Bjob%3D%22foo%22%7D"
+  kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
+    wget -qO- --post-data="$2" "http://localhost:9090/api/v1/$1" 2>/dev/null
+}
 
 step "Probe daemon and Prometheus"
 curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 \
@@ -91,11 +136,12 @@ else
   warn "pg_stat_statements_seconds_total not yet exposed by postgres-exporter (may need DB activity to populate)"
 fi
 
-step "Verify Prometheus scrapes postgres-exporter"
-sleep 20
-SCRAPE_HEALTH=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-  wget -qO- 'http://localhost:9090/api/v1/targets' 2>/dev/null \
-  | python3 -c "
+step "Poll Prometheus targets up to 60s for postgres-exporter scrape pickup"
+SCRAPE_HEALTH_INITIAL="error"
+SCRAPE_DEADLINE=$((SECONDS + 60))
+while [ ${SECONDS} -lt ${SCRAPE_DEADLINE} ]; do
+  SCRAPE_HEALTH_INITIAL=$(prom_api_get targets \
+    | python3 -c "
 import json, sys
 try:
     targets = json.load(sys.stdin)['data']['activeTargets']
@@ -107,10 +153,15 @@ for t in targets:
         sys.exit(0)
 print('not-found')
 " 2>/dev/null || echo "error")
-if [ "${SCRAPE_HEALTH}" = "up" ]; then
+  if [ "${SCRAPE_HEALTH_INITIAL}" = "up" ]; then
+    break
+  fi
+  sleep 5
+done
+if [ "${SCRAPE_HEALTH_INITIAL}" = "up" ]; then
   ok "Prometheus scrape: postgres-exporter health=up"
 else
-  warn "Prometheus scrape state: ${SCRAPE_HEALTH} (continuing, may catch up later)"
+  warn "Prometheus scrape state after 60s: ${SCRAPE_HEALTH_INITIAL} (re-checked later)"
 fi
 
 step "Apply PrometheusRules"
@@ -122,8 +173,7 @@ step "Poll Prometheus /api/v1/rules up to 120s for the 5 alerts to load"
 RULES_LOADED="missing:initial"
 RULES_DEADLINE=$((SECONDS + 120))
 while [ ${SECONDS} -lt ${RULES_DEADLINE} ]; do
-  RULES_LOADED=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-    wget -qO- 'http://localhost:9090/api/v1/rules' 2>/dev/null \
+  RULES_LOADED=$(prom_api_get rules \
     | python3 -c "
 import json, sys
 try:
@@ -164,7 +214,10 @@ if [ -f "${UPSTREAM_DASHBOARD_PATH}" ]; then
     head -40 "${TMP_DIR}/dashboard-parity.diff"
   fi
 else
-  ok "SKIP parity check: upstream perf-sentinel repo not at ${UPSTREAM_DASHBOARD_PATH}"
+  warn "SKIP parity check: upstream JSON not found at ${UPSTREAM_DASHBOARD_PATH}"
+  warn "  override the path via the UPSTREAM_DASHBOARD_PATH env var :"
+  warn "  UPSTREAM_DASHBOARD_PATH=/path/to/perf-sentinel/examples/grafana-dashboard.json \\"
+  warn "    make verify-grafana-dashboard"
 fi
 
 step "Apply extended dashboard ConfigMap"
@@ -181,10 +234,17 @@ ok "extended dashboard ConfigMap applied (sidecar imports within ~30s)"
 
 if [ "${SKIP_TRAFFIC:-0}" != "1" ]; then
   step "Drive traffic so panels populate (validate-findings, ~5 min)"
-  kubectl -n db exec sts/postgres -- psql -U lab -d lab \
-    -c "SELECT pg_stat_statements_reset();" >/dev/null 2>&1 || true
-  make -C "${LAB_ROOT}" validate-findings >/dev/null 2>&1 || true
-  ok "validate-findings done"
+  if kubectl -n db exec sts/postgres -- psql -U lab -d lab \
+       -c "SELECT pg_stat_statements_reset();" >/dev/null 2>&1; then
+    ok "pg_stat_statements counters reset"
+  else
+    warn "pg_stat_statements_reset() failed (extension absent or perms?), continuing with stale counters"
+  fi
+  if make -C "${LAB_ROOT}" validate-findings >/dev/null 2>&1; then
+    ok "validate-findings done"
+  else
+    warn "validate-findings exited non-zero (shop services unhealthy or k6 issues?), continuing with whatever traffic landed"
+  fi
   step "Wait 60s for Prometheus scrape cycles"
   sleep 60
 else
@@ -271,8 +331,7 @@ for p in data.get('panels', []):
 " > "${TMP_DIR}/upstream-exprs.txt"
 while IFS=$'\t' read -r encoded raw; do
   TOTAL_PANELS=$((TOTAL_PANELS + 1))
-  count=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-    wget -qO- --post-data="query=${encoded}" 'http://localhost:9090/api/v1/query' 2>/dev/null \
+  count=$(prom_api_post query "query=${encoded}" \
     | python3 -c "
 import json, sys
 try:
@@ -311,8 +370,9 @@ ok "Grafana sees: ${GRAFANA_DASHBOARDS}"
 if [ "${SKIP_TRIGGER_TEST:-0}" != "1" ]; then
   step "Trigger test: scale daemon to 0, expect PerfSentinelDaemonDown to fire"
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=0 >/dev/null
-  # Poll up to 240s instead of fixed 180s. Worst case: scrape interval
-  # (15-30s) + alert for: 2m + slack. With 30s scrape and 16x15s polls,
+  DAEMON_SCALED_DOWN=1
+  # Poll up to 240s instead of a fixed wait. Worst case: scrape interval
+  # (15-30s) + alert `for: 2m` + slack. With 30s scrape and 16x15s polls
   # we tolerate ~120s + 240s = 360s but exit early as soon as firing.
   step "Poll Prometheus /api/v1/rules every 15s up to 240s for PerfSentinelDaemonDown firing"
   # /api/v1/rules returns every loaded rule with its current state
@@ -323,8 +383,7 @@ if [ "${SKIP_TRIGGER_TEST:-0}" != "1" ]; then
   TRIGGER_DEADLINE=$((SECONDS + 240))
   TRIGGER_LAST_STATE="not-yet"
   while [ ${SECONDS} -lt ${TRIGGER_DEADLINE} ]; do
-    TRIGGER_LAST_STATE=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-      wget -qO- 'http://localhost:9090/api/v1/rules' 2>/dev/null \
+    TRIGGER_LAST_STATE=$(prom_api_get rules \
       | python3 -c "
 import json, sys
 try:
@@ -347,6 +406,7 @@ print('rule-not-loaded')
   done
   step "Restore daemon"
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=1 >/dev/null
+  DAEMON_SCALED_DOWN=0
   kubectl -n observability rollout status deployment/perf-sentinel-daemon --timeout=90s >/dev/null
   if [ "${FIRING}" = "yes" ]; then
     ok "PerfSentinelDaemonDown fired as expected (last state: firing)"
@@ -364,8 +424,7 @@ fi
 # now that traffic ran. The first checks early in the script may have
 # fired before postgres-exporter was scraped or before any DB activity.
 step "Re-check postgres-exporter scrape state and pg_stat metric"
-SCRAPE_HEALTH=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-  wget -qO- 'http://localhost:9090/api/v1/targets' 2>/dev/null \
+SCRAPE_HEALTH_FINAL=$(prom_api_get targets \
   | python3 -c "
 import json, sys
 try:
@@ -378,7 +437,7 @@ for t in targets:
         sys.exit(0)
 print('not-found')
 " 2>/dev/null || echo "error")
-ok "postgres-exporter scrape (final): ${SCRAPE_HEALTH}"
+ok "postgres-exporter scrape (final): ${SCRAPE_HEALTH_FINAL}"
 
 PGEX_METRIC_PRESENT="no"
 kubectl -n db port-forward svc/postgres-exporter 9187:9187 \
@@ -464,7 +523,9 @@ step "Write report"
   echo "## postgres-exporter"
   echo
   echo "- Deployment ready, Service ClusterIP on :9187, ServiceMonitor scraped"
-  echo "- Prometheus scrape health: ${SCRAPE_HEALTH}"
+  echo "- Prometheus scrape health (initial, post-deploy): ${SCRAPE_HEALTH_INITIAL}"
+  echo "- Prometheus scrape health (final, post-traffic): ${SCRAPE_HEALTH_FINAL}"
+  echo "- pg_stat_statements_seconds_total exposed: ${PGEX_METRIC_PRESENT}"
   echo
   echo "## Grafana dashboards visible via API"
   echo
