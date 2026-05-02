@@ -27,7 +27,8 @@ TMP_DIR="/tmp/${SCENARIO}"
 DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
-UPSTREAM_DASHBOARD="${SCENARIO_DIR}/dashboard-upstream.json"
+LAB_DASHBOARD="${LAB_ROOT}/manifests/grafana-dashboards/perf-sentinel-overview.json"
+UPSTREAM_DASHBOARD_PATH="${UPSTREAM_DASHBOARD_PATH:-${HOME}/RustroverProjects/perf-sentinel/examples/grafana-dashboard.json}"
 EXTENDED_DASHBOARD="${SCENARIO_DIR}/dashboard-extended.json"
 POSTGRES_EXPORTER_MANIFEST="${SCENARIO_DIR}/postgres-exporter.yaml"
 ALERTRULES_MANIFEST="${SCENARIO_DIR}/alertrules.yaml"
@@ -139,26 +140,33 @@ else
   warn "PrometheusRule load state: ${RULES_LOADED}"
 fi
 
-step "Apply dashboard ConfigMaps (upstream + extended)"
-# Upstream verbatim copy with mutated uid + title to avoid clash with the
-# lab's existing perf-sentinel-overview ConfigMap (loaded by bootstrap.sh).
-jq '.uid = "perf-sentinel-overview-upstream" | .title = "perf-sentinel overview (upstream)" | .tags = ((.tags // []) + ["upstream"])' \
-  "${UPSTREAM_DASHBOARD}" > "${TMP_DIR}/dashboard-upstream-mutated.json"
+step "Parity check: lab dashboard JSON vs upstream"
+PARITY_VERDICT="SKIPPED"
+if [ -f "${UPSTREAM_DASHBOARD_PATH}" ]; then
+  if diff <(jq --sort-keys . "${UPSTREAM_DASHBOARD_PATH}") \
+          <(jq --sort-keys . "${LAB_DASHBOARD}") > "${TMP_DIR}/dashboard-parity.diff" 2>&1; then
+    PARITY_VERDICT="PASS"
+    ok "lab dashboard byte-identical to upstream (after jq normalize)"
+  else
+    PARITY_VERDICT="FAIL"
+    warn "lab dashboard has drifted from upstream, see ${TMP_DIR}/dashboard-parity.diff"
+    head -40 "${TMP_DIR}/dashboard-parity.diff"
+  fi
+else
+  ok "SKIP parity check: upstream perf-sentinel repo not at ${UPSTREAM_DASHBOARD_PATH}"
+fi
 
-kubectl create configmap perf-sentinel-overview-upstream \
-  --from-file=perf-sentinel-overview-upstream.json="${TMP_DIR}/dashboard-upstream-mutated.json" \
-  -n observability \
-  --dry-run=client -o yaml \
-  | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
-  | kubectl apply -f - >/dev/null
-
+step "Apply extended dashboard ConfigMap"
+# The lab dashboard (= upstream verbatim) is already imported by
+# bootstrap.sh into the perf-sentinel-dashboards ConfigMap. We only
+# need to add the extended overlay here.
 kubectl create configmap perf-sentinel-extended-dashboard \
   --from-file=perf-sentinel-extended.json="${EXTENDED_DASHBOARD}" \
   -n observability \
   --dry-run=client -o yaml \
   | kubectl label --local -f - grafana_dashboard=1 -o yaml --dry-run=client \
   | kubectl apply -f - >/dev/null
-ok "2 dashboard ConfigMaps applied (sidecar imports within ~30s)"
+ok "extended dashboard ConfigMap applied (sidecar imports within ~30s)"
 
 if [ "${SKIP_TRAFFIC:-0}" != "1" ]; then
   step "Drive traffic so panels populate (validate-findings, ~5 min)"
@@ -172,7 +180,7 @@ else
   ok "SKIP_TRAFFIC=1, skipping validate-findings"
 fi
 
-step "Audit: daemon-exposed metrics vs metrics referenced by upstream dashboard"
+step "Audit: daemon-exposed metrics vs metrics referenced by dashboard (lab = upstream)"
 kubectl -n observability port-forward svc/perf-sentinel-daemon 14318:14318 \
   > "${TMP_DIR}/daemon-pf.log" 2>&1 &
 PIDS+=($!)
@@ -185,7 +193,7 @@ ok "${EXPOSED_COUNT} perf_sentinel_* metrics exposed by daemon"
 
 python3 -c "
 import json, re
-data = json.load(open('${UPSTREAM_DASHBOARD}'))
+data = json.load(open('${LAB_DASHBOARD}'))
 metrics = set()
 for panel in data.get('panels', []):
     for target in panel.get('targets', []):
@@ -194,7 +202,7 @@ for panel in data.get('panels', []):
 print('\n'.join(sorted(metrics)))
 " > "${TMP_DIR}/upstream-metrics.txt"
 USED_COUNT=$(wc -l < "${TMP_DIR}/upstream-metrics.txt" | tr -d ' ')
-ok "${USED_COUNT} perf_sentinel_* metrics referenced by upstream dashboard"
+ok "${USED_COUNT} perf_sentinel_* metrics referenced by dashboard"
 
 # Allow histogram bucket aliasing (perf_sentinel_slow_duration_seconds vs
 # perf_sentinel_slow_duration_seconds_bucket are the same registered metric).
@@ -218,19 +226,19 @@ with open('${TMP_DIR}/uncovered.txt', 'w') as f:
 BROKEN_COUNT=$(grep -c . "${TMP_DIR}/broken-references.txt" 2>/dev/null || echo 0)
 UNCOVERED_COUNT=$(grep -c . "${TMP_DIR}/uncovered.txt" 2>/dev/null || echo 0)
 if [ "${BROKEN_COUNT}" -gt 0 ]; then
-  warn "${BROKEN_COUNT} upstream panels reference metrics NOT exposed by daemon"
+  warn "${BROKEN_COUNT} panels reference metrics NOT exposed by daemon"
   cat "${TMP_DIR}/broken-references.txt"
 else
-  ok "0 broken references in upstream dashboard"
+  ok "0 broken references"
 fi
-ok "${UNCOVERED_COUNT} exposed metrics uncovered by upstream (extension targets)"
+ok "${UNCOVERED_COUNT} exposed metrics uncovered by dashboard (extension targets)"
 
-step "Validate every upstream panel expr returns at least one time series"
+step "Validate every panel expr returns at least one time series"
 EMPTY_PANELS=0
 TOTAL_PANELS=0
 python3 -c "
 import json
-data = json.load(open('${UPSTREAM_DASHBOARD}'))
+data = json.load(open('${LAB_DASHBOARD}'))
 for p in data.get('panels', []):
     for t in p.get('targets', []):
         if t.get('expr'):
@@ -278,28 +286,43 @@ ok "Grafana sees: ${GRAFANA_DASHBOARDS}"
 if [ "${SKIP_TRIGGER_TEST:-0}" != "1" ]; then
   step "Trigger test: scale daemon to 0, expect PerfSentinelDaemonDown to fire"
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=0 >/dev/null
-  step "Wait 180s for the alert for: 2m to elapse"
-  sleep 180
-  FIRING=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-    wget -qO- 'http://localhost:9090/api/v1/alerts' 2>/dev/null \
-    | python3 -c "
+  # Poll up to 240s instead of fixed 180s. Worst case: scrape interval
+  # (15-30s) + alert for: 2m + slack. With 30s scrape and 16x15s polls,
+  # we tolerate ~120s + 240s = 360s but exit early as soon as firing.
+  step "Poll alerts API every 15s up to 240s for PerfSentinelDaemonDown firing"
+  FIRING="no"
+  TRIGGER_DEADLINE=$((SECONDS + 240))
+  TRIGGER_LAST_STATE="not-yet"
+  while [ ${SECONDS} -lt ${TRIGGER_DEADLINE} ]; do
+    TRIGGER_LAST_STATE=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
+      wget -qO- 'http://localhost:9090/api/v1/alerts' 2>/dev/null \
+      | python3 -c "
 import json, sys
 try:
     alerts = json.load(sys.stdin)['data']['alerts']
 except Exception:
     print('error')
     sys.exit(0)
-firing = [a for a in alerts if a.get('labels', {}).get('alertname') == 'PerfSentinelDaemonDown' and a.get('state') == 'firing']
-print('yes' if firing else 'no')
-" 2>/dev/null || echo error)
+for a in alerts:
+    if a.get('labels', {}).get('alertname') == 'PerfSentinelDaemonDown':
+        print(a.get('state', 'unknown'))
+        sys.exit(0)
+print('absent')
+" 2>/dev/null || echo "error")
+    if [ "${TRIGGER_LAST_STATE}" = "firing" ]; then
+      FIRING="yes"
+      break
+    fi
+    sleep 15
+  done
   step "Restore daemon"
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=1 >/dev/null
   kubectl -n observability rollout status deployment/perf-sentinel-daemon --timeout=90s >/dev/null
   if [ "${FIRING}" = "yes" ]; then
-    ok "PerfSentinelDaemonDown fired as expected"
+    ok "PerfSentinelDaemonDown fired as expected (last state: firing)"
     TRIGGER_VERDICT="PASS"
   else
-    warn "PerfSentinelDaemonDown did not fire (state: ${FIRING})"
+    warn "PerfSentinelDaemonDown did not fire within 240s (last state: ${TRIGGER_LAST_STATE})"
     TRIGGER_VERDICT="FAIL"
   fi
 else
@@ -310,7 +333,8 @@ fi
 if [ "${BROKEN_COUNT}" -eq 0 ] \
    && [ "${EMPTY_PANELS}" -eq 0 ] \
    && [ "${RULES_LOADED}" = "all-loaded" ] \
-   && [ "${TRIGGER_VERDICT}" != "FAIL" ]; then
+   && [ "${TRIGGER_VERDICT}" != "FAIL" ] \
+   && [ "${PARITY_VERDICT}" != "FAIL" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -324,10 +348,14 @@ step "Write report"
   echo "Daemon: ${DAEMON_URL}"
   echo "Prometheus pod: ${PROMETHEUS_POD}"
   echo
+  echo "## Parity check"
+  echo
+  echo "- lab dashboard (manifests/grafana-dashboards/perf-sentinel-overview.json) vs upstream: ${PARITY_VERDICT}"
+  echo
   echo "## Coverage audit"
   echo
   echo "- daemon-exposed perf_sentinel_* metrics: ${EXPOSED_COUNT}"
-  echo "- referenced by upstream dashboard: ${USED_COUNT}"
+  echo "- referenced by dashboard: ${USED_COUNT}"
   echo "- broken references (panel expr -> missing metric): ${BROKEN_COUNT}"
   echo "- uncovered (exposed but no panel uses them): ${UNCOVERED_COUNT}"
   echo

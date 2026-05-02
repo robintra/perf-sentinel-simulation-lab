@@ -89,8 +89,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/grafana-dashboard/postgres-exporter.yaml \
 	  scenarios/grafana-dashboard/alertrules.yaml
-	@echo "==> json parse on grafana-dashboard dashboards"
-	@python3 -m json.tool < scenarios/grafana-dashboard/dashboard-upstream.json >/dev/null
+	@echo "==> json parse on grafana-dashboard extended dashboard"
 	@python3 -m json.tool < scenarios/grafana-dashboard/dashboard-extended.json >/dev/null
 	@echo "==> yaml parse on gitlab-ce values"
 	@python3 -c "import yaml,sys; list(yaml.safe_load_all(open(sys.argv[1])))" \
@@ -239,7 +238,10 @@ verify-grafana-dashboard: ## Grafana dashboard import, audit, alerts, postgres-e
 	./scenarios/grafana-dashboard/verify.sh
 
 verify-all-scenarios: ## Run all 9 deployment-mode scenarios sequentially (see docs/SCENARIOS.md)
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding pg-stat grafana-dashboard; do \
+	@# Order matters: grafana-dashboard runs BEFORE pg-stat so the latter
+	@# detects postgres-exporter and exercises Path 2 (--pg-stat-prometheus)
+	@# in addition to Path 1 (CSV).
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

@@ -1,164 +1,213 @@
 {
   "annotations": {
-    "list": [
-      {
-        "builtIn": 1,
-        "datasource": "-- Grafana --",
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
+    "list": []
   },
   "editable": true,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
+  "links": [],
   "panels": [
     {
-      "type": "stat",
-      "title": "Findings totaux",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "title": "I/O ops rate by service",
+      "description": "Heatmap of I/O operations per service over time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
-          "expr": "sum(perf_sentinel_findings_total)",
-          "refId": "A",
-          "legendFormat": "total"
+          "expr": "sum by (service) (rate(perf_sentinel_service_io_ops_total[5m]))",
+          "legendFormat": "{{service}}",
+          "refId": "A"
         }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
       "fieldConfig": {
         "defaults": {
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 100}]},
-          "unit": "short"
+          "unit": "ops"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Top 10 finding types by severity (1h)",
+      "description": "Most frequent finding types over the last hour",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (type, severity) (increase(perf_sentinel_findings_total[1h])))",
+          "legendFormat": "{{type}} ({{severity}})",
+          "refId": "A"
         }
-      },
-      "id": 1
+      ],
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
     },
     {
-      "type": "stat",
-      "title": "Traces actives",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "title": "I/O waste ratio",
+      "description": "Cumulative ratio of avoidable I/O operations since daemon start",
+      "type": "gauge",
+      "gridPos": { "h": 8, "w": 6, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        {"expr": "perf_sentinel_active_traces", "refId": "A"}
+        {
+          "expr": "perf_sentinel_io_waste_ratio",
+          "refId": "A"
+        }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "id": 2
-    },
-    {
-      "type": "stat",
-      "title": "Ratio IO evitable",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {"expr": "perf_sentinel_io_waste_ratio", "refId": "A"}
-      ],
-      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "yellow", "value": 0.1}, {"color": "red", "value": 0.3}]}
-        }
-      },
-      "id": 3
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.15 },
+              { "color": "orange", "value": 0.30 },
+              { "color": "red", "value": 0.50 }
+            ]
+          }
+        },
+        "overrides": []
+      }
     },
     {
+      "title": "Critical findings trend (24h)",
+      "description": "Number of critical findings over the last 24 hours. Shows 0 (not 'no data') when none have been emitted.",
       "type": "stat",
-      "title": "Traces analysees",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "h": 8, "w": 6, "x": 6, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
-        {"expr": "perf_sentinel_traces_analyzed_total", "refId": "A"}
+        {
+          "expr": "sum(increase(perf_sentinel_findings_total{severity=\"critical\"}[24h])) or vector(0)",
+          "refId": "A"
+        }
       ],
-      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "id": 4
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
     },
     {
+      "title": "Findings distribution by type (1h)",
+      "description": "Breakdown of finding types over the last hour",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "sum by (type) (increase(perf_sentinel_findings_total[1h]))",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Active traces",
+      "description": "Number of traces currently held in the daemon's sliding window",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [
+        {
+          "expr": "perf_sentinel_active_traces",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5000 },
+              { "color": "red", "value": 10000 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Slow query duration p95 (global)",
+      "description": "95th percentile of slow span durations across all daemon instances. Uses histogram_quantile() for accurate cross-instance aggregation.",
       "type": "timeseries",
-      "title": "Findings par severite (rate 5m)",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
-          "expr": "sum by (severity) (rate(perf_sentinel_findings_total[5m]))",
-          "refId": "A",
-          "legendFormat": "{{severity}}"
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(perf_sentinel_slow_duration_seconds_bucket{type=\"sql\"}[5m])))",
+          "legendFormat": "SQL p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(perf_sentinel_slow_duration_seconds_bucket{type=\"http_out\"}[5m])))",
+          "legendFormat": "HTTP p95",
+          "refId": "B"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "id": 5
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     },
     {
+      "title": "Events processed rate",
+      "description": "Rate of spans ingested by the daemon",
       "type": "timeseries",
-      "title": "Findings par type (rate 5m)",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [
         {
-          "expr": "sum by (type) (rate(perf_sentinel_findings_total[5m]))",
-          "refId": "A",
-          "legendFormat": "{{type}}"
+          "expr": "rate(perf_sentinel_events_processed_total[5m])",
+          "legendFormat": "events/s",
+          "refId": "A"
         }
       ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "id": 6
-    },
-    {
-      "type": "barchart",
-      "title": "Top services par IO ops",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {
-          "expr": "topk(5, sum by (service) (perf_sentinel_service_io_ops_total))",
-          "refId": "A",
-          "legendFormat": "{{service}}",
-          "instant": true
-        }
-      ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "id": 7
-    },
-    {
-      "type": "heatmap",
-      "title": "Distribution duree IO (slow_duration_seconds)",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {
-          "expr": "sum by (le) (rate(perf_sentinel_slow_duration_seconds_bucket[5m]))",
-          "refId": "A",
-          "format": "heatmap",
-          "legendFormat": "{{le}}"
-        }
-      ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
-      "id": 8
-    },
-    {
-      "type": "table",
-      "title": "Findings details (instant)",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "targets": [
-        {
-          "expr": "sum by (type, severity) (perf_sentinel_findings_total)",
-          "refId": "A",
-          "instant": true,
-          "format": "table"
-        }
-      ],
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
-      "id": 9
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
     }
   ],
-  "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["perf-sentinel", "lab"],
-  "templating": {"list": []},
-  "time": {"from": "now-1h", "to": "now"},
+  "tags": ["perf-sentinel", "observability", "greenops"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timepicker": {},
-  "timezone": "browser",
+  "timezone": "utc",
   "title": "perf-sentinel overview",
   "uid": "perf-sentinel-overview",
-  "version": 1,
-  "weekStart": ""
+  "version": 1
 }

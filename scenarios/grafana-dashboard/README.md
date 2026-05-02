@@ -27,19 +27,23 @@ Report lands at `/tmp/scenario-grafana-dashboard-report.md`.
 
 ## What it validates
 
-1. The 8 upstream panels render against live Prometheus (every `expr`
+1. **Parity check**: the lab dashboard at
+   `manifests/grafana-dashboards/perf-sentinel-overview.json` is
+   byte-identical to upstream `examples/grafana-dashboard.json`
+   (after `jq --sort-keys` normalization). Drift fails the scenario.
+2. The 8 dashboard panels render against live Prometheus (every `expr`
    returns at least one time series after `make validate-findings`).
-2. The 6 perf_sentinel_* metrics referenced by upstream are all exposed
-   by daemon 0.5.16 (zero broken references).
-3. The 6 metrics exposed but not covered by upstream are surfaced as
-   extension targets and consumed by the lab's extended overlay.
-4. The extended overlay (9 panels) imports cleanly and the Grafana
+3. The 6 perf_sentinel_* metrics referenced by the dashboard are all
+   exposed by daemon 0.5.16 (zero broken references).
+4. The 6 metrics exposed but not covered by the dashboard are surfaced
+   as extension targets and consumed by the lab's extended overlay.
+5. The extended overlay (9 panels) imports cleanly and the Grafana
    sidecar picks it up.
-5. The 5 PrometheusRules load via the kube-prometheus-stack operator.
-6. `PerfSentinelDaemonDown` fires when the daemon scales to 0
-   (end-to-end alert path), the other 4 rules are validated as
-   "loaded and parses" only.
-7. postgres-exporter Deployment ready, Service exposed on :9187,
+6. The 5 PrometheusRules load via the kube-prometheus-stack operator.
+7. `PerfSentinelDaemonDown` fires when the daemon scales to 0
+   (end-to-end alert path, polling up to 240s), the other 4 rules are
+   validated as "loaded and parses" only.
+8. postgres-exporter Deployment ready, Service exposed on :9187,
    ServiceMonitor scraped by Prometheus, `pg_stat_statements_seconds_total`
    queryable.
 
@@ -119,11 +123,6 @@ ingress are new.
 
 ## Limitations
 
-- Lab dashboard at `manifests/grafana-dashboards/perf-sentinel-overview.json`
-  is a custom French-labeled artifact, not a copy of upstream. Both
-  dashboards coexist in Grafana via distinct uids
-  (`perf-sentinel-overview` and `perf-sentinel-overview-upstream`,
-  the latter renamed at apply time by `verify.sh`).
 - The 4 alert rules other than `PerfSentinelDaemonDown` are validated
   as "rule parses and loads" only. End-to-end firing requires crafted
   load (waste ratio > 0.30, 5+ critical findings/h, 8000+ active
@@ -133,13 +132,23 @@ ingress are new.
 - This scenario is local-only, like the other 8. The
   `validate-on-release.yml` workflow covers minimal sanity targets,
   not the scenario suite (cluster footprint exceeds GHA capacity).
+- The parity check requires the upstream perf-sentinel repo at
+  `${HOME}/RustroverProjects/perf-sentinel`. Override the path via
+  the `UPSTREAM_DASHBOARD_PATH` env var. When absent, the parity
+  step is SKIPPED (not failed).
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
 | `verify.sh` | Orchestration, idempotent re-runs, ~5-8 min wall clock |
-| `dashboard-upstream.json` | Verbatim copy of upstream `examples/grafana-dashboard.json`, applied with mutated uid+title |
 | `dashboard-extended.json` | 9 lab panels covering exposed-but-unused daemon metrics + postgres-exporter |
 | `postgres-exporter.yaml` | Secret + Deployment + Service + ServiceMonitor in namespace `db` |
 | `alertrules.yaml` | PrometheusRule with 5 alerts in namespace `observability` |
+
+The dashboard JSON itself lives at
+`manifests/grafana-dashboards/perf-sentinel-overview.json` (lab) and
+`examples/grafana-dashboard.json` (upstream perf-sentinel). The lab
+copy is byte-identical to upstream after `jq --sort-keys`. Bootstrap
+imports the lab copy into Grafana via the sidecar pattern, no second
+import needed.

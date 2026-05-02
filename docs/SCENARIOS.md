@@ -911,16 +911,19 @@ Report at `/tmp/scenario-grafana-dashboard-report.md` with the audit
 table, panel-by-panel verdict, alert-rule load state, and trigger-test
 verdict.
 
-### Lab vs upstream dashboard coexistence
+### Lab dashboard mirrors upstream
 
 The lab's `manifests/grafana-dashboards/perf-sentinel-overview.json`
-is a custom French-labeled artifact, not a copy of upstream. Both
-dashboards live in Grafana side by side via distinct uids :
+is a verbatim copy of upstream `examples/grafana-dashboard.json`. The
+parity check in `verify.sh` diffs both with `jq --sort-keys` and FAILs
+on drift, so the lab tracks upstream automatically. Two dashboards
+visible in Grafana :
 
-- `perf-sentinel-overview` (lab custom, loaded by `bootstrap.sh`)
-- `perf-sentinel-overview-upstream` (verbatim upstream, applied by
-  `verify.sh` with `jq` mutating the uid and title to avoid clash)
-- `perf-sentinel-extended` (lab overlay, 9 panels)
+- `perf-sentinel-overview` (loaded by `bootstrap.sh`, identical to
+  upstream)
+- `perf-sentinel-extended` (lab overlay, 9 panels covering the
+  daemon metrics upstream does not use plus 2 postgres-exporter
+  panels)
 
 ### Watch out
 
@@ -929,11 +932,14 @@ dashboards live in Grafana side by side via distinct uids :
   the rules into a production stack.
 - postgres-exporter reuses the `lab` Postgres user. In production,
   prefer a dedicated read-only role.
-- Importing the upstream dashboard into a Grafana that already has a
-  `perf-sentinel-overview` uid causes a sidecar-load conflict. The
-  scenario mutates the uid via `jq` at apply time. If you cherry-pick
-  the upstream JSON manually into another Grafana, do the same
-  mutation or accept that one of the two dashboards will be hidden.
+- The parity check needs the upstream perf-sentinel repo at
+  `${HOME}/RustroverProjects/perf-sentinel`. Override the path via
+  `UPSTREAM_DASHBOARD_PATH=...`. When absent, the parity step is
+  SKIPPED (not failed).
+- If you tweak the lab copy of the dashboard without the corresponding
+  upstream change, parity drifts and the scenario FAILs. The intended
+  workflow is : edit upstream, then re-`cp` to the lab path, then run
+  `make verify-grafana-dashboard`.
 
 ---
 
