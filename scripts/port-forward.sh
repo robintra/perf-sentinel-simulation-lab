@@ -51,14 +51,16 @@ stop_one() {
 cmd="${1:-start}"
 case "${cmd}" in
   start)
-    start_one grafana observability kube-prometheus-stack-grafana 3000 3000
-    start_one daemon  observability perf-sentinel-daemon         14318 14318
-    start_one tempo   observability tempo                         3200 3200
+    start_one grafana    observability kube-prometheus-stack-grafana    3000  3000
+    start_one daemon     observability perf-sentinel-daemon            14318 14318
+    start_one tempo      observability tempo                            3200  3200
+    start_one prometheus observability kube-prometheus-stack-prometheus 9090  9090
     ;;
   stop)
     stop_one grafana
     stop_one daemon
     stop_one tempo
+    stop_one prometheus
     ;;
   *)
     echo "Usage: $0 {start|stop}"
