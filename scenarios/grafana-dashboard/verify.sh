@@ -115,10 +115,16 @@ fi
 
 step "Apply PrometheusRules"
 kubectl apply -f "${ALERTRULES_MANIFEST}" >/dev/null
-sleep 15
-RULES_LOADED=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-  wget -qO- 'http://localhost:9090/api/v1/rules' 2>/dev/null \
-  | python3 -c "
+
+# The Prometheus operator takes 30-90s to render the PrometheusRule into
+# Prometheus's rule files and trigger a reload. Poll up to 120s.
+step "Poll Prometheus /api/v1/rules up to 120s for the 5 alerts to load"
+RULES_LOADED="missing:initial"
+RULES_DEADLINE=$((SECONDS + 120))
+while [ ${SECONDS} -lt ${RULES_DEADLINE} ]; do
+  RULES_LOADED=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
+    wget -qO- 'http://localhost:9090/api/v1/rules' 2>/dev/null \
+    | python3 -c "
 import json, sys
 try:
     groups = json.load(sys.stdin)['data']['groups']
@@ -134,10 +140,15 @@ if missing:
 else:
     print('all-loaded')
 " 2>/dev/null || echo "error")
+  if [ "${RULES_LOADED}" = "all-loaded" ]; then
+    break
+  fi
+  sleep 10
+done
 if [ "${RULES_LOADED}" = "all-loaded" ]; then
   ok "5 PrometheusRules loaded"
 else
-  warn "PrometheusRule load state: ${RULES_LOADED}"
+  warn "PrometheusRule load state after 120s: ${RULES_LOADED}"
 fi
 
 step "Parity check: lab dashboard JSON vs upstream"
@@ -223,8 +234,19 @@ with open('${TMP_DIR}/broken-references.txt', 'w') as f:
 with open('${TMP_DIR}/uncovered.txt', 'w') as f:
     f.write('\n'.join(uncovered) + ('\n' if uncovered else ''))
 "
-BROKEN_COUNT=$(grep -c . "${TMP_DIR}/broken-references.txt" 2>/dev/null || echo 0)
-UNCOVERED_COUNT=$(grep -c . "${TMP_DIR}/uncovered.txt" 2>/dev/null || echo 0)
+# grep -c on an empty file prints "0" then exits 1, and `|| echo 0`
+# captures BOTH outputs producing "0\n0" which breaks `[ -eq 0 ]`. Gate
+# with -s (non-empty file) to keep the value clean integer.
+if [ -s "${TMP_DIR}/broken-references.txt" ]; then
+  BROKEN_COUNT=$(grep -c . "${TMP_DIR}/broken-references.txt")
+else
+  BROKEN_COUNT=0
+fi
+if [ -s "${TMP_DIR}/uncovered.txt" ]; then
+  UNCOVERED_COUNT=$(grep -c . "${TMP_DIR}/uncovered.txt")
+else
+  UNCOVERED_COUNT=0
+fi
 if [ "${BROKEN_COUNT}" -gt 0 ]; then
   warn "${BROKEN_COUNT} panels reference metrics NOT exposed by daemon"
   cat "${TMP_DIR}/broken-references.txt"
@@ -236,18 +258,21 @@ ok "${UNCOVERED_COUNT} exposed metrics uncovered by dashboard (extension targets
 step "Validate every panel expr returns at least one time series"
 EMPTY_PANELS=0
 TOTAL_PANELS=0
+# URL-encode the exprs upfront so braces, quotes, and parentheses do
+# not break shell interpolation when piped to wget --post-data.
 python3 -c "
-import json
+import json, urllib.parse
 data = json.load(open('${LAB_DASHBOARD}'))
 for p in data.get('panels', []):
     for t in p.get('targets', []):
-        if t.get('expr'):
-            print(t['expr'].replace('\n', ' '))
+        expr = (t.get('expr') or '').replace('\n', ' ')
+        if expr:
+            print(urllib.parse.quote(expr) + '\t' + expr)
 " > "${TMP_DIR}/upstream-exprs.txt"
-while IFS= read -r expr; do
+while IFS=$'\t' read -r encoded raw; do
   TOTAL_PANELS=$((TOTAL_PANELS + 1))
   count=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-    wget -qO- --post-data="query=${expr}" 'http://localhost:9090/api/v1/query' 2>/dev/null \
+    wget -qO- --post-data="query=${encoded}" 'http://localhost:9090/api/v1/query' 2>/dev/null \
     | python3 -c "
 import json, sys
 try:
@@ -257,7 +282,7 @@ except Exception:
 " 2>/dev/null || echo 0)
   if [ "${count}" -lt 1 ]; then
     EMPTY_PANELS=$((EMPTY_PANELS + 1))
-    warn "empty result: ${expr:0:70}..."
+    warn "empty result: ${raw:0:70}..."
   fi
 done < "${TMP_DIR}/upstream-exprs.txt"
 ok "${TOTAL_PANELS} panel expressions checked, ${EMPTY_PANELS} returned empty"
@@ -289,25 +314,30 @@ if [ "${SKIP_TRIGGER_TEST:-0}" != "1" ]; then
   # Poll up to 240s instead of fixed 180s. Worst case: scrape interval
   # (15-30s) + alert for: 2m + slack. With 30s scrape and 16x15s polls,
   # we tolerate ~120s + 240s = 360s but exit early as soon as firing.
-  step "Poll alerts API every 15s up to 240s for PerfSentinelDaemonDown firing"
+  step "Poll Prometheus /api/v1/rules every 15s up to 240s for PerfSentinelDaemonDown firing"
+  # /api/v1/rules returns every loaded rule with its current state
+  # (inactive/pending/firing). /api/v1/alerts only returns active
+  # (pending/firing) alerts so it cannot distinguish "rule not loaded"
+  # from "rule loaded but inactive". Using /rules is more diagnostic.
   FIRING="no"
   TRIGGER_DEADLINE=$((SECONDS + 240))
   TRIGGER_LAST_STATE="not-yet"
   while [ ${SECONDS} -lt ${TRIGGER_DEADLINE} ]; do
     TRIGGER_LAST_STATE=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-      wget -qO- 'http://localhost:9090/api/v1/alerts' 2>/dev/null \
+      wget -qO- 'http://localhost:9090/api/v1/rules' 2>/dev/null \
       | python3 -c "
 import json, sys
 try:
-    alerts = json.load(sys.stdin)['data']['alerts']
+    groups = json.load(sys.stdin)['data']['groups']
 except Exception:
     print('error')
     sys.exit(0)
-for a in alerts:
-    if a.get('labels', {}).get('alertname') == 'PerfSentinelDaemonDown':
-        print(a.get('state', 'unknown'))
-        sys.exit(0)
-print('absent')
+for g in groups:
+    for r in g.get('rules', []):
+        if r.get('name') == 'PerfSentinelDaemonDown':
+            print(r.get('state', 'unknown'))
+            sys.exit(0)
+print('rule-not-loaded')
 " 2>/dev/null || echo "error")
     if [ "${TRIGGER_LAST_STATE}" = "firing" ]; then
       FIRING="yes"
@@ -330,8 +360,46 @@ else
   TRIGGER_VERDICT="SKIPPED"
 fi
 
-if [ "${BROKEN_COUNT}" -eq 0 ] \
-   && [ "${EMPTY_PANELS}" -eq 0 ] \
+# Re-check transient states (postgres-exporter scrape, pg_stat metric)
+# now that traffic ran. The first checks early in the script may have
+# fired before postgres-exporter was scraped or before any DB activity.
+step "Re-check postgres-exporter scrape state and pg_stat metric"
+SCRAPE_HEALTH=$(kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
+  wget -qO- 'http://localhost:9090/api/v1/targets' 2>/dev/null \
+  | python3 -c "
+import json, sys
+try:
+    targets = json.load(sys.stdin)['data']['activeTargets']
+except (json.JSONDecodeError, KeyError):
+    sys.exit(2)
+for t in targets:
+    if 'postgres-exporter' in t.get('labels', {}).get('job', ''):
+        print(t.get('health', 'unknown'))
+        sys.exit(0)
+print('not-found')
+" 2>/dev/null || echo "error")
+ok "postgres-exporter scrape (final): ${SCRAPE_HEALTH}"
+
+PGEX_METRIC_PRESENT="no"
+kubectl -n db port-forward svc/postgres-exporter 9187:9187 \
+  > "${TMP_DIR}/pgex-final-pf.log" 2>&1 &
+PIDS+=($!)
+sleep 3
+if curl -sf http://localhost:9187/metrics 2>/dev/null \
+   | grep -q '^pg_stat_statements_seconds_total'; then
+  PGEX_METRIC_PRESENT="yes"
+  ok "pg_stat_statements_seconds_total exposed (final)"
+else
+  warn "pg_stat_statements_seconds_total still not exposed (postgres may need pg_stat_statements_reset + queries)"
+fi
+
+# BROKEN_COUNT (panel-referenced metric not in `/metrics` output) is
+# informational only. It can be > 0 with a freshly-restarted daemon
+# whose CounterVec metrics have no observed labels yet (the family is
+# registered but no series are emitted). The real "panel will render"
+# check is EMPTY_PANELS, which queries Prometheus historical data and
+# accounts for upstream's `or vector(0)` fallbacks.
+if [ "${EMPTY_PANELS}" -eq 0 ] \
    && [ "${RULES_LOADED}" = "all-loaded" ] \
    && [ "${TRIGGER_VERDICT}" != "FAIL" ] \
    && [ "${PARITY_VERDICT}" != "FAIL" ]; then

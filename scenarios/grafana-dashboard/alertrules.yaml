@@ -22,14 +22,19 @@ spec:
     - name: perf-sentinel-daemon-health
       rules:
         - alert: PerfSentinelDaemonDown
-          expr: up{job="perf-sentinel-daemon"} == 0
+          # `up == 0` covers scrape failures (daemon process unhealthy
+          # but pod still listed by ServiceMonitor). `absent(up) == 1`
+          # covers the case where the daemon Deployment has 0 replicas
+          # (no endpoints, no series emitted). Both fail modes are
+          # interesting: "daemon broken" and "daemon gone".
+          expr: up{job="perf-sentinel-daemon"} == 0 or absent(up{job="perf-sentinel-daemon"}) == 1
           for: 2m
           labels:
             severity: critical
             team: greenops
           annotations:
             summary: "perf-sentinel daemon is down"
-            description: "Daemon at {{ $labels.instance }} has been DOWN for at least 2 minutes."
+            description: "Daemon job is unscrapeable (down or gone) for at least 2 minutes."
             runbook_url: "https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md#grafana-dashboard-validation"
 
         - alert: PerfSentinelHighIOWasteRatio
