@@ -5,16 +5,10 @@
 # scenarios/pg-stat/verify.sh and the panel "Top 10 slow queries" in
 # the dashboard-extended.json.
 #
-# Reuses the lab `lab` user (read-only would be cleaner in prod).
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-exporter-credentials
-  namespace: db
-type: Opaque
-stringData:
-  DATA_SOURCE_NAME: "postgresql://lab:lab@postgres:5432/lab?sslmode=disable"
+# Reuses the lab `lab` user via the existing postgres-credentials
+# Secret (`username` + `password` keys). A dedicated read-only role
+# would be cleaner in production. The Secret is created by
+# scripts/bootstrap.sh from the .postgres-password file.
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,9 +34,23 @@ spec:
           image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
           args:
             - "--collector.stat_statements"
-          envFrom:
-            - secretRef:
-                name: postgres-exporter-credentials
+          env:
+            # postgres-exporter accepts DATA_SOURCE_USER + DATA_SOURCE_PASS
+            # + DATA_SOURCE_URI as an alternative to DATA_SOURCE_NAME, which
+            # lets us source the password from the existing
+            # postgres-credentials Secret instead of duplicating it.
+            - name: DATA_SOURCE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: DATA_SOURCE_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: DATA_SOURCE_URI
+              value: "postgres:5432/lab?sslmode=disable"
           ports:
             - name: metrics
               containerPort: 9187

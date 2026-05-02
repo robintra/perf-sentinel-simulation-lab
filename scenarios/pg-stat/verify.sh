@@ -47,7 +47,11 @@ step "Wait for stat collector to flush"
 sleep 5
 
 step "Dump pg_stat_statements via psql COPY"
-kubectl -n db exec sts/postgres -- psql -U lab -d lab -c "\copy (SELECT queryid, query, calls, total_exec_time, mean_exec_time, rows, shared_blks_hit, shared_blks_read FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100) TO STDOUT WITH CSV HEADER;" \
+# Flatten newlines/tabs/CRs in the `query` column so each pg_stat row
+# stays on a single CSV line. Without this, multi-line SQL queries
+# break the perf-sentinel CSV parser at line N where N is the first
+# query continuation line (it sees an empty `calls` column).
+kubectl -n db exec sts/postgres -- psql -U lab -d lab -c "\copy (SELECT queryid, regexp_replace(query, E'[\r\n\t]+', ' ', 'g') AS query, calls, total_exec_time, mean_exec_time, rows, shared_blks_hit, shared_blks_read FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 100) TO STDOUT WITH CSV HEADER;" \
   > "${TMP_DIR}/pg-stat.csv" 2>/dev/null
 ROW_COUNT=$(($(wc -l < "${TMP_DIR}/pg-stat.csv") - 1))
 ok "exported ${ROW_COUNT} pg_stat_statements rows to CSV"
@@ -99,14 +103,26 @@ if kubectl -n db get deploy postgres-exporter >/dev/null 2>&1; then
   PF_PROM=$!
   trap "kill ${PF_PROM} 2>/dev/null" EXIT
   sleep 3
+  # On macOS Docker Desktop, --network host does NOT bridge to the
+  # macOS host (docker engine runs in a Linux VM). Use
+  # host.docker.internal:host-gateway which resolves to the host
+  # gateway from the VM. On Linux Docker, host networking works
+  # directly with localhost.
+  if [ "$(uname -s)" = "Linux" ]; then
+    PROM_URL_FROM_DOCKER="http://localhost:9090"
+    DOCKER_NET_FLAGS=(--network host)
+  else
+    PROM_URL_FROM_DOCKER="http://host.docker.internal:9090"
+    DOCKER_NET_FLAGS=(--add-host=host.docker.internal:host-gateway)
+  fi
   if docker run --rm \
-       --network host \
+       "${DOCKER_NET_FLAGS[@]}" \
        -v "${TRACES_FIXTURE}:/input/traces.json:ro" \
        -v "${TMP_DIR}:/output" \
        "${IMAGE}" \
        report \
          --input /input/traces.json \
-         --pg-stat-prometheus "http://localhost:9090" \
+         --pg-stat-prometheus "${PROM_URL_FROM_DOCKER}" \
          --output /output/dashboard-prometheus.html \
        > "${TMP_DIR}/report-prom.log" 2>&1; then
     if [ -s "${TMP_DIR}/dashboard-prometheus.html" ] \
