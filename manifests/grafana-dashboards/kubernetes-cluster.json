@@ -17,7 +17,7 @@
   "panels": [
     {
       "type": "stat",
-      "title": "Pods Running par namespace",
+      "title": "Pods Running by namespace",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
@@ -33,7 +33,7 @@
     },
     {
       "type": "stat",
-      "title": "Noeuds Ready",
+      "title": "Nodes Ready",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
@@ -48,7 +48,7 @@
     },
     {
       "type": "timeseries",
-      "title": "CPU usage par noeud",
+      "title": "CPU usage by node",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
@@ -63,7 +63,7 @@
     },
     {
       "type": "timeseries",
-      "title": "RAM utilisee par noeud",
+      "title": "RAM used by node",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {

@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Lab-only overlay covering perf-sentinel daemon metrics not used by the upstream overview, plus postgres-exporter pg_stat_statements panels.",
+  "description": "Lab-only overlay covering postgres-exporter pg_stat_statements panels. Daemon metrics that used to live here have been promoted to the upstream dashboard (examples/grafana-dashboard.json), 18 panels total.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -20,125 +20,6 @@
   "panels": [
     {
       "id": 1,
-      "type": "stat",
-      "title": "Daemon health",
-      "description": "up{} for the perf-sentinel daemon scrape job. 0 means Prometheus cannot reach /metrics. The lab paged on this in 0.5.15 when /metrics returned 501 to vmagent.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "up{job=\"perf-sentinel-daemon\"}", "refId": "A"}
-      ],
-      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0},
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {"type": "value", "options": {"0": {"text": "DOWN", "color": "red"}, "1": {"text": "UP", "color": "green"}}}
-          ],
-          "thresholds": {"mode": "absolute", "steps": [
-            {"color": "red", "value": null},
-            {"color": "green", "value": 1}
-          ]}
-        }
-      },
-      "options": {"colorMode": "background", "graphMode": "none", "textMode": "value_and_name"}
-    },
-    {
-      "id": 2,
-      "type": "stat",
-      "title": "Cold-start indicator",
-      "description": "1 when the daemon process started less than 5 minutes ago. Pairs with Report.warnings: 'no events processed yet' that 0.5.16 added so users do not mistake cold-start for a clean run.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "(time() - process_start_time_seconds{job=\"perf-sentinel-daemon\"}) < 300", "refId": "A"}
-      ],
-      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0},
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            {"type": "value", "options": {"0": {"text": "Stable", "color": "green"}, "1": {"text": "Cold-start", "color": "yellow"}}}
-          ],
-          "thresholds": {"mode": "absolute", "steps": [
-            {"color": "green", "value": null},
-            {"color": "yellow", "value": 1}
-          ]}
-        }
-      },
-      "options": {"colorMode": "background", "graphMode": "none", "textMode": "value_and_name"}
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "Total I/O ops processed",
-      "description": "Cumulative perf_sentinel_total_io_ops since daemon start. Use as a sanity counter to confirm the OTLP pipeline keeps feeding the analyzer.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "perf_sentinel_total_io_ops", "refId": "A"}
-      ],
-      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "short"}}
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "Traces analyzed (cumulative)",
-      "description": "perf_sentinel_traces_analyzed_total since daemon start, complements the upstream events-processed-rate panel by giving the trace-level cadence.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "perf_sentinel_traces_analyzed_total", "refId": "A"}
-      ],
-      "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "short"}}
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Avoidable I/O ops rate",
-      "description": "Rate of I/O ops the analyzer marked as avoidable. The GreenOps Phase 9 trend signal: if this number trends down, optimization PRs are landing.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "rate(perf_sentinel_avoidable_io_ops[5m])", "refId": "A", "legendFormat": "avoidable ops/s"}
-      ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-      "fieldConfig": {"defaults": {"unit": "ops"}}
-    },
-    {
-      "id": 6,
-      "type": "timeseries",
-      "title": "Energy ingestion freshness",
-      "description": "Age of the last successful Scaphandre and cloud-energy scrape. If either age trends past the scrape interval, the GreenOps attribution is stale.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "perf_sentinel_scaphandre_last_scrape_age_seconds", "refId": "A", "legendFormat": "scaphandre"},
-        {"expr": "perf_sentinel_cloud_energy_last_scrape_age_seconds", "refId": "B", "legendFormat": "cloud_energy"}
-      ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
-      "fieldConfig": {"defaults": {"unit": "s"}}
-    },
-    {
-      "id": 7,
-      "type": "timeseries",
-      "title": "Report exports rate",
-      "description": "rate(perf_sentinel_export_report_requests_total). Tracks how often /api/export/report is consumed (CI snapshots, dev triage, daemon-Report to local-batch path).",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "rate(perf_sentinel_export_report_requests_total[5m])", "refId": "A", "legendFormat": "exports/s"}
-      ],
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
-      "fieldConfig": {"defaults": {"unit": "ops"}}
-    },
-    {
-      "id": 8,
-      "type": "timeseries",
-      "title": "DB query rate (pg_stat)",
-      "description": "Top 5 SQL templates by call rate, scraped from postgres-exporter pg_stat_statements_calls_total. Pairs with perf-sentinel slow_sql findings.",
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "targets": [
-        {"expr": "topk(5, rate(pg_stat_statements_calls_total[5m]))", "refId": "A", "legendFormat": "{{queryid}}"}
-      ],
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
-      "fieldConfig": {"defaults": {"unit": "ops"}}
-    },
-    {
-      "id": 9,
       "type": "table",
       "title": "Top 10 slow queries (pg_stat)",
       "description": "Most time-consuming queries via pg_stat_statements_seconds_total (postgres-exporter). Same source as `perf-sentinel report --pg-stat-prometheus`.",
@@ -146,17 +27,29 @@
       "targets": [
         {"expr": "topk(10, pg_stat_statements_seconds_total)", "refId": "A", "format": "table", "instant": true}
       ],
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 20},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 0},
       "fieldConfig": {
         "defaults": {
           "unit": "s",
           "custom": {"displayMode": "color-background", "align": "left"}
         }
       }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "DB query rate (pg_stat)",
+      "description": "Top 5 SQL templates by call rate, scraped from postgres-exporter pg_stat_statements_calls_total. Pairs with perf-sentinel slow_sql findings.",
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "targets": [
+        {"expr": "topk(5, rate(pg_stat_statements_calls_total[5m]))", "refId": "A", "legendFormat": "{{queryid}}"}
+      ],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 10},
+      "fieldConfig": {"defaults": {"unit": "ops"}}
     }
   ],
   "schemaVersion": 39,
-  "tags": ["perf-sentinel", "lab", "extended", "greenops"],
+  "tags": ["perf-sentinel", "lab", "extended", "pg_stat"],
   "templating": {
     "list": [
       {
@@ -179,7 +72,7 @@
   "time": {"from": "now-6h", "to": "now"},
   "timepicker": {},
   "timezone": "",
-  "title": "perf-sentinel extended (lab)",
+  "title": "perf-sentinel extended (postgres-exporter)",
   "uid": "perf-sentinel-extended",
-  "version": 1
+  "version": 2
 }
