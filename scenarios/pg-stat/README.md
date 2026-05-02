@@ -60,12 +60,36 @@ Lab manifest changes that enable pg_stat_statements:
 ## Alternative input: pg_stat via Prometheus
 
 `perf-sentinel report` also accepts `--pg-stat-prometheus <URL>`
-pointing at a Prometheus endpoint exposed by `postgres_exporter` (with
-the `pg_stat_statements` collector enabled). The lab does not deploy
-postgres_exporter today, so this scenario uses the direct CSV path.
+pointing at a Prometheus endpoint exposed by `postgres-exporter` with
+the `pg_stat_statements` collector enabled. The CLI queries
+`topk(N, pg_stat_statements_seconds_total)`
+(`crates/sentinel-core/src/ingest/pg_stat.rs:475`) and normalises the
+result into the same internal struct the CSV path uses, so both paths
+produce identical HTML dashboards.
+
+The lab deploys postgres-exporter via the
+[grafana-dashboard scenario](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/scenarios/grafana-dashboard/README.md).
+After running `make verify-grafana-dashboard` once, the `verify-pg-stat`
+script auto-detects postgres-exporter and exercises Path 2 in addition
+to Path 1.
+
+```bash
+make verify-grafana-dashboard   # deploys postgres-exporter (one-time)
+make verify-pg-stat              # runs both Path 1 (CSV) and Path 2 (Prometheus)
+```
+
+When postgres-exporter is absent, Path 2 is skipped (not failed) and
+only the CSV path runs, exactly like before. CSV path stays useful for
+setups without an exporter.
+
+| Path | Pros | Cons |
+| --- | --- | --- |
+| 1, CSV via `psql \copy` | Works on any Postgres reachable by `psql`, no exporter required, full pg_stat columns | Manual export step, snapshot only |
+| 2, `--pg-stat-prometheus` | Reuses the existing Prometheus scrape, no manual export, time-window aware | Needs postgres-exporter, fewer columns surfaced (the exporter is selective) |
 
 ## Output
 
-`/tmp/scenario-pg-stat-report.md` plus the dashboard at
-`/tmp/pg-stat/dashboard.html` and the CSV at
-`/tmp/pg-stat/pg-stat.csv`.
+`/tmp/scenario-pg-stat-report.md` plus the Path 1 dashboard at
+`/tmp/pg-stat/dashboard.html`, the CSV at `/tmp/pg-stat/pg-stat.csv`,
+and (when Path 2 ran) the Prometheus-sourced dashboard at
+`/tmp/pg-stat/dashboard-prometheus.html`.

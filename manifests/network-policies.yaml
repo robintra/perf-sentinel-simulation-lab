@@ -780,3 +780,49 @@ spec:
           port: 8181
         - protocol: TCP
           port: 8080
+---
+# 4.J postgres-exporter, deployed by scenarios/grafana-dashboard/postgres-exporter.yaml.
+# Egress to Postgres on 5432 for the DSN connection. DNS is already
+# covered by the namespace-wide allow-dns-egress (4.B above) and the
+# Prometheus scrape ingress is already covered by allow-prometheus-scrape
+# in db (broad podSelector: {} matches postgres-exporter on port 9187).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-exporter-egress
+  namespace: db
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# 4.J.bis postgres ingress allow from postgres-exporter, mirrors
+# postgres-allow-shop (4.C.bis) but for the exporter pod in the same
+# namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-exporter
+  namespace: db
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres-exporter
+      ports:
+        - protocol: TCP
+          port: 5432

@@ -1,0 +1,77 @@
+# PrometheusRule for the perf-sentinel daemon, picked up by the
+# kube-prometheus-stack operator. The `release: kube-prometheus-stack`
+# label is kept for consistency with the existing service ServiceMonitors,
+# even though the lab's KPS sets ruleSelector: {} (any rule, any namespace).
+#
+# Routing to Slack/PagerDuty/email is intentionally NOT configured here,
+# stays a user concern via Alertmanager `route` / `receivers`.
+#
+# Thresholds (0.30 io_waste_ratio, 5 critical findings/h, 8000 active
+# traces) are starting points, tune in production.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: perf-sentinel-alerts
+  namespace: observability
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/name: perf-sentinel
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  groups:
+    - name: perf-sentinel-daemon-health
+      rules:
+        - alert: PerfSentinelDaemonDown
+          expr: up{job="perf-sentinel-daemon"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: greenops
+          annotations:
+            summary: "perf-sentinel daemon is down"
+            description: "Daemon at {{ $labels.instance }} has been DOWN for at least 2 minutes."
+            runbook_url: "https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md#grafana-dashboard-validation"
+
+        - alert: PerfSentinelHighIOWasteRatio
+          expr: perf_sentinel_io_waste_ratio > 0.30
+          for: 10m
+          labels:
+            severity: warning
+            team: greenops
+          annotations:
+            summary: "I/O waste ratio above 30%"
+            description: "io_waste_ratio is {{ $value | humanize }}, above the 30% threshold for 10 minutes. Investigate top finding types via /api/findings."
+            runbook_url: "https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md#grafana-dashboard-validation"
+
+        - alert: PerfSentinelCriticalFindingsSurge
+          expr: increase(perf_sentinel_findings_total{severity="critical"}[1h]) > 5
+          for: 5m
+          labels:
+            severity: critical
+            team: greenops
+          annotations:
+            summary: "Surge of critical findings"
+            description: "{{ $value }} critical findings in the last hour. Investigate via /api/findings or the upstream dashboard panel `Critical findings trend (24h)`."
+            runbook_url: "https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md#grafana-dashboard-validation"
+
+        - alert: PerfSentinelActiveTracesNearCapacity
+          expr: perf_sentinel_active_traces > 8000
+          for: 5m
+          labels:
+            severity: warning
+            team: greenops
+          annotations:
+            summary: "Active traces approaching max capacity (10000)"
+            description: "active_traces is {{ $value }}. The LRU evicts at max_active_traces (default 10000), so finding accuracy may degrade. Lower max_active_traces or scale out."
+            runbook_url: "https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md#grafana-dashboard-validation"
+
+        - alert: PerfSentinelEventProcessingStalled
+          expr: rate(perf_sentinel_events_processed_total[5m]) == 0
+          for: 5m
+          labels:
+            severity: warning
+            team: greenops
+          annotations:
+            summary: "Daemon is not processing events"
+            description: "No events processed in the last 5 minutes. Check the OTel Collector pipeline (otel-collector-egress NetworkPolicy, OTLP receiver) or service health."
+            runbook_url: "https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md#grafana-dashboard-validation"

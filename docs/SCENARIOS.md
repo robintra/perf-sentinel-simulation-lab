@@ -148,6 +148,7 @@ Findings produced by the standard rule omit the field.
 | [`sidecar-pattern`](#sidecar-pattern) | sidecar pattern (1 daemon per pod) | sidecar pod | PASS |
 | [`correlation-finding`](#cross-trace-correlation-finding) | cross-trace correlation finding | running daemon + cross-service traffic | PASS |
 | [`pg-stat`](#pg_stat-live-integration) | `report --pg-stat` live integration | running daemon + Postgres `pg_stat_statements` | PASS |
+| [`grafana-dashboard`](#grafana-dashboard-validation) | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS |
 
 ## Run
 
@@ -161,8 +162,9 @@ make verify-calibrate-mode
 make verify-sidecar-pattern
 make verify-correlation-finding
 make verify-pg-stat
+make verify-grafana-dashboard
 
-# All eight (sequential, ~20 min total)
+# All nine (sequential, ~30 min total)
 make verify-all-scenarios
 ```
 
@@ -791,8 +793,147 @@ psql -U lab -d lab -c "\copy (
   (`SELECT pg_stat_statements_reset();`), otherwise the CSV mixes prior
   noise with the run-of-interest.
 - Alternative input: `--pg-stat-prometheus <URL>` consumes the same data
-  exposed by `postgres_exporter`. The lab does not deploy
-  `postgres_exporter` today, hence the direct CSV path here.
+  exposed by `postgres-exporter` (queries
+  `topk(N, pg_stat_statements_seconds_total)` per
+  `crates/sentinel-core/src/ingest/pg_stat.rs:475`). The lab now
+  deploys postgres-exporter via the
+  [grafana-dashboard scenario](#grafana-dashboard-validation), and
+  `verify-pg-stat` exercises both Path 1 (CSV) and Path 2 (Prometheus)
+  when postgres-exporter is present. Path 2 is skipped (not failed)
+  when the exporter is absent, so the CSV path stays runnable
+  standalone.
+
+---
+
+## Grafana dashboard validation
+
+The upstream perf-sentinel repo ships
+`examples/grafana-dashboard.json` (8 panels, GreenOps-tagged) but the
+lab has never validated it end-to-end. This scenario does, audits
+which daemon metrics it does and does not cover, ships an extended
+overlay covering every metric upstream does not use, loads 5
+PrometheusRules, and deploys `postgres-exporter` so the
+`--pg-stat-prometheus` path becomes available.
+
+### Use case
+
+A user clones perf-sentinel and imports the upstream dashboard. They
+want signal on what is covered, what is missing, what is alertable.
+This scenario answers all three in one run, plus stands up the
+postgres-exporter that the
+[`pg-stat`](#pg_stat-live-integration) scenario uses for its
+Prometheus path.
+
+### Coverage audit
+
+Daemon 0.5.16 exposes 12 perf_sentinel_* metrics
+(`crates/sentinel-core/src/report/metrics.rs`). The 8 upstream panels
+reference 6 distinct metrics, all exposed (zero broken references).
+The other 6 metrics are extension targets, all consumed by the lab's
+extended overlay.
+
+| Metric | Upstream | Extended overlay |
+| --- | --- | --- |
+| `perf_sentinel_findings_total` | 3 panels | no |
+| `perf_sentinel_io_waste_ratio` | 1 panel | no |
+| `perf_sentinel_active_traces` | 1 panel | no |
+| `perf_sentinel_events_processed_total` | 1 panel | no |
+| `perf_sentinel_service_io_ops_total` | 1 panel | no |
+| `perf_sentinel_slow_duration_seconds` | 1 panel (histogram) | no |
+| `perf_sentinel_traces_analyzed_total` | no | yes |
+| `perf_sentinel_total_io_ops` | no | yes |
+| `perf_sentinel_avoidable_io_ops` | no | yes |
+| `perf_sentinel_scaphandre_last_scrape_age_seconds` | no | yes |
+| `perf_sentinel_cloud_energy_last_scrape_age_seconds` | no | yes |
+| `perf_sentinel_export_report_requests_total` | no | yes |
+
+The extended overlay also adds 2 standard panels (`up` daemon health,
+`process_start_time_seconds` cold-start indicator) and 2
+postgres-exporter panels (Top 10 slow queries, DB query rate).
+
+### Upstream backlog
+
+The original brief referenced 4 metric families that 0.5.16 does not
+expose : `co2_grams_total`, `co2_per_request`,
+`regional_carbon_intensity` (GreenOps Phase 9),
+`correlations_total`, `pool_saturation_*`, `chatty_service_*`. They
+are tracked as item 6 in the project memory's perf-sentinel followup
+and would unlock an additional ~6 panels on the next upstream release.
+
+### Alert rules
+
+5 alerts ship in `scenarios/grafana-dashboard/alertrules.yaml`,
+applied as a `PrometheusRule` in namespace `observability`. Routing
+to Slack/PagerDuty/email is intentionally NOT configured, that stays
+a user concern via Alertmanager `route` and `receivers`.
+
+| Alert | Severity | Trigger | End-to-end test |
+| --- | --- | --- | --- |
+| `PerfSentinelDaemonDown` | critical | `up{} == 0` for 2m | yes (verify scales daemon to 0) |
+| `PerfSentinelHighIOWasteRatio` | warning | `io_waste_ratio > 0.30` for 10m | rule loaded only |
+| `PerfSentinelCriticalFindingsSurge` | critical | `> 5 critical/h` for 5m | rule loaded only |
+| `PerfSentinelActiveTracesNearCapacity` | warning | `active_traces > 8000` for 5m | rule loaded only |
+| `PerfSentinelEventProcessingStalled` | warning | `rate(events_processed) == 0` for 5m | rule loaded only |
+
+The 4 non-trigger-tested rules require crafted load (waste ratio,
+trace count, critical findings) or stopping the OTLP pipeline. The
+`PerfSentinelDaemonDown` test scales the daemon Deployment to 0,
+waits 180s for the `for: 2m` to elapse, asserts the alert is firing
+via `/api/v1/alerts`, then restores the daemon.
+
+### postgres-exporter integration
+
+Deployed in namespace `db` next to Postgres, exposes `:9187`, scraped
+every 15s by the kube-prometheus-stack Prometheus operator via a
+`ServiceMonitor`. NetworkPolicies updated in
+`manifests/network-policies.yaml` (rules 4.J and 4.J.bis appended)
+so postgres-exporter can dial Postgres on 5432. DNS egress and
+Prometheus-scrape ingress were already covered by the lab's
+namespace-wide policies.
+
+After this scenario lands, the `pg-stat` scenario's Path 2 becomes
+runnable and the panel `Top 10 slow queries (pg_stat)` in the
+extended dashboard is non-conditional.
+
+### Run
+
+```bash
+make verify-grafana-dashboard
+
+# skip the 3 min daemon-down trigger test:
+SKIP_TRIGGER_TEST=1 make verify-grafana-dashboard
+
+# skip the 5 min validate-findings traffic step:
+SKIP_TRAFFIC=1 make verify-grafana-dashboard
+```
+
+Report at `/tmp/scenario-grafana-dashboard-report.md` with the audit
+table, panel-by-panel verdict, alert-rule load state, and trigger-test
+verdict.
+
+### Lab vs upstream dashboard coexistence
+
+The lab's `manifests/grafana-dashboards/perf-sentinel-overview.json`
+is a custom French-labeled artifact, not a copy of upstream. Both
+dashboards live in Grafana side by side via distinct uids :
+
+- `perf-sentinel-overview` (lab custom, loaded by `bootstrap.sh`)
+- `perf-sentinel-overview-upstream` (verbatim upstream, applied by
+  `verify.sh` with `jq` mutating the uid and title to avoid clash)
+- `perf-sentinel-extended` (lab overlay, 9 panels)
+
+### Watch out
+
+- The 4 non-trigger-tested alerts are validated as "rule parses and
+  loads", not as "fires under load". Document this when cherry-picking
+  the rules into a production stack.
+- postgres-exporter reuses the `lab` Postgres user. In production,
+  prefer a dedicated read-only role.
+- Importing the upstream dashboard into a Grafana that already has a
+  `perf-sentinel-overview` uid causes a sidecar-load conflict. The
+  scenario mutates the uid via `jq` at apply time. If you cherry-pick
+  the upstream JSON manually into another Grafana, do the same
+  mutation or accept that one of the two dashboards will be hidden.
 
 ---
 

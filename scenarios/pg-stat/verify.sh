@@ -89,6 +89,48 @@ if [ "${verdict}" != "FAIL" ]; then
   fi
 fi
 
+# Path 2: pg_stat via Prometheus scraping postgres-exporter. Skipped
+# unless postgres-exporter is deployed (via make verify-grafana-dashboard).
+PROM_PATH_VERDICT="SKIPPED"
+if kubectl -n db get deploy postgres-exporter >/dev/null 2>&1; then
+  step "Path 2: --pg-stat-prometheus (Prometheus scraping postgres-exporter)"
+  kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 \
+    > "${TMP_DIR}/prom-pf.log" 2>&1 &
+  PF_PROM=$!
+  trap "kill ${PF_PROM} 2>/dev/null" EXIT
+  sleep 3
+  if docker run --rm \
+       --network host \
+       -v "${TRACES_FIXTURE}:/input/traces.json:ro" \
+       -v "${TMP_DIR}:/output" \
+       "${IMAGE}" \
+       report \
+         --input /input/traces.json \
+         --pg-stat-prometheus "http://localhost:9090" \
+         --output /output/dashboard-prometheus.html \
+       > "${TMP_DIR}/report-prom.log" 2>&1; then
+    if [ -s "${TMP_DIR}/dashboard-prometheus.html" ] \
+       && grep -qE '"pg_stat"|pg-stat|pg_stat-tab|pgStat' "${TMP_DIR}/dashboard-prometheus.html"; then
+      PROM_PATH_VERDICT="PASS"
+      PROM_BYTES=$(wc -c < "${TMP_DIR}/dashboard-prometheus.html")
+      ok "Path 2 PASS: pg_stat dashboard rendered via Prometheus path (${PROM_BYTES} bytes)"
+    else
+      PROM_PATH_VERDICT="FAIL"
+      color_red "    fail: Prometheus path produced empty or pg_stat-less dashboard"
+      tail -10 "${TMP_DIR}/report-prom.log" || true
+    fi
+  else
+    PROM_PATH_VERDICT="FAIL"
+    color_red "    fail: report --pg-stat-prometheus exited non-zero, see ${TMP_DIR}/report-prom.log"
+    tail -10 "${TMP_DIR}/report-prom.log" || true
+  fi
+  kill ${PF_PROM} 2>/dev/null || true
+  trap - EXIT
+else
+  step "Path 2: --pg-stat-prometheus"
+  ok "SKIP: postgres-exporter not deployed (run make verify-grafana-dashboard first to unlock Path 2)"
+fi
+
 step "Write report"
 {
   echo "# perf-sentinel report --pg-stat live integration"
@@ -107,7 +149,8 @@ step "Write report"
   echo "## Output"
   echo
   echo "- pg_stat_statements rows exported: ${ROW_COUNT}"
-  echo "- Dashboard HTML: \`${TMP_DIR}/dashboard.html\` ($(wc -c < "${TMP_DIR}/dashboard.html" 2>/dev/null || echo 0) bytes)"
+  echo "- Dashboard HTML (Path 1, CSV): \`${TMP_DIR}/dashboard.html\` ($(wc -c < "${TMP_DIR}/dashboard.html" 2>/dev/null || echo 0) bytes)"
+  echo "- Dashboard HTML (Path 2, Prometheus): \`${TMP_DIR}/dashboard-prometheus.html\` ($(wc -c < "${TMP_DIR}/dashboard-prometheus.html" 2>/dev/null || echo 0) bytes)"
   echo
   echo "## Top SQL templates by total exec time"
   echo
@@ -115,12 +158,17 @@ step "Write report"
   head -6 "${TMP_DIR}/pg-stat.csv" 2>/dev/null || true
   echo '```'
   echo
-  echo "**Verdict: ${verdict}**"
+  echo "## Verdicts"
+  echo
+  echo "- Path 1 (CSV via psql copy): ${verdict}"
+  echo "- Path 2 (Prometheus via postgres-exporter): ${PROM_PATH_VERDICT}"
 } > "${REPORT}"
 
-if [ "${verdict}" = "PASS" ]; then
+# Final verdict considers both paths. Path 2 SKIPPED is acceptable
+# (postgres-exporter is optional, only deployed by verify-grafana-dashboard).
+if [ "${verdict}" = "PASS" ] && [ "${PROM_PATH_VERDICT}" != "FAIL" ]; then
   ok "PASS, see ${REPORT}"
   exit 0
 else
-  die "${verdict}, see ${REPORT}"
+  die "Path 1=${verdict}, Path 2=${PROM_PATH_VERDICT}, see ${REPORT}"
 fi

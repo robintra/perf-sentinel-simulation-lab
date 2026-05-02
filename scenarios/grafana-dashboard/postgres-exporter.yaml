@@ -1,0 +1,109 @@
+# postgres-exporter for the lab. Exposes pg_stat_statements_seconds_total
+# and the rest of postgres_exporter's collectors on :9187, scraped by
+# Prometheus via the ServiceMonitor below. Required for the
+# perf-sentinel `report --pg-stat-prometheus <url>` path validated by
+# scenarios/pg-stat/verify.sh and the panel "Top 10 slow queries" in
+# the dashboard-extended.json.
+#
+# Reuses the lab `lab` user (read-only would be cleaner in prod).
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-exporter-credentials
+  namespace: db
+type: Opaque
+stringData:
+  DATA_SOURCE_NAME: "postgresql://lab:lab@postgres:5432/lab?sslmode=disable"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-exporter
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-exporter
+        app.kubernetes.io/part-of: perf-sentinel-lab
+    spec:
+      containers:
+        - name: exporter
+          image: quay.io/prometheuscommunity/postgres-exporter:v0.17.1
+          args:
+            - "--collector.stat_statements"
+          envFrom:
+            - secretRef:
+                name: postgres-exporter-credentials
+          ports:
+            - name: metrics
+              containerPort: 9187
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-exporter
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: 9187
+      targetPort: 9187
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: postgres-exporter
+---
+# ServiceMonitor for the kube-prometheus-stack Prometheus operator. The
+# `release: kube-prometheus-stack` label is kept for consistency with the
+# 3 service ServiceMonitors, even though the lab's KPS values set
+# serviceMonitorSelector: {} so any SM in any namespace is picked up
+# (helm/values/kube-prometheus-stack.yaml:78-80).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres-exporter
+  namespace: db
+  labels:
+    release: kube-prometheus-stack
+    app.kubernetes.io/name: postgres-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-exporter
+  endpoints:
+    - port: metrics
+      interval: 15s
+      path: /metrics

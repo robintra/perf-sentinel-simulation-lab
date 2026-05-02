@@ -17,7 +17,8 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         hubble-ui verify-network-policies \
         verify-hybrid-daemon-batch verify-batch-tempo-scrape verify-daemon-otlp-direct \
         verify-multiformat-input verify-calibrate-mode verify-sidecar-pattern \
-        verify-correlation-finding verify-pg-stat verify-all-scenarios
+        verify-correlation-finding verify-pg-stat verify-grafana-dashboard \
+        verify-all-scenarios
 
 help: ## List available targets
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  %-32s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -83,6 +84,14 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/sidecar-pattern/verify.sh
 	@bash -n scenarios/correlation-finding/verify.sh
 	@bash -n scenarios/pg-stat/verify.sh
+	@bash -n scenarios/grafana-dashboard/verify.sh
+	@echo "==> yaml parse on grafana-dashboard manifests"
+	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
+	  scenarios/grafana-dashboard/postgres-exporter.yaml \
+	  scenarios/grafana-dashboard/alertrules.yaml
+	@echo "==> json parse on grafana-dashboard dashboards"
+	@python3 -m json.tool < scenarios/grafana-dashboard/dashboard-upstream.json >/dev/null
+	@python3 -m json.tool < scenarios/grafana-dashboard/dashboard-extended.json >/dev/null
 	@echo "==> yaml parse on gitlab-ce values"
 	@python3 -c "import yaml,sys; list(yaml.safe_load_all(open(sys.argv[1])))" \
 	  helm/values/gitlab-ce.yaml
@@ -226,8 +235,11 @@ verify-correlation-finding: ## cross-trace correlation finding via /api/correlat
 verify-pg-stat: ## perf-sentinel report --pg-stat live integration
 	./scenarios/pg-stat/verify.sh
 
-verify-all-scenarios: ## Run all 8 deployment-mode scenarios sequentially (see docs/SCENARIOS.md)
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding pg-stat; do \
+verify-grafana-dashboard: ## Grafana dashboard import, audit, alerts, postgres-exporter integration
+	./scenarios/grafana-dashboard/verify.sh
+
+verify-all-scenarios: ## Run all 9 deployment-mode scenarios sequentially (see docs/SCENARIOS.md)
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding pg-stat grafana-dashboard; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
