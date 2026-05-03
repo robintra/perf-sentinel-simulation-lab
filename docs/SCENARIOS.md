@@ -18,16 +18,12 @@ at every layer of the SDLC, with a different mode per environment.
 This section is the 10000-foot view; the per-scenario sections below
 detail each mode in depth.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration_dark.svg">
-  <img alt="Global perf-sentinel integration across local dev, CI, staging and prod" src="https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration.svg">
-</picture>
+![Global perf-sentinel integration across local dev, CI, staging and prod](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration.svg)
 
 Source: [`global-integration.mmd`](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/mmd/global-integration.mmd).
-Two SVGs rendered from the same `.mmd` (light + `_dark` variants),
-committed alongside so the guide displays inline on GitHub with the
-right contrast in both color schemes while keeping a single editable
-source.
+Single SVG rendered from the `.mmd` source, committed alongside so the
+guide displays inline on GitHub. Colors and contrast are baked into
+the `.mmd` so the diagram stays readable in both light and dark mode.
 
 ### Numbered flow: a code change's journey
 
@@ -179,8 +175,8 @@ Every scenario diagram uses a consistent vocabulary:
   loops).
 - **Dashed arrow** = on-demand fetch (CI snapshot, CLI batch, query API).
 - **Box with double border + blue stroke** = perf-sentinel surface (CLI
-  subcommand or daemon endpoint). Fill follows the Mermaid theme so
-  contrast stays correct in both light and dark mode.
+  subcommand or daemon endpoint). Colors are baked into the `.mmd`
+  source so contrast stays correct in both light and dark mode.
 - **Annotation in italic** = capture format (`OTLP/protobuf`,
   `Tempo OTLP-JSON`, `Jaeger v1`, `Zipkin v2`, `Report JSON`, `pg_stat
   CSV`).

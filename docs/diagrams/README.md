@@ -21,19 +21,18 @@ docs/diagrams/
 │   ├── hybrid-daemon-batch.mmd
 │   └── ...
 └── svg/                       # Rendered artifacts (committed, used by docs)
-    ├── global-integration.svg          # light theme
-    ├── global-integration_dark.svg     # dark theme
+    ├── global-integration.svg
     └── ...
 ```
 
-When a guide displays a diagram with theme switching, it uses the
-`<picture>` HTML pattern with both SVG variants:
+A single SVG per diagram. Colors and contrast are baked into the
+`.mmd` source so the rendered SVG stays readable in both light and
+dark mode without needing a `<picture>` theme switcher.
 
-```html
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration_dark.svg">
-  <img alt="..." src="https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration.svg">
-</picture>
+A guide embeds a diagram via a plain markdown image:
+
+```markdown
+![Alt text](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration.svg)
 ```
 
 URLs are absolute (`raw.githubusercontent.com/...`) so the same
@@ -56,13 +55,11 @@ sites.
 
 ## Render to SVG locally
 
-Single file, light + dark variants:
+Single file:
 
 ```bash
 npx -y @mermaid-js/mermaid-cli -i mmd/global-integration.mmd \
   -o svg/global-integration.svg -t default -b transparent
-npx -y @mermaid-js/mermaid-cli -i mmd/global-integration.mmd \
-  -o svg/global-integration_dark.svg -t dark -b transparent
 ```
 
 Or batch all scenarios:
@@ -71,7 +68,6 @@ Or batch all scenarios:
 for f in mmd/*.mmd; do
   base=$(basename "$f" .mmd)
   npx -y @mermaid-js/mermaid-cli -i "$f" -o "svg/${base}.svg" -t default -b transparent
-  npx -y @mermaid-js/mermaid-cli -i "$f" -o "svg/${base}_dark.svg" -t dark -b transparent
 done
 ```
 
@@ -82,5 +78,6 @@ done
 - Box with double border (`[[ ... ]]`) = perf-sentinel surface (CLI
   subcommand or daemon endpoint).
 - Blue stroke = `classDef sentinel` styling, applied to every
-  perf-sentinel node for at-a-glance recognition. Fill is left to the
-  Mermaid theme so contrast stays correct in both light and dark mode.
+  perf-sentinel node for at-a-glance recognition. Fill is set
+  explicitly in the `.mmd` source so contrast stays correct in both
+  light and dark mode.
