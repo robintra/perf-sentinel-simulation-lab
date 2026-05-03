@@ -20,7 +20,25 @@ color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
 color_red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 step() { color_blue "==> $*"; }
 ok()   { color_green "    ok: $*"; }
-die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 1; }
+die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; cleanup; exit 1; }
+
+# Track every backend we scaled down, restore in cleanup. Survives a
+# SIGTERM mid-sleep (the per-subtest RETURN trap would not).
+SCALED_DOWN=()
+
+cleanup() {
+  if [ "${#SCALED_DOWN[@]}" -eq 0 ]; then
+    return
+  fi
+  for entry in "${SCALED_DOWN[@]}"; do
+    local rest="${entry}"
+    local ns="${rest%%|*}"; rest="${rest#*|}"
+    local resource="${rest%%|*}"; rest="${rest#*|}"
+    local replicas="${rest}"
+    kubectl -n "${ns}" scale "${resource}" --replicas="${replicas}" >/dev/null 2>&1 || true
+  done
+}
+trap cleanup EXIT
 
 VERDICTS=()
 
@@ -50,7 +68,7 @@ run_subtest() {
   original_replicas=$(kubectl -n "${ns}" get "${resource}" -o jsonpath='{.spec.replicas}' 2>/dev/null || echo 1)
   original_replicas="${original_replicas:-1}"
 
-  trap "kubectl -n ${ns} scale ${resource} --replicas=${original_replicas} >/dev/null 2>&1 || true" RETURN
+  SCALED_DOWN+=("${ns}|${resource}|${original_replicas}")
 
   kubectl -n "${ns}" scale "${resource}" --replicas=0 > "${TMP_DIR}/${label}-scale0.log" 2>&1 \
     || { VERDICTS+=("SKIP: ${label} scale 0 failed (likely RBAC or kind mismatch)"); return; }
@@ -60,10 +78,7 @@ run_subtest() {
   daemon_alive_during=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 && echo yes || echo no)
 
   kubectl -n "${ns}" scale "${resource}" --replicas="${original_replicas}" > "${TMP_DIR}/${label}-restore.log" 2>&1 || true
-  case "${kind}" in
-    deployment) kubectl -n "${ns}" rollout status "${resource}" --timeout="${rt}" >/dev/null 2>&1 || true ;;
-    statefulset) kubectl -n "${ns}" rollout status "${resource}" --timeout="${rt}" >/dev/null 2>&1 || true ;;
-  esac
+  kubectl -n "${ns}" rollout status "${resource}" --timeout="${rt}" >/dev/null 2>&1 || true
   sleep 5
 
   local daemon_alive_after

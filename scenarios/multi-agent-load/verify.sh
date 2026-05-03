@@ -55,6 +55,11 @@ curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null \
 ok "daemon reachable"
 
 step "Apply Job manifest with PRODUCERS=${PRODUCERS} RATE=${RATE_PER_PRODUCER} DURATION=${DURATION}"
+# shellcheck disable=SC2016
+# Single quotes around the variable list are intentional: envsubst reads
+# the allow-list literally from its argv, single quotes prevent shell
+# expansion. Without this allow-list envsubst replaces every $VAR in the
+# manifest including unrelated env vars, which is unsafe.
 PRODUCERS="${PRODUCERS}" RATE_PER_PRODUCER="${RATE_PER_PRODUCER}" DURATION="${DURATION}" \
   envsubst '${PRODUCERS} ${RATE_PER_PRODUCER} ${DURATION}' < "${MANIFESTS}" \
   | kubectl apply -f - > "${TMP_DIR}/apply.log" 2>&1

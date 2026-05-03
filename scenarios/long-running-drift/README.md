@@ -56,10 +56,14 @@ PASS when:
 
 - daemon `/api/status` answers at the end of the run,
 - absolute RSS drift between warm and tail windows < `DRIFT_PCT_LIMIT %`,
-- file descriptor delta < 5,
 - `perf_sentinel_active_traces` is not monotonically growing past
   `max(50, warm_average)` (a leak of in-flight traces would otherwise
   inflate this gauge linearly).
+
+The TSV also has an `fds` column, but it is hardcoded to 0 because the
+daemon does not expose `process_open_fds` on `/metrics` (Rust prometheus
+client without the process collector). Real FD leak detection would
+need cAdvisor or `kubectl top --containers`.
 
 FAIL surfaces daemon log tail in the report and points to the TSV.
 

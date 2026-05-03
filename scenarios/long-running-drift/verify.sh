@@ -51,7 +51,12 @@ trap cleanup EXIT
 
 verdict="UNKNOWN"
 DRIFT_RATE=$(( 100 * TRAFFIC_MULTIPLIER ))
-DRIFT_DURATION="${DURATION_HOURS}h"
+# Convert fractional hours to integer seconds. telemetrygen accepts Go
+# duration strings like "300s", but rejects fractional hour notation
+# like "0.083h", which broke the 5-min CI smoke profile until the
+# format was switched to seconds.
+DRIFT_DURATION_SEC=$(python3 -c "print(int(float(${DURATION_HOURS}) * 3600))")
+DRIFT_DURATION="${DRIFT_DURATION_SEC}s"
 SAMPLES_FILE="${TMP_DIR}/drift-samples.tsv"
 
 step "Sanity: daemon reachable on localhost:${DAEMON_LOCAL_PORT}"
@@ -60,14 +65,16 @@ curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null \
 ok "daemon reachable"
 
 step "Apply Job manifest (rate=${DRIFT_RATE}sps, duration=${DRIFT_DURATION})"
+# shellcheck disable=SC2016
+# Single quotes around the variable list are intentional, see
+# multi-agent-load/verify.sh for the same rationale.
 DRIFT_RATE="${DRIFT_RATE}" DRIFT_DURATION="${DRIFT_DURATION}" \
   envsubst '${DRIFT_RATE} ${DRIFT_DURATION}' < "${MANIFESTS}" \
   | kubectl apply -f - > "${TMP_DIR}/apply.log" 2>&1
 ok "manifests applied"
 
-step "Sampling loop: ${DURATION_HOURS}h, every ${SAMPLE_INTERVAL}s"
-TOTAL_SECONDS=$(python3 -c "print(int(float(${DURATION_HOURS}) * 3600))")
-TOTAL_SAMPLES=$(( TOTAL_SECONDS / SAMPLE_INTERVAL ))
+step "Sampling loop: ${DURATION_HOURS}h (${DRIFT_DURATION_SEC}s), every ${SAMPLE_INTERVAL}s"
+TOTAL_SAMPLES=$(( DRIFT_DURATION_SEC / SAMPLE_INTERVAL ))
 [ "${TOTAL_SAMPLES}" -lt 4 ] && TOTAL_SAMPLES=4
 echo -e "ts\trss_bytes\tfds\tactive_traces" > "${SAMPLES_FILE}"
 
@@ -134,13 +141,14 @@ ok "drift_pct=${DRIFT_PCT}% fds_delta=${FDS_DELTA} active_traces_delta=$((TAIL_A
 
 DAEMON_ALIVE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 && echo yes || echo no)
 PASS_DRIFT=$(python3 -c "print('yes' if abs(float('${DRIFT_PCT}')) < ${DRIFT_PCT_LIMIT} else 'no')")
-PASS_FDS=$(python3 -c "print('yes' if abs(${FDS_DELTA}) < 5 else 'no')")
 PASS_AT=$(python3 -c "print('yes' if (${TAIL_AT} - ${WARM_AT}) < max(50, ${WARM_AT}) else 'no')")
 
+# FDs column stays 0 in the TSV (daemon does not expose process_open_fds)
+# so it is reported but not asserted on. Real FD leak detection would
+# need cAdvisor or kubectl top --containers, which is out of scope here.
 if [ "${STATUS}" = "ok" ] \
    && [ "${DAEMON_ALIVE}" = "yes" ] \
    && [ "${PASS_DRIFT}" = "yes" ] \
-   && [ "${PASS_FDS}" = "yes" ] \
    && [ "${PASS_AT}" = "yes" ]; then
   verdict="PASS"
 else
@@ -175,8 +183,8 @@ step "Write report"
   echo
   echo "- daemon alive: ${DAEMON_ALIVE}"
   echo "- drift_rss < ${DRIFT_PCT_LIMIT}%: ${PASS_DRIFT}"
-  echo "- fds stable (delta < 5): ${PASS_FDS}"
   echo "- active_traces not monotonically growing: ${PASS_AT}"
+  echo "- fds reported (column always 0, daemon does not expose process_open_fds): ${FDS_DELTA}"
   echo
   echo "Samples TSV: ${SAMPLES_FILE}"
   echo
