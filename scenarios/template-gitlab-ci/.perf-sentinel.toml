@@ -1,0 +1,15 @@
+# Reuses the same strict thresholds as ci-shift-left so the gitlab-ci
+# template's `analyze --ci` step trips on the regression fixture used by
+# the existing verify-gitlab-perf-sentinel pipeline.
+
+[thresholds]
+n_plus_one_sql_critical_max = 0
+n_plus_one_http_warning_max = 0
+io_waste_ratio_max = 0.30
+
+[detection]
+sanitizer_aware_classification = "strict"
+
+[green]
+enabled = true
+default_region = "eu-west-3"

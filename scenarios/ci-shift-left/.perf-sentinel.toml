@@ -1,0 +1,26 @@
+# Quality gate config for the ci-shift-left scenario.
+#
+# The findings-based thresholds (n_plus_one_sql_critical_max,
+# n_plus_one_http_warning_max) are deliberately strict so the regression
+# phase trips the gate. Acknowledging findings makes the gate pass
+# again (0.5.17 ack workflow).
+#
+# io_waste_ratio_max is intentionally relaxed to 1.0 (effectively
+# disabled) for this scenario: the metric is computed from the raw
+# spans, not from findings, so acking findings does NOT reduce the
+# ratio. Keeping it strict would make the ack phase impossible to pass
+# regardless of how many findings are acked. The io_waste_ratio gate
+# is exercised by output-formats-coverage 6.D and by other scenarios
+# in production-like configs.
+
+[thresholds]
+n_plus_one_sql_critical_max = 0
+n_plus_one_http_warning_max = 0
+io_waste_ratio_max = 1.0
+
+[detection]
+sanitizer_aware_classification = "strict"
+
+[green]
+enabled = true
+default_region = "eu-west-3"

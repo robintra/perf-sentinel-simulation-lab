@@ -151,6 +151,35 @@ jobs:
       # runner capacity. See docs/SCENARIOS.md for the adoption guide and
       # `make verify-all-scenarios` for the local meta-target.
 
+      # B1 CI/CD integration scenarios. ci-shift-left runs first because
+      # output-formats-coverage reuses its artefacts under
+      # /tmp/ci-shift-left/. The 3 templates (gitlab-ci, jenkinsfile,
+      # github-actions) stay local-only: gitlab-ci needs the heavy
+      # GitLab CE deployment, jenkinsfile-runner is flaky in hosted
+      # runners, and act-in-act is convolu.
+      - name: B1 verify-ci-shift-left (primary, ack workflow)
+        run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
+          ./scripts/port-forward.sh start
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          make verify-ci-shift-left
+
+      - name: B1 verify-output-formats-coverage (depends on ci-shift-left)
+        run: make verify-output-formats-coverage
+
+      - name: B1 templates (LOCAL ONLY, surface as warnings)
+        run: |
+          echo "::warning::template-gitlab-ci skipped in CI (GitLab CE RAM constraint), run 'make verify-template-gitlab-ci' locally"
+          echo "::warning::template-jenkinsfile skipped in CI (jenkinsfile-runner flaky in hosted env), run 'make verify-template-jenkinsfile' locally"
+          echo "::warning::template-github-actions skipped in CI (act-in-act convolu), run 'make verify-template-github-actions' locally"
+
       - name: Show daemon logs (debug)
         if: always()
         run: |
@@ -169,6 +198,8 @@ jobs:
             tmp/*.log
             tmp/*.md
             /tmp/perf-sentinel-simulation-lab-*.md
+            /tmp/scenario-ci-shift-left-report.md
+            /tmp/scenario-output-formats-coverage-report.md
           retention-days: 14
           if-no-files-found: warn
 

@@ -949,6 +949,142 @@ visible in Grafana :
 
 ---
 
+## CI/CD integration scenarios (sprint B1)
+
+5 scenarios that validate the perf-sentinel 0.5.17 integration in CI/CD
+pipelines: the canonical ack workflow (regression to ack via PR to
+green pipeline), the 3 upstream templates (GitLab CI, Jenkinsfile,
+GitHub Actions), and the output formats / diff / cap loader coverage.
+
+### ci-shift-left (primary)
+
+Canonical 3-phase use case:
+
+1. **Clean baseline**: `scenarios/clean-load.js` (new k6 script,
+   OrderController only, no `/api/fault/*`) drives traffic, daemon
+   exports, `analyze --ci` should pass.
+2. **Regression**: `make validate-findings` (the 10 fault scripts)
+   drives anti-patterns, daemon exports, `analyze --ci` fails the
+   gate, JSON + SARIF emitted, signature field asserted on every
+   finding (0.5.17 feature).
+3. **Acked**: signatures from phase 2 written into
+   `.perf-sentinel-acknowledgments.toml`, re-analyze with
+   `--acknowledgments`. Gate passes (0.5.17 acks excluded), 0 active
+   findings, `--show-acknowledged` surfaces the suppressed entries.
+
+```bash
+make verify-ci-shift-left
+# Skip the 5 min validate-findings re-run:
+SKIP_REGRESSION_PHASE=1 make verify-ci-shift-left
+```
+
+Report at `/tmp/scenario-ci-shift-left-report.md`. The artefacts under
+`/tmp/ci-shift-left/` are reused by `output-formats-coverage`.
+
+### output-formats-coverage
+
+4 sub-tests that exercise the CLI surface:
+
+- **6.A** Coverage of 4 formats (json, sarif, text via `analyze`, html
+  via `report` subcommand). Asserts non-empty outputs, JSON/SARIF
+  count agreement, signature on every JSON finding. SARIF signature
+  presence and markdown format presence are logged as informational
+  gaps (memory items 10 and 11).
+- **6.B** `perf-sentinel diff --before --after --format json` schema
+  check (`new_findings`, `resolved_findings`, `severity_changes`,
+  `endpoint_metric_deltas` all present, new_findings > 0).
+- **6.C** Cap loader: 17 MiB ack file rejected with clear error
+  (16 MiB cap from `crates/sentinel-core/src/acknowledgments.rs`).
+- **6.D** Sanity gate on clean baseline (smoke check).
+
+```bash
+make verify-output-formats-coverage  # depends on ci-shift-left having run
+```
+
+### template-gitlab-ci
+
+Validates the upstream `docs/ci-templates/gitlab-ci.yml` at v0.5.17:
+
+1. Curl upstream template (fallback to local clone).
+2. Lint via GitLab CE CI Lint API (`POST /api/v4/ci/lint`).
+3. Parity vs lab fixture
+   `artifacts/fixtures/gitlab-ci-from-upstream.yml` on structural
+   invariants (perf-sentinel job, --ci flag, SARIF artifact, version
+   pin).
+4. Delegate to `scripts/verify-gitlab-perf-sentinel.sh` for the full
+   end-to-end pipeline check (gate `allow_failure: true` on main,
+   `allow_failure: false` on MR, SARIF + Code Quality artefacts).
+
+```bash
+make verify-template-gitlab-ci
+SKIP_E2E=1 make verify-template-gitlab-ci  # lint + parity only
+```
+
+### template-jenkinsfile
+
+Note: upstream filename is `jenkinsfile.groovy` (lowercase, .groovy
+extension), NOT `Jenkinsfile`. Multibranch Pipeline accepts both.
+
+1. Curl upstream `jenkinsfile.groovy` at v0.5.17.
+2. Structural lint (declarative pipeline skeleton, `analyze`, `--ci`,
+   SARIF, version pin).
+3. Best-effort runtime via `jenkins/jenkinsfile-runner` containerised.
+   SKIP gracefully on environment failures (Java init, plugin
+   downloads, binary release URL not reachable).
+
+```bash
+make verify-template-jenkinsfile
+SKIP_RUNTIME=1 make verify-template-jenkinsfile
+```
+
+### template-github-actions
+
+1. Curl upstream `github-actions.yml` at v0.5.17.
+2. Structural lint (YAML parse, top-level keys, install + analyze +
+   `--ci` + SARIF upload, action SHAs pinned to 40-char commits).
+3. `nektos/act --list` parse-only check (no execution).
+
+```bash
+make verify-template-github-actions
+SKIP_RUNTIME=1 make verify-template-github-actions
+```
+
+### Coverage table (B1 sprint additions)
+
+| Slug | Scope | Local | GHA |
+| --- | --- | --- | --- |
+| ci-shift-left | clean / regression / acked workflow | yes (primary) | yes |
+| output-formats-coverage | json/sarif/text/html, diff, cap loader | yes (primary) | yes |
+| template-gitlab-ci | gitlab-ci.yml lint + E2E | yes | LOCAL ONLY (GitLab CE RAM) |
+| template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
+| template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
+
+`make verify-all-scenarios` includes all 14 scenarios, in an order
+that preserves the inter-scenario artefact dependencies.
+
+### Ack workflow walkthrough
+
+The canonical use case `ci-shift-left` validates end-to-end:
+
+1. Developer pushes a feature branch; integration tests run, daemon
+   ingests traces, `analyze --ci` fails the gate (regression in
+   anti-patterns).
+2. Developer opens the PR; CI surfaces the findings via SARIF (Code
+   Scanning) and a sticky comment.
+3. Team reviews; some findings are intentional (caching, optimisation),
+   the developer adds a `[[acknowledged]]` block per signature in
+   `.perf-sentinel-acknowledgments.toml` with a justification.
+4. Next pipeline: `analyze --acknowledgments` re-runs, the
+   acknowledged findings are excluded from the gate, the pipeline
+   passes. `--show-acknowledged` keeps the audit trail visible in the
+   output.
+
+The ack file is capped at 16 MiB by the upstream
+`AcknowledgmentLoadError::TooLarge` to prevent malicious or accidental
+denial-of-service via oversized files (`crates/sentinel-core/src/acknowledgments.rs:30`).
+
+---
+
 ## Where to publish this guide
 
 The lab repo (this file) is the canonical reference because every

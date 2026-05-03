@@ -1,0 +1,13 @@
+# Strict thresholds matching ci-shift-left.
+
+[thresholds]
+n_plus_one_sql_critical_max = 0
+n_plus_one_http_warning_max = 0
+io_waste_ratio_max = 0.30
+
+[detection]
+sanitizer_aware_classification = "strict"
+
+[green]
+enabled = true
+default_region = "eu-west-3"

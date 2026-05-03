@@ -18,6 +18,8 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-hybrid-daemon-batch verify-batch-tempo-scrape verify-daemon-otlp-direct \
         verify-multiformat-input verify-calibrate-mode verify-sidecar-pattern \
         verify-correlation-finding verify-pg-stat verify-grafana-dashboard \
+        verify-ci-shift-left verify-output-formats-coverage \
+        verify-template-gitlab-ci verify-template-jenkinsfile verify-template-github-actions \
         verify-all-scenarios
 
 help: ## List available targets
@@ -237,11 +239,30 @@ verify-pg-stat: ## perf-sentinel report --pg-stat live integration
 verify-grafana-dashboard: ## Grafana dashboard import, audit, alerts, postgres-exporter integration
 	./scenarios/grafana-dashboard/verify.sh
 
-verify-all-scenarios: ## Run all 9 deployment-mode scenarios sequentially (see docs/SCENARIOS.md)
-	@# Order matters: grafana-dashboard runs BEFORE pg-stat so the latter
-	@# detects postgres-exporter and exercises Path 2 (--pg-stat-prometheus)
-	@# in addition to Path 1 (CSV).
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat; do \
+verify-ci-shift-left: ## CI shift-left workflow (clean / regression / acked) post-0.5.17
+	./scenarios/ci-shift-left/verify.sh
+
+verify-output-formats-coverage: ## Output formats, diff mode, signature presence, ack cap loader
+	./scenarios/output-formats-coverage/verify.sh
+
+verify-template-gitlab-ci: ## Validate upstream gitlab-ci.yml template via GitLab CE in-cluster
+	./scenarios/template-gitlab-ci/verify.sh
+
+verify-template-jenkinsfile: ## Validate upstream jenkinsfile.groovy via jenkinsfile-runner
+	./scenarios/template-jenkinsfile/verify.sh
+
+verify-template-github-actions: ## Validate upstream github-actions.yml via nektos/act --list
+	./scenarios/template-github-actions/verify.sh
+
+verify-all-scenarios: ## Run all 14 scenarios sequentially (see docs/SCENARIOS.md)
+	@# Order matters:
+	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
+	@#   and exercises Path 2 (--pg-stat-prometheus).
+	@# - ci-shift-left before output-formats-coverage because the latter
+	@#   reuses /tmp/ci-shift-left/regression-report.json artefacts.
+	@# - templates run last because they may SKIP runtime steps when
+	@#   the GitLab/Jenkins/act environment is not fully available.
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage template-gitlab-ci template-jenkinsfile template-github-actions; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
