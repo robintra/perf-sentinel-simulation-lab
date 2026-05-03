@@ -210,6 +210,143 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  validate-b3-scenarios:
+    needs: validate
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    env:
+      PERF_SENTINEL_VERSION: >-
+        ${{ github.event.client_payload.version
+            || github.event.inputs.perf_sentinel_version
+            || 'latest' }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install k3d
+        run: |
+          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          k3d version
+
+      - name: Install helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
+        with:
+          version: 'v3.18.4'
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
+
+      - name: Add helm repos
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
+
+      - name: Patch perf-sentinel image to validated version
+        if: env.PERF_SENTINEL_VERSION != 'latest'
+        run: |
+          sed -i -E "s|ghcr.io/robintra/perf-sentinel(@sha256:[a-f0-9]+\|:[0-9.]+)|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
+            manifests/perf-sentinel-daemon.yaml
+
+      - name: Provision Electricity Maps token
+        env:
+          EM_TOKEN: ${{ secrets.ELECTRICITY_MAPS_TOKEN }}
+        run: |
+          if [ -z "${EM_TOKEN}" ]; then
+            echo "::error::ELECTRICITY_MAPS_TOKEN repo secret is empty."
+            exit 1
+          fi
+          printf '%s' "${EM_TOKEN}" > .electricity-maps-token
+          chmod 600 .electricity-maps-token
+
+      - name: make up-cni (k3d + Cilium + observability + daemon)
+        run: |
+          make up-cni
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: make seed-services
+        run: make seed-services
+
+      - name: make seed-electricity-maps
+        run: make seed-electricity-maps
+
+      - name: Bring port-forward back up
+        # The seed-electricity-maps daemon rollout leaves the original
+        # port-forward in a zombie state. Force-kill, drop pid files,
+        # respawn, and poll /api/status until reachable.
+        run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
+          ./scripts/port-forward.sh start
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
+              echo "daemon reachable after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: B3 multi-agent-load (smoke 10 producers)
+        timeout-minutes: 8
+        run: PRODUCERS=10 RATE_PER_PRODUCER=100 DURATION=60s make verify-multi-agent-load
+
+      - name: B3 long-running-drift (5 min harness smoke)
+        timeout-minutes: 10
+        # CI runs a 5-minute smoke (DURATION_HOURS=0.083 ~= 5 min, 10
+        # samples). Real drift detection is local-only via the 2h
+        # default or LONG_RUN=1 for 24h.
+        run: DURATION_HOURS=0.083 SAMPLE_INTERVAL=30 TRAFFIC_MULTIPLIER=5 make verify-long-running-drift
+
+      - name: B3 failure-mode-daemon-restart
+        timeout-minutes: 6
+        run: make verify-failure-mode-daemon-restart
+
+      - name: B3 failure-mode-backend-down
+        timeout-minutes: 8
+        run: make verify-failure-mode-backend-down
+
+      - name: B3 failure-mode-network-partition
+        timeout-minutes: 5
+        run: make verify-failure-mode-network-partition
+
+      - name: B3 cold-start-edge-cases
+        timeout-minutes: 12
+        run: make verify-cold-start-edge-cases
+
+      - name: Show daemon logs (debug)
+        if: always()
+        run: |
+          kubectl -n observability logs deploy/perf-sentinel-daemon --tail=200 || true
+
+      - name: Show pod overview (debug)
+        if: always()
+        run: kubectl get pods -A || true
+
+      - name: Upload B3 reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: b3-scenarios-reports-${{ env.PERF_SENTINEL_VERSION }}-${{ github.run_id }}
+          path: |
+            /tmp/scenario-multi-agent-load-report.md
+            /tmp/scenario-long-running-drift-report.md
+            /tmp/scenario-failure-mode-daemon-restart-report.md
+            /tmp/scenario-failure-mode-backend-down-report.md
+            /tmp/scenario-failure-mode-network-partition-report.md
+            /tmp/scenario-cold-start-edge-cases-report.md
+            /tmp/multi-agent-load/*
+            /tmp/long-running-drift/*
+            /tmp/failure-mode-*/*
+            /tmp/cold-start-edge-cases/*
+          retention-days: 14
+          if-no-files-found: warn
+
   notify-on-failure:
     needs: validate
     if: failure()

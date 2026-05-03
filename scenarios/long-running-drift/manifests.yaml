@@ -1,0 +1,108 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: b3-drift
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    pod-security.kubernetes.io/enforce: baseline
+    name: b3-drift
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: b3-drift-egress
+  namespace: b3-drift
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - { protocol: TCP, port: 14318 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-allow-b3-drift
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: b3-drift
+      ports:
+        - { protocol: TCP, port: 14318 }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: b3-telemetrygen-drift
+  namespace: b3-drift
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    app.kubernetes.io/name: telemetrygen-drift
+spec:
+  parallelism: 2
+  completions: 2
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/part-of: perf-sentinel-lab-b3
+        app.kubernetes.io/name: telemetrygen-drift
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: telemetrygen
+          image: ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen@sha256:4b60ea340031ce6c62f1043c35b3075f37eb91c01ad313bdb60f862ee4194062
+          imagePullPolicy: IfNotPresent
+          args:
+            - traces
+            - --otlp-endpoint=perf-sentinel-daemon.observability.svc.cluster.local:14318
+            - --otlp-insecure
+            - --otlp-http
+            - --rate=${DRIFT_RATE}
+            - --duration=${DRIFT_DURATION}
+            - --service=b3-drift-svc
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]

@@ -20,6 +20,9 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-correlation-finding verify-pg-stat verify-grafana-dashboard \
         verify-ci-shift-left verify-output-formats-coverage \
         verify-template-gitlab-ci verify-template-jenkinsfile verify-template-github-actions \
+        verify-multi-agent-load verify-long-running-drift \
+        verify-failure-mode-daemon-restart verify-failure-mode-backend-down \
+        verify-failure-mode-network-partition verify-cold-start-edge-cases \
         verify-all-scenarios
 
 help: ## List available targets
@@ -87,6 +90,17 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/correlation-finding/verify.sh
 	@bash -n scenarios/pg-stat/verify.sh
 	@bash -n scenarios/grafana-dashboard/verify.sh
+	@bash -n scenarios/multi-agent-load/verify.sh
+	@bash -n scenarios/long-running-drift/verify.sh
+	@bash -n scenarios/failure-mode-daemon-restart/verify.sh
+	@bash -n scenarios/failure-mode-backend-down/verify.sh
+	@bash -n scenarios/failure-mode-network-partition/verify.sh
+	@bash -n scenarios/cold-start-edge-cases/verify.sh
+	@echo "==> yaml parse on B3 manifests"
+	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
+	  scenarios/multi-agent-load/manifests.yaml \
+	  scenarios/long-running-drift/manifests.yaml \
+	  scenarios/failure-mode-network-partition/manifests.yaml
 	@echo "==> yaml parse on grafana-dashboard manifests"
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/grafana-dashboard/postgres-exporter.yaml \
@@ -254,15 +268,36 @@ verify-template-jenkinsfile: ## Validate upstream jenkinsfile.groovy via jenkins
 verify-template-github-actions: ## Validate upstream github-actions.yml via nektos/act --list
 	./scenarios/template-github-actions/verify.sh
 
-verify-all-scenarios: ## Run all 14 scenarios sequentially (see docs/SCENARIOS.md)
+verify-multi-agent-load: ## B3, telemetrygen Job parallel charges the prod daemon
+	./scenarios/multi-agent-load/verify.sh
+
+verify-long-running-drift: ## B3, drift accelere 2h (LONG_RUN=1 for 24h leak hunting)
+	./scenarios/long-running-drift/verify.sh
+
+verify-failure-mode-daemon-restart: ## B3, kubectl rollout restart while traffic flows
+	./scenarios/failure-mode-daemon-restart/verify.sh
+
+verify-failure-mode-backend-down: ## B3, OTel collector / Tempo / Postgres scaled to 0 in turn
+	./scenarios/failure-mode-backend-down/verify.sh
+
+verify-failure-mode-network-partition: ## B3, NetworkPolicy ingress isolation of the daemon
+	./scenarios/failure-mode-network-partition/verify.sh
+
+verify-cold-start-edge-cases: ## B3, 4 sub-tests of cold-start corner cases
+	./scenarios/cold-start-edge-cases/verify.sh
+
+verify-all-scenarios: ## Run all 20 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
 	@# - ci-shift-left before output-formats-coverage because the latter
 	@#   reuses /tmp/ci-shift-left/regression-report.json artefacts.
-	@# - templates run last because they may SKIP runtime steps when
+	@# - templates run before B3 because they may SKIP runtime steps when
 	@#   the GitLab/Jenkins/act environment is not fully available.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage template-gitlab-ci template-jenkinsfile template-github-actions; do \
+	@# - B3 scenarios run last: they restart the daemon, scale shared
+	@#   backends to 0, and apply temporary NetworkPolicies. Running them
+	@#   after the rest avoids polluting earlier scenarios.
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

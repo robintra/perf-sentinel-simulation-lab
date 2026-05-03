@@ -1081,6 +1081,153 @@ denial-of-service via oversized files (`crates/sentinel-core/src/acknowledgments
 
 ---
 
+## Resilience and failure modes (sprint B3)
+
+6 scenarios that validate the daemon under adverse conditions: massive
+concurrency, multi-hour drift, backend pannes, network partition,
+cold-start edge cases. They are additive on top of B1 and B2: no
+existing scenario or manifest is modified.
+
+All 6 share two design choices specific to this sprint:
+
+- **OTLP producers run as kubectl Jobs in-cluster**, not as `docker run
+  --network host`. The cluster DNS path (`perf-sentinel-daemon.observability.svc:14318`)
+  is portable across Linux and macOS and does not depend on Docker
+  Desktop's host networking semantics.
+- **Verdicts are semantic, not metric-name-coupled**. Where the brief
+  drafts referenced metrics that did not exist in the daemon, the
+  scripts substitute observations from `/api/export/report` and
+  `/api/status`. The Prometheus path is used only for `process_*` runtime
+  metrics (RSS, FDs) and the documented daemon counters (12 of them,
+  see `manifests/grafana-dashboards/perf-sentinel-overview.json`).
+
+### multi-agent-load
+
+A kubectl Job with `parallelism=PRODUCERS` of `telemetrygen` Pods
+emits OTLP HTTP traces at `RATE_PER_PRODUCER` sps for `DURATION`
+seconds against the production daemon. The daemon must keep
+`/api/status` answering, process at least 50 % of the expected spans
+(some backpressure is acceptable, catastrophic loss is not), and stay
+under `RSS_LIMIT_BYTES` (500 MiB by default).
+
+```bash
+make verify-multi-agent-load                                      # smoke (10 producers)
+PRODUCERS=50 make verify-multi-agent-load                         # local stress
+PRODUCERS=200 RATE_PER_PRODUCER=50 make verify-multi-agent-load   # k3d ceiling
+```
+
+### long-running-drift
+
+Continuous OTLP traffic (Job parallelism=2) over `DURATION_HOURS`
+hours, sampled every `SAMPLE_INTERVAL` seconds. RSS, FDs, and
+`perf_sentinel_active_traces` are written to a TSV. Drift is the
+percent change of average RSS between the warm window `[10-30 %]` of
+samples and the tail window `[70-100 %]`. PASS requires drift below
+`DRIFT_PCT_LIMIT` (default 10 %), FDs delta below 5, and
+`active_traces` not monotonically growing.
+
+```bash
+make verify-long-running-drift                  # default 2h, 10x base traffic
+LONG_RUN=1 make verify-long-running-drift       # 24h leak hunting, 1x traffic
+```
+
+### failure-mode-daemon-restart
+
+`kubectl rollout restart` of the daemon Deployment in the middle of a
+180-second telemetrygen burst. Asserts that `/api/status` answers
+post-restart, `events_processed` resumes climbing, and no panic /
+FATAL line shows up in the daemon logs since the rollout.
+
+```bash
+make verify-failure-mode-daemon-restart
+```
+
+### failure-mode-backend-down
+
+3 sub-tests that scale a backend to 0 replicas for `PANNE_DURATION`
+seconds, then restore: the OTel collector Deployment, the Tempo
+StatefulSet, and the Postgres StatefulSet (in `db` namespace). For
+each sub-test, the daemon must keep `/api/status` answering during the
+panne and after the restore, and emit no panic / FATAL log delta. SKIP
+when a backend is not deployed in the current cluster.
+
+```bash
+make verify-failure-mode-backend-down
+```
+
+### failure-mode-network-partition
+
+Apply a strict ingress NetworkPolicy that severs all cross-pod traffic
+to the daemon. `kubectl port-forward` bypasses pod NetworkPolicies
+(kubelet proxy path), so the harness can still curl the daemon during
+the partition window. PASS requires `/api/status` answering during and
+after the partition, and no panic / FATAL log delta.
+
+```bash
+make verify-failure-mode-network-partition
+```
+
+### cold-start-edge-cases
+
+4 sub-tests of cold-start corner cases:
+
+1. **6.A** Zero-traffic cold-start: rollout, wait 60 s, assert daemon
+   is up and `/api/export/report` exposes the `warnings` key.
+2. **6.B** Cold-start + immediate burst: rollout, then a Job
+   parallelism=5 of telemetrygen at 200 sps for 30 s. Assert
+   `events_processed` delta > 1000 and daemon up.
+3. **6.C** Malformed TOML config: `docker run --rm` of the daemon
+   image with a deliberately broken config. Must exit non-zero within
+   15 s with one of `invalid` / `parse` / `syntax` / `expected` /
+   `TOML` in stderr.
+4. **6.D** Cold-start without the Electricity Maps secret: backup,
+   delete, rollout, wait 30 s, assert daemon up. Restore at end.
+
+```bash
+make verify-cold-start-edge-cases
+```
+
+### Failure modes responses
+
+A reference of expected daemon behaviour per panne. Useful when
+operating perf-sentinel in a production setup, not just for the lab.
+
+| Panne                              | Expected daemon response                                       |
+| ---------------------------------- | -------------------------------------------------------------- |
+| OTel collector down (push gone)    | Daemon up. Direct OTLP producers keep working on 14318.        |
+| Tempo down (read backend gone)     | Daemon up. Watch mode never reads from Tempo, only batch mode does. |
+| Postgres down                      | Daemon up. The optional `--pg-stat-prometheus` scrape may log a warning, ingestion continues. |
+| OTLP producer flood (bursts)       | Daemon up. Backpressure visible as `events_processed` deficit, no silent drops in critical path. |
+| Daemon redeploy (rollout restart)  | In-flight spans dropped gracefully. New daemon instance accepts traffic within the rollout window. |
+| Network partition (ingress denied) | Daemon up via kubelet liveness path. `events_processed` halts. Resumes once partition heals. |
+| Malformed TOML config              | Fail-fast on startup with a clear parse error. No silent fallback. |
+| Missing EM secret                  | Daemon up. GreenOps fallback to `annual` carbon intensity source. Warning surfaced in the report. |
+
+### Coverage table (B3 sprint additions)
+
+| Slug | Scope | Local | GHA |
+| --- | --- | --- | --- |
+| multi-agent-load | concurrent OTLP producers via Job parallelism | yes (50-200 producers) | yes (10 producers, smoke) |
+| long-running-drift | RSS / FD / active_traces drift over hours | yes (2h default, 24h with LONG_RUN=1) | yes (5 min smoke harness) |
+| failure-mode-daemon-restart | rollout during traffic | yes | yes |
+| failure-mode-backend-down | 3 backends scale-to-0 | yes | yes |
+| failure-mode-network-partition | NetworkPolicy ingress isolation | yes | yes |
+| cold-start-edge-cases | 4 cold-start sub-tests | yes (Docker required for 6.C) | yes (Docker available on ubuntu-latest) |
+
+### CI smoke vs local full
+
+Two scenarios accept stress profiles tuned for the developer machine:
+
+- `multi-agent-load`: CI uses 10 producers (60k spans over 60 s), local
+  stress uses 50 to 200. 1000 producers as drafted in the sprint brief
+  exceeds Docker Desktop k3d single-node capacity in practice.
+- `long-running-drift`: CI runs a 5-minute smoke (just verifies the
+  loop and the percentile math do not throw). Real drift detection is
+  local-only: 2 h default for an afternoon run, 24 h via `LONG_RUN=1`
+  for production-pace leak hunting.
+
+---
+
 ## Where to publish this guide
 
 The lab repo (this file) is the canonical reference because every

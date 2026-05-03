@@ -1,0 +1,23 @@
+---
+# Strict ingress NetworkPolicy that isolates perf-sentinel-daemon from
+# any cross-namespace OTLP push. Same-namespace traffic stays allowed
+# (the cluster-default NetworkPolicy in manifests/network-policies.yaml
+# permits some intra-namespace flows). kubectl port-forward bypasses
+# pod-to-pod NetworkPolicies because the kubelet proxies the request
+# directly into the pod network namespace, so the verify.sh harness
+# can still curl localhost:14318 during the partition window.
+#
+# Scope: removed entirely after the run via kubectl delete.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: b3-isolate-perf-sentinel-ingress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress: []
