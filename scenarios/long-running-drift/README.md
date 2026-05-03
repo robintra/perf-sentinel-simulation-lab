@@ -43,12 +43,12 @@ prefix is dropped to exclude cold-start effects.
 
 ## Inputs
 
-| Variable             | Default | LONG_RUN=1 override | Notes                                  |
-| -------------------- | ------- | -------------------- | -------------------------------------- |
-| `DURATION_HOURS`     | 2       | 24                   | total run length                       |
-| `SAMPLE_INTERVAL`    | 300     | 900                  | seconds between samples                |
-| `TRAFFIC_MULTIPLIER` | 10      | 1                    | multiplies the base 100 sps            |
-| `DRIFT_PCT_LIMIT`    | 10      | 10                   | RSS drift threshold for PASS           |
+| Variable             | Default | LONG_RUN=1 override | Notes                        |
+|----------------------|---------|---------------------|------------------------------|
+| `DURATION_HOURS`     | 2       | 24                  | total run length             |
+| `SAMPLE_INTERVAL`    | 300     | 900                 | seconds between samples      |
+| `TRAFFIC_MULTIPLIER` | 10      | 1                   | multiplies the base 100 sps  |
+| `DRIFT_PCT_LIMIT`    | 10      | 10                  | RSS drift threshold for PASS |
 
 ## Verdict
 
