@@ -1095,3 +1095,54 @@ of this guide into the upstream perf-sentinel docs (under
 Keep the architecture diagrams here, since they show how the modes
 plug into a real cluster with the lab's specific naming. The upstream
 docs can link back instead of duplicating.
+
+---
+
+## Supply chain pinning
+
+The lab follows the same pinning policy as upstream perf-sentinel
+(see `docs/SUPPLY-CHAIN.md` upstream for the full rationale):
+
+- **GitHub Actions** are pinned by SHA in `.github/workflows/`, with
+  the human-readable tag in a trailing comment.
+- **Container images** in `manifests/` and `helm/values/` are pinned
+  by `image@sha256:<digest>`, again with the tag commented for
+  readability. Scripts under `scripts/` and `scenarios/*/verify.sh`
+  use tag pins (the maintenance overhead of re-resolving digests on
+  every upstream bump outweighs the marginal supply-chain gain for
+  short-lived CLI invocations).
+- **Helm charts** carry an explicit `--version X.Y.Z` on every
+  `helm install` and `helm upgrade`, including the secondary paths
+  (calico fallback in `scripts/install-cni.sh`, hubble UI overlay in
+  `scripts/hubble-ui.sh`).
+- **Helm runtime** itself is pinned to a specific release in
+  `azure/setup-helm` (`version: 'v3.18.4'`), which avoids the
+  implicit `v3.18.4` fallback the action logs when its release
+  fetcher fails.
+
+Dependabot is configured in `.github/dependabot.yml` to open weekly
+PRs that bump the SHAs of GitHub Actions and the digests of Docker
+images referenced in workflows. PRs land with the `dependencies`
+label so they are easy to filter.
+
+**Known limitation**: Dependabot's `docker` ecosystem only scans
+`Dockerfile` and `image:` references inside GitHub Actions workflows.
+Digest pins under `manifests/`, `helm/values/` and
+`scenarios/*/manifests.yaml` are **not** auto-bumped, they have to be
+refreshed manually whenever the upstream image moves. A migration to
+Renovate would close this gap (Renovate parses Kubernetes and Helm
+values natively); deferred to a dedicated effort.
+
+To verify nothing has drifted back to floating refs, run:
+
+```bash
+# Floating GHA tags (must return nothing)
+grep -nE 'uses:.*@(v[0-9]+|main|master)$' .github/workflows/*.yml
+
+# `:latest` images in tracked paths (must return nothing)
+grep -rn ':latest' scenarios/ scripts/ manifests/ helm/
+
+# Helm calls without --version (must return nothing)
+grep -nE 'helm (install|upgrade)' Makefile scripts/*.sh scenarios/*/verify.sh \
+  | grep -v -- '--version'
+```

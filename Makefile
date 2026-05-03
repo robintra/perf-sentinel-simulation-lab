@@ -158,7 +158,7 @@ psql: ## Open a psql shell against the lab database (uses .postgres-password)
 		exit 1; \
 	fi
 	kubectl run -n db psql-shell --rm -it --restart=Never \
-	  --image=postgres:18.3-alpine \
+	  --image=postgres@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7 \
 	  --env="PGPASSWORD=$$(cat .postgres-password)" \
 	  -- psql -h postgres -U lab -d lab
 

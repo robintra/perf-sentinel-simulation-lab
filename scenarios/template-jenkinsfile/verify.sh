@@ -32,7 +32,9 @@ LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 
 UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.5.17}"
 UPSTREAM_URL="https://raw.githubusercontent.com/robintra/perf-sentinel/v${UPSTREAM_VERSION}/docs/ci-templates/jenkinsfile.groovy"
-JFR_IMAGE="${JFR_IMAGE:-jenkins/jenkinsfile-runner:latest}"
+# jenkinsfile-runner has no recent stable tag on Docker Hub, only :latest carries a digest.
+# Pinning the digest of latest gives immutability even though the tag pointer is mutable.
+JFR_IMAGE="${JFR_IMAGE:-jenkins/jenkinsfile-runner@sha256:1510739cb658772e733899a56e7ababb44cc113ee7fa22ec915c5fd0e7bff7a2}"  # latest snapshot 2026-05-03
 
 mkdir -p "${TMP_DIR}"
 

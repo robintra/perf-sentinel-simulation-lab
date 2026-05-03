@@ -35,7 +35,7 @@ UPSTREAM_URL="https://raw.githubusercontent.com/robintra/perf-sentinel/v${UPSTRE
 # no docker socket needed). nektos/act would require gh-pages, secrets,
 # and a working binary URL inside the runner container, which is more
 # than this scenario aims to validate.
-ACTIONLINT_IMAGE="${ACTIONLINT_IMAGE:-rhysd/actionlint:latest}"
+ACTIONLINT_IMAGE="${ACTIONLINT_IMAGE:-rhysd/actionlint@sha256:887a259a5a534f3c4f36cb02dca341673c6089431057242cdc931e9f133147e9}"  # 1.7.7
 
 mkdir -p "${TMP_DIR}"
 

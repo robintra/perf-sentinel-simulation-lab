@@ -34,7 +34,7 @@ jobs:
             || 'latest' }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3  # v6.0.2
 
       - name: Show resolved version
         run: |
@@ -47,12 +47,15 @@ jobs:
           k3d version
 
       - name: Install helm
-        uses: azure/setup-helm@v5
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
         with:
-          version: 'latest'
+          # Pin the Helm runtime explicitly: avoids the implicit v3.18.4
+          # fallback the action falls back to when its release fetcher fails
+          # (warning observed during 0.5.18 validation run).
+          version: 'v3.18.4'
 
       - name: Install kubectl
-        uses: azure/setup-kubectl@v4
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
 
       - name: Add helm repos used by make validate
         run: |
@@ -63,7 +66,11 @@ jobs:
       - name: Patch perf-sentinel image to validated version
         if: env.PERF_SENTINEL_VERSION != 'latest'
         run: |
-          sed -i "s|ghcr.io/robintra/perf-sentinel:[0-9.]*|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
+          # The baseline manifest pins the image by digest for supply-chain.
+          # When validating an arbitrary upstream version we drop the digest
+          # and revert to a tag pin (the validated version is the unit of
+          # interest, not the digest of a yet-untested image).
+          sed -i -E "s|ghcr.io/robintra/perf-sentinel(@sha256:[a-f0-9]+\|:[0-9.]+)|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
             manifests/perf-sentinel-daemon.yaml
           grep "ghcr.io/robintra/perf-sentinel" manifests/perf-sentinel-daemon.yaml
 
@@ -191,7 +198,7 @@ jobs:
 
       - name: Upload lab artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
           name: lab-validation-logs-${{ env.PERF_SENTINEL_VERSION }}-${{ github.run_id }}
           path: |
@@ -217,10 +224,10 @@ jobs:
             || 'latest' }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3  # v6.0.2
 
       - name: Create or update regression issue
-        uses: actions/github-script@v9
+        uses: actions/github-script@d746ffe35508b1917358783b479e04febd2b8f71  # v9.0.0
         with:
           script: |
             const version = process.env.PERF_SENTINEL_VERSION || 'unknown';
