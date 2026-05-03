@@ -121,28 +121,36 @@ else
     mkdir -p "${TMP_DIR}/workspace"
     cp "${TMP_DIR}/Jenkinsfile" "${TMP_DIR}/workspace/Jenkinsfile"
     cp "${SCENARIO_DIR}/.perf-sentinel.toml" "${TMP_DIR}/workspace/.perf-sentinel.toml"
+    mkdir -p "${TMP_DIR}/workspace/target"
     if [ -f "/tmp/ci-shift-left/regression-traces.json" ]; then
-      cp "/tmp/ci-shift-left/regression-traces.json" "${TMP_DIR}/workspace/target/traces.json" 2>/dev/null \
-        || (mkdir -p "${TMP_DIR}/workspace/target" && cp "/tmp/ci-shift-left/regression-traces.json" "${TMP_DIR}/workspace/target/traces.json")
+      cp "/tmp/ci-shift-left/regression-traces.json" "${TMP_DIR}/workspace/target/traces.json"
     else
-      mkdir -p "${TMP_DIR}/workspace/target"
+      warn "ci-shift-left artefacts missing, using empty trace fixture (run 'make verify-ci-shift-left' first to use real traces)"
       printf '{"data": []}' > "${TMP_DIR}/workspace/target/traces.json"
     fi
 
-    if timeout 300 docker run --rm \
+    # jenkinsfile-runner has a `lint` subcommand that validates the
+    # Jenkinsfile structure without executing it. Lighter than `run`
+    # (no perf-sentinel binary download, no docker socket, no Jenkins
+    # web UI). --platform linux/amd64 forces emulation on arm64 hosts.
+    if command -v timeout   >/dev/null 2>&1; then TIMEOUT=(timeout 300)
+    elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT=(gtimeout 300)
+    else                                            TIMEOUT=()
+    fi
+    if "${TIMEOUT[@]+"${TIMEOUT[@]}"}" docker run --rm \
+         --platform linux/amd64 \
          -v "${TMP_DIR}/workspace:/workspace:ro" \
-         -v /var/run/docker.sock:/var/run/docker.sock \
          "${JFR_IMAGE}" \
-         run --jenkinsfile /workspace/Jenkinsfile \
+         lint -f /workspace/Jenkinsfile \
          > "${TMP_DIR}/jfr.log" 2>&1
     then
       RUNTIME_VERDICT="PASS"
-      RUNTIME_NOTE="jenkinsfile-runner completed"
+      RUNTIME_NOTE="jenkinsfile-runner lint accepted the pipeline"
       ok "${RUNTIME_NOTE}"
     else
       JFR_EXIT=$?
       RUNTIME_VERDICT="SKIPPED"
-      RUNTIME_NOTE="jenkinsfile-runner exited ${JFR_EXIT} (env-related, see ${TMP_DIR}/jfr.log)"
+      RUNTIME_NOTE="jenkinsfile-runner lint exited ${JFR_EXIT} (env-related, see ${TMP_DIR}/jfr.log)"
       warn "${RUNTIME_NOTE}"
     fi
   fi

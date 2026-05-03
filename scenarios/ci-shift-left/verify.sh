@@ -323,7 +323,8 @@ if [ "${REG_GATE}" = "FAIL" ] \
    && [ "${ASSERT_SIG}" = "PASS" ] \
    && [ "${ASSERT_SARIF}" = "PASS" ] \
    && [ "${ACKED_GATE}" = "PASS" ] \
-   && [ "${ASSERT_ACK_ZERO}" = "PASS" ]; then
+   && [ "${ASSERT_ACK_ZERO}" = "PASS" ] \
+   && [ "${ASSERT_ACK_SHOW}" = "PASS" ]; then
   verdict="PASS"
 else
   verdict="FAIL"

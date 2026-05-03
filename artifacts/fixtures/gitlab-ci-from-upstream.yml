@@ -2,7 +2,8 @@
 #
 # Derived from docs/ci-templates/gitlab-ci.yml in the perf-sentinel
 # repo. Differences vs the upstream template:
-#   - PERF_SENTINEL_VERSION pinned to 0.5.14 (the lab's daemon version)
+#   - PERF_SENTINEL_VERSION pinned to 0.5.17 (matches upstream default,
+#     bumped from 0.5.14 alongside the B1 sprint)
 #   - integration-tests dummy job that publishes test-traces.json so
 #     the perf-sentinel job picks it up via dependencies
 #   - dependencies: [integration-tests] uncommented on perf-sentinel
@@ -18,7 +19,7 @@ stages:
   - perf-sentinel
 
 variables:
-  PERF_SENTINEL_VERSION: "0.5.14"
+  PERF_SENTINEL_VERSION: "0.5.17"
   PERF_SENTINEL_TRACES: "test-traces.json"
   PERF_SENTINEL_CONFIG: ".perf-sentinel.toml"
 

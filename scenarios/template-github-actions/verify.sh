@@ -31,7 +31,11 @@ LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 
 UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.5.17}"
 UPSTREAM_URL="https://raw.githubusercontent.com/robintra/perf-sentinel/v${UPSTREAM_VERSION}/docs/ci-templates/github-actions.yml"
-ACT_IMAGE="${ACT_IMAGE:-ghcr.io/nektos/act:latest}"
+# rhysd/actionlint is a lightweight GHA workflow validator (no runtime,
+# no docker socket needed). nektos/act would require gh-pages, secrets,
+# and a working binary URL inside the runner container, which is more
+# than this scenario aims to validate.
+ACTIONLINT_IMAGE="${ACTIONLINT_IMAGE:-rhysd/actionlint:latest}"
 
 mkdir -p "${TMP_DIR}"
 
@@ -146,50 +150,39 @@ fi
 
 STRUCTURAL_VERDICT="PASS"
 
-# === Step 3: best-effort runtime via act --list ===
-step "3. act --list (parse-only, no execution)"
+# === Step 3: schema lint via actionlint ===
+step "3. actionlint (GHA-aware schema + expression validator)"
 
-RUNTIME_VERDICT="SKIPPED"
-RUNTIME_NOTE="SKIP_RUNTIME=1"
-
-if [ "${SKIP_RUNTIME:-0}" != "1" ]; then
+if [ "${SKIP_RUNTIME:-0}" = "1" ]; then
+  RUNTIME_VERDICT="SKIPPED"
+  RUNTIME_NOTE="SKIP_RUNTIME=1"
+  warn "${RUNTIME_NOTE}"
+else
   command -v docker >/dev/null || die "docker not on PATH"
 
-  # Stage workspace.
-  mkdir -p "${TMP_DIR}/workspace/.github/workflows"
-  cp "${TMP_DIR}/github-actions.yml" "${TMP_DIR}/workspace/.github/workflows/perf-sentinel.yml"
-  cp "${SCENARIO_DIR}/.perf-sentinel.toml" "${TMP_DIR}/workspace/.perf-sentinel.toml"
-  if [ -f "/tmp/ci-shift-left/regression-report.json" ]; then
-    cp "/tmp/ci-shift-left/regression-report.json" "${TMP_DIR}/workspace/test-traces.json"
-  else
-    printf '{"findings": []}' > "${TMP_DIR}/workspace/test-traces.json"
-  fi
-
-  if ! docker image inspect "${ACT_IMAGE}" >/dev/null 2>&1; then
-    if ! docker pull "${ACT_IMAGE}" >/dev/null 2>&1; then
+  if ! docker image inspect "${ACTIONLINT_IMAGE}" >/dev/null 2>&1; then
+    if ! docker pull "${ACTIONLINT_IMAGE}" >/dev/null 2>&1; then
       RUNTIME_VERDICT="SKIPPED"
-      RUNTIME_NOTE="cannot pull ${ACT_IMAGE}, runtime SKIPPED"
+      RUNTIME_NOTE="cannot pull ${ACTIONLINT_IMAGE}, lint SKIPPED"
       warn "${RUNTIME_NOTE}"
     fi
   fi
 
-  if docker image inspect "${ACT_IMAGE}" >/dev/null 2>&1; then
-    if timeout 120 docker run --rm \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -v "${TMP_DIR}/workspace:/workspace" \
-        -w /workspace \
-        "${ACT_IMAGE}" \
-        --list \
-        > "${TMP_DIR}/act-list.log" 2>&1
+  if docker image inspect "${ACTIONLINT_IMAGE}" >/dev/null 2>&1; then
+    if docker run --rm \
+        -v "${TMP_DIR}:/workdir:ro" \
+        "${ACTIONLINT_IMAGE}" \
+        -no-color \
+        /workdir/github-actions.yml \
+        > "${TMP_DIR}/actionlint.log" 2>&1
     then
-      ACT_JOBS=$(grep -cE '^[0-9]\s+\S+' "${TMP_DIR}/act-list.log" || true)
       RUNTIME_VERDICT="PASS"
-      RUNTIME_NOTE="act --list parsed workflow, ${ACT_JOBS} jobs listed"
+      RUNTIME_NOTE="actionlint accepted the workflow (schema + expressions)"
       ok "${RUNTIME_NOTE}"
     else
-      ACT_EXIT=$?
-      RUNTIME_VERDICT="SKIPPED"
-      RUNTIME_NOTE="act --list exited ${ACT_EXIT} (env-related, see ${TMP_DIR}/act-list.log)"
+      LINT_EXIT=$?
+      RUNTIME_VERDICT="FAIL"
+      RUNTIME_NOTE="actionlint reported issues (exit ${LINT_EXIT}), see ${TMP_DIR}/actionlint.log"
       warn "${RUNTIME_NOTE}"
     fi
   fi
@@ -223,7 +216,7 @@ Upstream URL: ${UPSTREAM_URL}
 - action SHAs pinned: ${PINNED_VERDICT}
 - verdict: ${STRUCTURAL_VERDICT}
 
-## Step 3: act --list (parse-only)
+## Step 3: actionlint (schema + expression check)
 
 - verdict: ${RUNTIME_VERDICT}
 - note: ${RUNTIME_NOTE}

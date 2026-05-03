@@ -35,30 +35,33 @@ Report at `/tmp/scenario-template-github-actions-report.md`.
      floating tags). Warning if any are unpinned.
    - Quality gate enforcement step.
    - PR comment + sticky comment plugin presence.
-3. **act --list**. Run `nektos/act --list` against the workflow to
-   confirm act parses it without errors. No actual job execution
-   (would require GitHub Pages, secrets, gh-pages branch). Failures
-   downgrade to SKIPPED with a clear note.
+3. **actionlint**. Run `rhysd/actionlint` against the workflow. This
+   is a GHA-aware schema + expression validator (catches bad
+   expressions, invalid `if:` conditions, unknown context refs, dead
+   needs:, etc.). Lighter than running act in a container and does
+   not require gh-pages/secrets. Failures downgrade to FAIL only when
+   the lint reports issues; pull failures downgrade to SKIPPED.
 
 ## Verdicts
 
-- **PASS**: structural + act --list both PASS.
-- **PARTIAL**: structural PASS, act SKIPPED. Acceptable.
-- **FAIL**: YAML parse fails OR a required step is missing.
+- **PASS**: structural + actionlint both PASS.
+- **PARTIAL**: structural PASS, actionlint SKIPPED (image pull failed).
+  Acceptable.
+- **FAIL**: YAML parse fails, a required step is missing, or
+  actionlint reports issues.
 
 ## Limitations
 
-- `act` cannot fully simulate GitHub Actions (secrets, gh-pages
-  pushes, third-party Actions like
-  `marocchino/sticky-pull-request-comment` may fail in local
-  containers). Only `act --list` is run, which confirms the workflow
-  parses cleanly.
+- `actionlint` validates static structure (schema, expressions,
+  shell-script syntax inside `run:`) but does not execute the
+  workflow. Real GHA-only behaviors (secrets resolution, gh-pages
+  pushes, third-party Actions outcomes) are not exercised.
 - The template's binary install step downloads from
   `github.com/robintra/perf-sentinel/releases/...`. Real workflow runs
   in GHA depend on this URL being reachable and the release artefact
   being present. The lab does not validate the binary's actual
   download here.
-- act image pull failures (network, image deprecated) are tolerated.
+- `rhysd/actionlint` image pull failures (network) are tolerated.
 
 ## Files
 

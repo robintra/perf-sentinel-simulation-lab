@@ -208,15 +208,20 @@ if [ ! -s "${TMP_DIR}/diff.json" ]; then
   ASSERT_DIFF_NEW="FAIL"
   NEW_FINDINGS=0
 else
-  # Validate schema: new_findings, resolved_findings, severity_changes,
-  # endpoint_metric_deltas all present.
-  if jq -e 'has("new_findings") and has("resolved_findings") and has("severity_changes") and has("endpoint_metric_deltas")' \
-     "${TMP_DIR}/diff.json" >/dev/null; then
+  # Validate schema: 4 expected fields present AND each is an array
+  # (not null). Plain `has()` accepts null values which would mask a
+  # regression that ships the keys but with broken types.
+  if jq -e '
+    (.new_findings           | type == "array") and
+    (.resolved_findings      | type == "array") and
+    (.severity_changes       | type == "array") and
+    (.endpoint_metric_deltas | type == "array")
+  ' "${TMP_DIR}/diff.json" >/dev/null; then
     ASSERT_DIFF_SCHEMA="PASS"
-    ok "diff schema PASS (4 expected fields present)"
+    ok "diff schema PASS (4 expected fields present, all arrays)"
   else
     ASSERT_DIFF_SCHEMA="FAIL"
-    warn "diff JSON missing one of the 4 expected fields, see ${TMP_DIR}/diff.json"
+    warn "diff JSON missing one of the 4 expected array fields, see ${TMP_DIR}/diff.json"
   fi
 
   NEW_FINDINGS=$(jq '.new_findings | length' "${TMP_DIR}/diff.json" 2>/dev/null || echo 0)
