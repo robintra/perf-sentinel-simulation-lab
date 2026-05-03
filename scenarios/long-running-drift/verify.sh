@@ -75,14 +75,14 @@ START_TS=$(date +%s)
 for i in $(seq 1 "${TOTAL_SAMPLES}"); do
   TS=$(date +%s)
   METRICS=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/metrics" 2>/dev/null || echo "")
-  if [ -z "${METRICS}" ]; then
-    echo -e "${TS}\t0\t0\t0" >> "${SAMPLES_FILE}"
-  else
-    RSS=$(echo "${METRICS}" | awk '/^process_resident_memory_bytes / {print int($2)}' | head -1)
-    FDS=$(echo "${METRICS}" | awk '/^process_open_fds / {print int($2)}' | head -1)
-    ACTIVE=$(echo "${METRICS}" | awk '/^perf_sentinel_active_traces / {print int($2)}' | head -1)
-    echo -e "${TS}\t${RSS:-0}\t${FDS:-0}\t${ACTIVE:-0}" >> "${SAMPLES_FILE}"
-  fi
+  RSS_MIB=$(kubectl top pod -n observability -l app.kubernetes.io/name=perf-sentinel-daemon --no-headers 2>/dev/null | awk '{gsub("Mi","",$3); print int($3)}' | head -1)
+  RSS_MIB="${RSS_MIB:-0}"
+  RSS=$(( RSS_MIB * 1024 * 1024 ))
+  ACTIVE=$(echo "${METRICS}" | awk '/^perf_sentinel_active_traces / {print int($2)}' | head -1)
+  # The daemon does not expose process_open_fds; populate with 0 so the
+  # downstream Python analysis sees a stable column. Real FD leak
+  # detection would need cAdvisor or kubectl top --containers.
+  echo -e "${TS}\t${RSS:-0}\t0\t${ACTIVE:-0}" >> "${SAMPLES_FILE}"
   echo "    sample ${i}/${TOTAL_SAMPLES}: $(tail -1 "${SAMPLES_FILE}")"
   if [ "${i}" -lt "${TOTAL_SAMPLES}" ]; then
     sleep "${SAMPLE_INTERVAL}"
