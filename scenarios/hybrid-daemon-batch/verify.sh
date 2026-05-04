@@ -20,7 +20,7 @@ set -euo pipefail
 SCENARIO="hybrid-daemon-batch"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.18"
+IMAGE="ghcr.io/robintra/perf-sentinel:0.5.19"
 TMP_DIR="/tmp/${SCENARIO}"
 mkdir -p "${TMP_DIR}"
 

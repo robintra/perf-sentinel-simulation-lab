@@ -1106,9 +1106,10 @@ All 6 share two design choices:
 A kubectl Job with `parallelism=PRODUCERS` of `telemetrygen` Pods
 emits OTLP HTTP traces at `RATE_PER_PRODUCER` sps for `DURATION`
 seconds against the production daemon. The daemon must keep
-`/api/status` answering, process at least 50 % of the expected spans
-(some backpressure is acceptable, catastrophic loss is not), and stay
-under `RSS_LIMIT_BYTES` (500 MiB by default).
+`/api/status` answering, ingest at least `MIN_EVENTS_DELTA` events,
+and stay under `RSS_LIMIT_BYTES` (500 MiB by default). On 0.5.19+
+the report also surfaces `perf_sentinel_otlp_rejected_total{reason="channel_full"}`
+as a quantitative backpressure signal next to the events delta.
 
 ```bash
 make verify-multi-agent-load                                      # smoke (10 producers)
@@ -1120,11 +1121,15 @@ PRODUCERS=200 RATE_PER_PRODUCER=50 make verify-multi-agent-load   # k3d ceiling
 
 Continuous OTLP traffic (Job parallelism=2) over `DURATION_HOURS`
 hours, sampled every `SAMPLE_INTERVAL` seconds. RSS, FDs, and
-`perf_sentinel_active_traces` are written to a TSV. Drift is the
-percent change of average RSS between the warm window `[10-30 %]` of
-samples and the tail window `[70-100 %]`. PASS requires drift below
-`DRIFT_PCT_LIMIT` (default 10 %), FDs delta below 5, and
-`active_traces` not monotonically growing.
+`perf_sentinel_active_traces` are written to a TSV. On 0.5.19+ RSS
+comes from `process_resident_memory_bytes` and FDs from
+`process_open_fds` directly via `/metrics`, with a `kubectl top pod`
+fallback when the surfaces are absent (older daemons or cfg-gated
+builds). Drift is the percent change of average RSS between the warm
+window `[10-30 %]` of samples and the tail window `[70-100 %]`. PASS
+requires drift below `DRIFT_PCT_LIMIT` (default 10 %), `active_traces`
+not monotonically growing, and `fds_delta < 50` when the FDs column is
+populated (skipped in fallback mode).
 
 ```bash
 make verify-long-running-drift                  # default 2h, 10x base traffic
@@ -1172,7 +1177,10 @@ make verify-failure-mode-network-partition
 4 sub-tests of cold-start corner cases:
 
 1. **6.A** Zero-traffic cold-start: rollout, wait 60 s, assert daemon
-   is up and `/api/export/report` exposes the `warnings` key.
+   is up and `/api/export/report` exposes a `cold_start` signal. On
+   0.5.19+ the assertion looks for `warning_details[].kind == "cold_start"`,
+   with a fallback regex on the legacy `warnings: [string]` array on
+   older daemons.
 2. **6.B** Cold-start + immediate burst: rollout, then a Job
    parallelism=5 of telemetrygen at 200 sps for 30 s. Assert
    `events_processed` delta > 1000 and daemon up.

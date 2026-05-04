@@ -82,14 +82,19 @@ START_TS=$(date +%s)
 for i in $(seq 1 "${TOTAL_SAMPLES}"); do
   TS=$(date +%s)
   METRICS=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/metrics" 2>/dev/null || echo "")
-  RSS_MIB=$(kubectl top pod -n observability -l app.kubernetes.io/name=perf-sentinel-daemon --no-headers 2>/dev/null | awk '{gsub("Mi","",$3); print int($3)}' | head -1)
-  RSS_MIB="${RSS_MIB:-0}"
-  RSS=$(( RSS_MIB * 1024 * 1024 ))
-  ACTIVE=$(echo "${METRICS}" | awk '/^perf_sentinel_active_traces / {print int($2)}' | head -1)
-  # The daemon does not expose process_open_fds; populate with 0 so the
-  # downstream Python analysis sees a stable column. Real FD leak
-  # detection would need cAdvisor or kubectl top --containers.
-  echo -e "${TS}\t${RSS:-0}\t0\t${ACTIVE:-0}" >> "${SAMPLES_FILE}"
+  # 0.5.19+ exposes process_resident_memory_bytes and process_open_fds via
+  # the prometheus client process collector. On older daemons (or builds
+  # where the collector is cfg-gated off) these are absent, fall back to
+  # `kubectl top pod` for RSS in MiB granularity and leave FDs at 0.
+  RSS=$(echo "${METRICS}" | awk '/^process_resident_memory_bytes / {print int($2); exit}')
+  FDS=$(echo "${METRICS}" | awk '/^process_open_fds / {print int($2); exit}')
+  if [ -z "${RSS}" ]; then
+    RSS_MIB=$(kubectl top pod -n observability -l app.kubernetes.io/name=perf-sentinel-daemon --no-headers 2>/dev/null | awk '{gsub("Mi","",$3); print int($3); exit}')
+    RSS=$(( ${RSS_MIB:-0} * 1024 * 1024 ))
+  fi
+  FDS="${FDS:-0}"
+  ACTIVE=$(echo "${METRICS}" | awk '/^perf_sentinel_active_traces / {print int($2); exit}')
+  echo -e "${TS}\t${RSS:-0}\t${FDS}\t${ACTIVE:-0}" >> "${SAMPLES_FILE}"
   echo "    sample ${i}/${TOTAL_SAMPLES}: $(tail -1 "${SAMPLES_FILE}")"
   if [ "${i}" -lt "${TOTAL_SAMPLES}" ]; then
     sleep "${SAMPLE_INTERVAL}"
@@ -143,13 +148,19 @@ DAEMON_ALIVE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/de
 PASS_DRIFT=$(python3 -c "print('yes' if abs(float('${DRIFT_PCT}')) < ${DRIFT_PCT_LIMIT} else 'no')")
 PASS_AT=$(python3 -c "print('yes' if (${TAIL_AT} - ${WARM_AT}) < max(50, ${WARM_AT}) else 'no')")
 
-# FDs column stays 0 in the TSV (daemon does not expose process_open_fds)
-# so it is reported but not asserted on. Real FD leak detection would
-# need cAdvisor or kubectl top --containers, which is out of scope here.
+# FDs leak gate fires only when the 0.5.19 surface populates the column.
+# On 0.5.18 fallback the column stays 0 and the gate is reported skip.
+if [ "${WARM_FDS}" -gt 0 ] || [ "${TAIL_FDS}" -gt 0 ]; then
+  PASS_FDS=$([ "${FDS_DELTA}" -lt 50 ] && echo yes || echo no)
+else
+  PASS_FDS=skip
+fi
+
 if [ "${STATUS}" = "ok" ] \
    && [ "${DAEMON_ALIVE}" = "yes" ] \
    && [ "${PASS_DRIFT}" = "yes" ] \
-   && [ "${PASS_AT}" = "yes" ]; then
+   && [ "${PASS_AT}" = "yes" ] \
+   && [ "${PASS_FDS}" != "no" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -184,7 +195,7 @@ step "Write report"
   echo "- daemon alive: ${DAEMON_ALIVE}"
   echo "- drift_rss < ${DRIFT_PCT_LIMIT}%: ${PASS_DRIFT}"
   echo "- active_traces not monotonically growing: ${PASS_AT}"
-  echo "- fds reported (column always 0, daemon does not expose process_open_fds): ${FDS_DELTA}"
+  echo "- fds_delta < 50: ${PASS_FDS} (skip when daemon does not expose process_open_fds)"
   echo
   echo "Samples TSV: ${SAMPLES_FILE}"
   echo

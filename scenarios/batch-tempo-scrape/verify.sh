@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCENARIO="batch-tempo-scrape"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.18"
+IMAGE="ghcr.io/robintra/perf-sentinel:0.5.19"
 # Use host.docker.internal so this works on both Docker Desktop (Mac/Win)
 # and Linux runners (with --add-host host.docker.internal:host-gateway).
 HOST_FROM_CONTAINER="host.docker.internal"

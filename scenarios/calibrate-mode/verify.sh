@@ -15,7 +15,7 @@ set -euo pipefail
 
 SCENARIO="calibrate-mode"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.18"
+IMAGE="ghcr.io/robintra/perf-sentinel:0.5.19"
 TMP_DIR="/tmp/${SCENARIO}"
 TRACES_FIXTURE="$(cd "$(dirname "$0")/../.." && pwd)/artifacts/fixtures/em-real-time-traces.json"
 mkdir -p "${TMP_DIR}"

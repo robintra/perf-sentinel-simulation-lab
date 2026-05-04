@@ -90,14 +90,24 @@ DELTA_EVENTS=$(( EVENTS_AFTER - EVENTS_BEFORE ))
 DELTA_TRACES=$(( TRACES_AFTER - TRACES_BEFORE ))
 ok "events_after=${EVENTS_AFTER} delta_events=${DELTA_EVENTS} delta_traces=${DELTA_TRACES}"
 
-step "Read /metrics for active_traces, kubectl top for RSS"
+step "Read /metrics for active_traces and channel_full counter, kubectl top for RSS"
 curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/metrics" > "${TMP_DIR}/metrics-after.txt"
 ACTIVE_END=$(awk '/^perf_sentinel_active_traces / {print int($2)}' "${TMP_DIR}/metrics-after.txt" | head -1)
 ACTIVE_END="${ACTIVE_END:-0}"
+# 0.5.19+ exposes a per-reason rejected counter that quantifies the
+# CPU-bound backpressure of this load. Older daemons miss this surface,
+# in which case we fall back to the events_delta gate alone.
+REJECTED_CHANNEL_FULL=$(awk '/^perf_sentinel_otlp_rejected_total\{reason="channel_full"\}/ {print int($2); exit}' "${TMP_DIR}/metrics-after.txt")
+if [ -n "${REJECTED_CHANNEL_FULL}" ]; then
+  VERDICT_SOURCE="0.5.19_counter"
+else
+  REJECTED_CHANNEL_FULL="MISSING"
+  VERDICT_SOURCE="0.5.18_fallback"
+fi
 RSS_MIB=$(kubectl top pod -n observability -l app.kubernetes.io/name=perf-sentinel-daemon --no-headers 2>/dev/null | awk '{gsub("Mi","",$3); print int($3)}' | head -1)
 RSS_MIB="${RSS_MIB:-0}"
 RSS_AFTER=$(( RSS_MIB * 1024 * 1024 ))
-ok "rss_after=${RSS_AFTER}B (${RSS_MIB}Mi via kubectl top) active_traces_end=${ACTIVE_END}"
+ok "rss_after=${RSS_AFTER}B (${RSS_MIB}Mi via kubectl top) active_traces_end=${ACTIVE_END} rejected_channel_full=${REJECTED_CHANNEL_FULL}"
 
 step "Compute verdict"
 EXPECTED=$(( PRODUCERS * RATE_PER_PRODUCER * DURATION_NUM ))
@@ -136,6 +146,8 @@ step "Write report"
   echo "- traces_analyzed delta: ${DELTA_TRACES}"
   echo "- process_resident_memory_bytes: ${RSS_AFTER} (limit ${RSS_LIMIT_BYTES})"
   echo "- perf_sentinel_active_traces (post-drain): ${ACTIVE_END}"
+  echo "- perf_sentinel_otlp_rejected_total{channel_full}: ${REJECTED_CHANNEL_FULL}"
+  echo "- verdict_source: ${VERDICT_SOURCE}"
   echo "- daemon /api/status reachable post-load: ${DAEMON_ALIVE}"
   echo
   echo "## Verdicts"

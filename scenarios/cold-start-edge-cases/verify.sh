@@ -67,11 +67,34 @@ refresh_pf || { VERDICTS+=("FAIL: 6.A daemon did not come back from rollout"); }
 sleep 60
 A_ALIVE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 && echo yes || echo no)
 A_REPORT=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" 2>/dev/null || echo '{}')
-A_HAS_ANALYSIS=$(echo "${A_REPORT}" | python3 -c "import sys,json; d=json.load(sys.stdin); print('yes' if 'analysis' in d else 'no')" 2>/dev/null || echo no)
-if [ "${A_ALIVE}" = "yes" ] && [ "${A_HAS_ANALYSIS}" = "yes" ]; then
-  VERDICTS+=("PASS: 6.A zero-traffic cold-start (alive=${A_ALIVE} report_analysis=${A_HAS_ANALYSIS})")
+# 0.5.19+ exposes a structured warning_details[] array with a kind field.
+# Fall back to the legacy warnings: [string] vec on older daemons.
+A_COLD_START_KIND=$(echo "${A_REPORT}" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print('parse_error'); sys.exit()
+wd = d.get('warning_details') or []
+if any(w.get('kind') == 'cold_start' for w in wd):
+    print('yes_v0519')
+elif any('cold-start' in w.lower() or 'not yet processed' in w.lower()
+         for w in (d.get('warnings') or [])):
+    print('yes_legacy')
+else:
+    print('no')
+" 2>/dev/null || echo parse_error)
+
+case "${A_COLD_START_KIND}" in
+  yes_v0519) A_NOTE="cold_start kind in warning_details (0.5.19 surface)" ;;
+  yes_legacy) A_NOTE="cold-start string in legacy warnings (0.5.18 fallback)" ;;
+  *) A_NOTE="no cold-start signal (${A_COLD_START_KIND})" ;;
+esac
+
+if [ "${A_ALIVE}" = "yes" ] && [ "${A_COLD_START_KIND}" != "no" ] && [ "${A_COLD_START_KIND}" != "parse_error" ]; then
+  VERDICTS+=("PASS: 6.A zero-traffic cold-start (alive=${A_ALIVE} ${A_NOTE})")
 else
-  VERDICTS+=("FAIL: 6.A zero-traffic cold-start (alive=${A_ALIVE} report_analysis=${A_HAS_ANALYSIS})")
+  VERDICTS+=("FAIL: 6.A zero-traffic cold-start (alive=${A_ALIVE} ${A_NOTE})")
 fi
 
 # Sub-test 6.B: cold-start + immediate high-volume burst
