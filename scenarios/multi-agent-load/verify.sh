@@ -9,7 +9,7 @@
 set -euo pipefail
 
 SCENARIO="multi-agent-load"
-NS="b3-multi-agent"
+NS="multi-agent-load"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 MANIFESTS="$(cd "$(dirname "$0")" && pwd)/manifests.yaml"
@@ -36,7 +36,7 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; clean
 
 cleanup() {
   if [ "${KEEP_NAMESPACE:-no}" != "yes" ]; then
-    kubectl delete networkpolicy perf-sentinel-allow-b3-multi-agent -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete networkpolicy perf-sentinel-allow-multi-agent-load -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   fi
 }
@@ -75,7 +75,7 @@ step "Wait for the telemetrygen Job to complete"
 DURATION_NUM="${DURATION%s}"
 TIMEOUT_SEC=$(( DURATION_NUM + 120 ))
 kubectl -n "${NS}" wait --for=condition=Complete --timeout="${TIMEOUT_SEC}s" \
-  job/b3-telemetrygen-load > "${TMP_DIR}/wait.log" 2>&1 \
+  job/telemetrygen-load > "${TMP_DIR}/wait.log" 2>&1 \
   || die "Job did not complete in ${TIMEOUT_SEC}s, see ${TMP_DIR}/wait.log"
 ok "Job complete"
 

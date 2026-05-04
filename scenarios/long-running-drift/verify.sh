@@ -16,7 +16,7 @@
 set -euo pipefail
 
 SCENARIO="long-running-drift"
-NS="b3-drift"
+NS="long-running-drift"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 MANIFESTS="$(cd "$(dirname "$0")" && pwd)/manifests.yaml"
@@ -43,7 +43,7 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; clean
 
 cleanup() {
   if [ "${KEEP_NAMESPACE:-no}" != "yes" ]; then
-    kubectl delete networkpolicy perf-sentinel-allow-b3-drift -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete networkpolicy perf-sentinel-allow-long-running-drift -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   fi
 }

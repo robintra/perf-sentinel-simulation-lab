@@ -25,7 +25,7 @@ realistic in-cluster client topology.
 
 ```
 +--------------------+        OTLP HTTP        +-------------------------+
-| b3-multi-agent ns  |  ---->                  |  observability ns        |
+| multi-agent-load ns  |  ---->                  |  observability ns        |
 |  Job parallelism=N |        14318            |  perf-sentinel-daemon    |
 |  telemetrygen pods |                         |  Service ClusterIP       |
 +--------------------+                         +-------------------------+
@@ -72,4 +72,4 @@ moderate run, or `PRODUCERS=200` to approach the k3d single-node ceiling.
 - Lab bootstrap done: `make up-cni && make seed-services`.
 - Daemon port-forward live: `./scripts/port-forward.sh start`.
 - The cluster zero-trust NetworkPolicy is honored: this scenario ships
-  its own egress + ingress allow-rules scoped to `b3-multi-agent`.
+  its own egress + ingress allow-rules scoped to `multi-agent-load`.

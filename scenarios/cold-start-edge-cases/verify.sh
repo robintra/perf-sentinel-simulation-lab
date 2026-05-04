@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCENARIO="cold-start-edge-cases"
-NS="b3-cold-start"
+NS="cold-start-edge-cases"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,7 +32,7 @@ cleanup() {
     kubectl apply -f "${TMP_DIR}/em-secret-backup.yaml" >/dev/null 2>&1 || true
   fi
   if [ "${KEEP_NAMESPACE:-no}" != "yes" ]; then
-    kubectl delete networkpolicy perf-sentinel-allow-b3-cold-start -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete networkpolicy perf-sentinel-allow-cold-start-edge-cases -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   fi
 }
@@ -89,14 +89,14 @@ kind: Namespace
 metadata:
   name: ${NS}
   labels:
-    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    app.kubernetes.io/part-of: perf-sentinel-lab
     pod-security.kubernetes.io/enforce: baseline
     name: ${NS}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: b3-cold-start-egress
+  name: cold-start-edge-cases-egress
   namespace: ${NS}
 spec:
   podSelector: {}
@@ -125,7 +125,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: perf-sentinel-allow-b3-cold-start
+  name: perf-sentinel-allow-cold-start-edge-cases
   namespace: observability
 spec:
   podSelector:
@@ -143,7 +143,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: b3-burst
+  name: cold-burst
   namespace: ${NS}
 spec:
   parallelism: 5
@@ -170,7 +170,7 @@ spec:
             - --otlp-http
             - --rate=200
             - --duration=30s
-            - --service=b3-cold-burst
+            - --service=cold-burst-svc
           resources:
             requests: { cpu: 20m, memory: 32Mi }
             limits:   { cpu: 100m, memory: 64Mi }
@@ -180,7 +180,7 @@ spec:
             capabilities:
               drop: [ALL]
 EOF
-kubectl -n "${NS}" wait --for=condition=Complete --timeout=180s job/b3-burst > "${TMP_DIR}/6b-wait.log" 2>&1 || true
+kubectl -n "${NS}" wait --for=condition=Complete --timeout=180s job/cold-burst > "${TMP_DIR}/6b-wait.log" 2>&1 || true
 sleep 15
 B_EVENTS_AFTER=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))")
@@ -208,7 +208,7 @@ else
   # Portable timeout: docker run in background, monitor for self-exit
   # within 15s. If the daemon does not fail-fast, kill it. Avoids the
   # GNU `timeout` binary which is not installed on macOS by default.
-  docker run --rm --name "b3-bad-config-$$" \
+  docker run --rm --name "bad-config-$$" \
     -v "${TMP_DIR}/bad-config.toml:/etc/perf-sentinel/config.toml:ro" \
     --user 65534:65534 \
     "${DAEMON_IMAGE}" \
@@ -217,7 +217,7 @@ else
   C_DEADLINE=$(( $(date +%s) + 15 ))
   while kill -0 "${C_PID}" 2>/dev/null; do
     if [ "$(date +%s)" -ge "${C_DEADLINE}" ]; then
-      docker kill "b3-bad-config-$$" >/dev/null 2>&1 || true
+      docker kill "bad-config-$$" >/dev/null 2>&1 || true
       break
     fi
     sleep 1

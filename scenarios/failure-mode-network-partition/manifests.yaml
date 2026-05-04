@@ -11,10 +11,10 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: b3-isolate-perf-sentinel-ingress
+  name: failure-mode-network-partition-isolate-ingress
   namespace: observability
   labels:
-    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    app.kubernetes.io/part-of: perf-sentinel-lab
 spec:
   podSelector:
     matchLabels:

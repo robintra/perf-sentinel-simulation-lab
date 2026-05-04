@@ -67,7 +67,7 @@ SKIP outcomes:
 
 ## Cleanup
 
-- The scenario namespace `b3-cold-start` is deleted on exit.
+- The scenario namespace `cold-start-edge-cases` is deleted on exit.
 - The reciprocal NetworkPolicy in `observability` is deleted on exit.
 - The EM secret backup is reapplied on exit, even if the script fails
   mid-run (trap on EXIT).

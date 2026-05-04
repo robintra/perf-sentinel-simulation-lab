@@ -1081,14 +1081,14 @@ denial-of-service via oversized files (`crates/sentinel-core/src/acknowledgments
 
 ---
 
-## Resilience and failure modes (sprint B3)
+## Resilience and failure modes
 
 6 scenarios that validate the daemon under adverse conditions: massive
 concurrency, multi-hour drift, backend pannes, network partition,
-cold-start edge cases. They are additive on top of B1 and B2: no
-existing scenario or manifest is modified.
+cold-start edge cases. They are additive on top of the rest of the
+suite, no existing scenario or manifest is modified.
 
-All 6 share two design choices specific to this sprint:
+All 6 share two design choices:
 
 - **OTLP producers run as kubectl Jobs in-cluster**, not as `docker run
   --network host`. The cluster DNS path (`perf-sentinel-daemon.observability.svc:14318`)
@@ -1203,7 +1203,7 @@ operating perf-sentinel in a production setup, not just for the lab.
 | Malformed TOML config              | Fail-fast on startup with a clear parse error. No silent fallback. |
 | Missing EM secret                  | Daemon up. GreenOps fallback to `annual` carbon intensity source. Warning surfaced in the report. |
 
-### Coverage table (B3 sprint additions)
+### Coverage table
 
 | Slug | Scope | Local | GHA |
 | --- | --- | --- | --- |

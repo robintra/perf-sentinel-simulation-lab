@@ -96,7 +96,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/failure-mode-backend-down/verify.sh
 	@bash -n scenarios/failure-mode-network-partition/verify.sh
 	@bash -n scenarios/cold-start-edge-cases/verify.sh
-	@echo "==> yaml parse on B3 manifests"
+	@echo "==> yaml parse on resilience scenario manifests"
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/multi-agent-load/manifests.yaml \
 	  scenarios/long-running-drift/manifests.yaml \
@@ -268,22 +268,22 @@ verify-template-jenkinsfile: ## Validate upstream jenkinsfile.groovy via jenkins
 verify-template-github-actions: ## Validate upstream github-actions.yml via nektos/act --list
 	./scenarios/template-github-actions/verify.sh
 
-verify-multi-agent-load: ## B3, telemetrygen Job parallel charges the prod daemon
+verify-multi-agent-load: ## telemetrygen Job parallel charges the prod daemon
 	./scenarios/multi-agent-load/verify.sh
 
-verify-long-running-drift: ## B3, drift accelere 2h (LONG_RUN=1 for 24h leak hunting)
+verify-long-running-drift: ## drift accelere 2h (LONG_RUN=1 for 24h leak hunting)
 	./scenarios/long-running-drift/verify.sh
 
-verify-failure-mode-daemon-restart: ## B3, kubectl rollout restart while traffic flows
+verify-failure-mode-daemon-restart: ## kubectl rollout restart while traffic flows
 	./scenarios/failure-mode-daemon-restart/verify.sh
 
-verify-failure-mode-backend-down: ## B3, OTel collector / Tempo / Postgres scaled to 0 in turn
+verify-failure-mode-backend-down: ## OTel collector / Tempo / Postgres scaled to 0 in turn
 	./scenarios/failure-mode-backend-down/verify.sh
 
-verify-failure-mode-network-partition: ## B3, NetworkPolicy ingress isolation of the daemon
+verify-failure-mode-network-partition: ## NetworkPolicy ingress isolation of the daemon
 	./scenarios/failure-mode-network-partition/verify.sh
 
-verify-cold-start-edge-cases: ## B3, 4 sub-tests of cold-start corner cases
+verify-cold-start-edge-cases: ## 4 sub-tests of cold-start corner cases
 	./scenarios/cold-start-edge-cases/verify.sh
 
 verify-all-scenarios: ## Run all 20 scenarios sequentially (see docs/SCENARIOS.md)
@@ -292,11 +292,12 @@ verify-all-scenarios: ## Run all 20 scenarios sequentially (see docs/SCENARIOS.m
 	@#   and exercises Path 2 (--pg-stat-prometheus).
 	@# - ci-shift-left before output-formats-coverage because the latter
 	@#   reuses /tmp/ci-shift-left/regression-report.json artefacts.
-	@# - templates run before B3 because they may SKIP runtime steps when
-	@#   the GitLab/Jenkins/act environment is not fully available.
-	@# - B3 scenarios run last: they restart the daemon, scale shared
-	@#   backends to 0, and apply temporary NetworkPolicies. Running them
-	@#   after the rest avoids polluting earlier scenarios.
+	@# - templates run before the resilience scenarios because they may
+	@#   SKIP runtime steps when the GitLab/Jenkins/act environment is
+	@#   not fully available.
+	@# - resilience scenarios run last: they restart the daemon, scale
+	@#   shared backends to 0, and apply temporary NetworkPolicies.
+	@#   Running them after the rest avoids polluting earlier scenarios.
 	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \

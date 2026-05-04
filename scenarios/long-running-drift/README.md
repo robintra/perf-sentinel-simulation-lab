@@ -24,7 +24,7 @@ drift detection).
 
 ```
 +----------------+        OTLP HTTP        +-------------------------+
-| b3-drift ns    |  ---->                  |  observability ns        |
+| long-running-drift ns    |  ---->                  |  observability ns        |
 |  Job paral=2   |        14318            |  perf-sentinel-daemon    |
 |  rate=Nsps     |                         |  (production deployment) |
 +----------------+                         +-------------------------+

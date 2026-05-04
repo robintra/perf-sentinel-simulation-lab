@@ -2,11 +2,11 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: b3-multi-agent
+  name: multi-agent-load
   labels:
-    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    app.kubernetes.io/part-of: perf-sentinel-lab
     pod-security.kubernetes.io/enforce: baseline
-    name: b3-multi-agent
+    name: multi-agent-load
 ---
 # NetworkPolicy egress: telemetrygen Pods need to reach the perf-sentinel
 # daemon Service in observability and resolve cluster DNS. The cluster
@@ -16,8 +16,8 @@ metadata:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: b3-multi-agent-egress
-  namespace: b3-multi-agent
+  name: multi-agent-load-egress
+  namespace: multi-agent-load
 spec:
   podSelector: {}
   policyTypes: [Egress]
@@ -43,12 +43,12 @@ spec:
         - { protocol: TCP, port: 14318 }
 ---
 # Reciprocal ingress on the daemon side: the cluster default-deny denies
-# ingress from b3-multi-agent unless explicitly allowed. Add a parallel
+# ingress from multi-agent-load unless explicitly allowed. Add a parallel
 # ingress rule scoped to this scenario's namespace.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: perf-sentinel-allow-b3-multi-agent
+  name: perf-sentinel-allow-multi-agent-load
   namespace: observability
 spec:
   podSelector:
@@ -59,17 +59,17 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: b3-multi-agent
+              kubernetes.io/metadata.name: multi-agent-load
       ports:
         - { protocol: TCP, port: 14318 }
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: b3-telemetrygen-load
-  namespace: b3-multi-agent
+  name: telemetrygen-load
+  namespace: multi-agent-load
   labels:
-    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    app.kubernetes.io/part-of: perf-sentinel-lab
     app.kubernetes.io/name: telemetrygen-load
 spec:
   parallelism: ${PRODUCERS}
@@ -79,7 +79,7 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/part-of: perf-sentinel-lab-b3
+        app.kubernetes.io/part-of: perf-sentinel-lab
         app.kubernetes.io/name: telemetrygen-load
     spec:
       restartPolicy: Never
@@ -101,7 +101,7 @@ spec:
             - --otlp-http
             - --rate=${RATE_PER_PRODUCER}
             - --duration=${DURATION}
-            - --service=b3-load-test-svc
+            - --service=load-test-svc
           resources:
             requests:
               cpu: 20m

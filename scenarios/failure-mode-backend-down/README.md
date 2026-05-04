@@ -61,7 +61,7 @@ all three are PASS or SKIP.
 
 Postgres is shared with `order-service` (namespace `shop`). Scaling it
 down briefly during a CI run may affect a parallel scenario invocation,
-but B3 scenarios run sequentially in the workflow and the
+but the resilience scenarios run sequentially in the workflow and the
 `make verify-all-scenarios` aggregator. Running this scenario in
 isolation against a busy lab is the safer mode.
 

@@ -7,7 +7,7 @@
 set -euo pipefail
 
 SCENARIO="failure-mode-daemon-restart"
-NS="b3-restart"
+NS="failure-mode-daemon-restart"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 mkdir -p "${TMP_DIR}"
@@ -27,7 +27,7 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; clean
 
 cleanup() {
   if [ "${KEEP_NAMESPACE:-no}" != "yes" ]; then
-    kubectl delete networkpolicy perf-sentinel-allow-b3-restart -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete networkpolicy perf-sentinel-allow-failure-mode-daemon-restart -n observability --ignore-not-found --wait=false >/dev/null 2>&1 || true
     kubectl delete namespace "${NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   fi
 }
@@ -50,14 +50,14 @@ kind: Namespace
 metadata:
   name: ${NS}
   labels:
-    app.kubernetes.io/part-of: perf-sentinel-lab-b3
+    app.kubernetes.io/part-of: perf-sentinel-lab
     pod-security.kubernetes.io/enforce: baseline
     name: ${NS}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: b3-restart-egress
+  name: failure-mode-daemon-restart-egress
   namespace: ${NS}
 spec:
   podSelector: {}
@@ -86,7 +86,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: perf-sentinel-allow-b3-restart
+  name: perf-sentinel-allow-failure-mode-daemon-restart
   namespace: observability
 spec:
   podSelector:
@@ -104,7 +104,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: b3-traffic
+  name: restart-traffic
   namespace: ${NS}
 spec:
   parallelism: 1
@@ -131,7 +131,7 @@ spec:
             - --otlp-http
             - --rate=${TRAFFIC_RATE}
             - --duration=${TRAFFIC_DURATION}
-            - --service=b3-restart-svc
+            - --service=restart-svc
           resources:
             requests: { cpu: 20m, memory: 32Mi }
             limits:   { cpu: 100m, memory: 64Mi }
