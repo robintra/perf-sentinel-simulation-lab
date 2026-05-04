@@ -12,13 +12,14 @@ cd "${REPO_ROOT}"
 # comments, and docs/RESOURCES.md. The perf-sentinel image is derived from
 # the deployment manifest so the daemon and bootstrap pre-pull never drift.
 CLUSTER_NAME="perf-sentinel-lab"
-PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/perf-sentinel:/ { print $2; exit }' \
+# Match both tag pin (`...perf-sentinel:0.5.16`) and digest pin
+# (`...perf-sentinel@sha256:abc...`); the manifest switched to digest in 0.5.18.
+PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/perf-sentinel[:@]/ { print $2; exit }' \
   "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")
 [ -n "${PERF_SENTINEL_IMAGE}" ] || {
   printf "\033[31m    error: failed to extract perf-sentinel image from manifests/perf-sentinel-daemon.yaml\033[0m\n" >&2
   exit 1
 }
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_IMAGE##*:}"
 KPS_CHART_VERSION="84.4.0"
 TEMPO_IMAGE_VERSION="2.10.5"
 OTEL_CHART_VERSION="0.153.0"

@@ -64,12 +64,13 @@ jobs:
           helm repo update
 
       - name: Patch perf-sentinel image to validated version
-        if: env.PERF_SENTINEL_VERSION != 'latest'
         run: |
           # The baseline manifest pins the image by digest for supply-chain.
-          # When validating an arbitrary upstream version we drop the digest
-          # and revert to a tag pin (the validated version is the unit of
-          # interest, not the digest of a yet-untested image).
+          # When validating an arbitrary upstream version (or `latest` from
+          # the daily cron) we drop the digest and revert to a tag pin: the
+          # validated version is the unit of interest, not the digest of a
+          # yet-untested image. Firing unconditionally also keeps the cron
+          # path working when the manifest is digest-pinned.
           sed -i -E "s|ghcr.io/robintra/perf-sentinel(@sha256:[a-f0-9]+\|:[0-9.]+)|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
             manifests/perf-sentinel-daemon.yaml
           grep "ghcr.io/robintra/perf-sentinel" manifests/perf-sentinel-daemon.yaml
