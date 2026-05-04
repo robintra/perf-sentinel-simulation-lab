@@ -24,14 +24,21 @@ the counter pre-warming + delta semantics hold.
   reference: it mounts the `perf-sentinel-acks` PVC at
   `/var/lib/perf-sentinel/` and enables `[daemon.ack]` in the ConfigMap.
 - At least 3 distinct finding signatures present in the daemon (the
-  scenario harvests `sig_a`, `sig_b`, `sig_c` separately). Run `make
-  seed-services && scripts/validate-findings.sh` before this scenario,
-  or chain it after another scenario that seeds findings.
+  scenario harvests `sig_a`, `sig_b`, `sig_c` separately). `make
+  seed-services` only deploys the Java services; the actual finding
+  generator is `scripts/validate-findings.sh`, which runs the 10 k6
+  anti-pattern scenarios that hit `/api/fault/*` and produce the
+  spans the daemon classifies. Run both before this scenario, or
+  chain it after another scenario that seeds findings.
 - Daemon port-forward up on the conventional `DAEMON_LOCAL_PORT`
   (default 14318). The scenario refreshes the port-forward itself
   around the rollout step.
 
 ## What is verified
+
+Steps 1-3 are setup (sanity, signature harvest, idempotent cleanup +
+counter snapshot). Steps 4-11 each emit one PASS/FAIL verdict, for a
+total of 8 verdicts that drive the final report.
 
 1. Daemon reachable on `/api/status`.
 2. At least 3 distinct finding signatures available via
@@ -67,15 +74,10 @@ make verify-daemon-ack-workflow
 TTL_SEC=30 TTL_LONG_SEC=300 EXPIRY_SLEEP_SEC=35 EXPIRY_POLL_SEC=15 \
   ./scenarios/daemon-ack-workflow/verify.sh
 
-# Inspect the JSONL after the run. The daemon image is distroless
-# (FROM scratch), so the standard `kubectl exec ... cat` does not work.
-# Use kubectl debug with an ephemeral container that has shell tools:
-DAEMON_POD=$(kubectl -n observability get pod \
-  -l app.kubernetes.io/name=perf-sentinel-daemon \
-  -o jsonpath='{.items[0].metadata.name}')
-kubectl -n observability debug "${DAEMON_POD}" --target=perf-sentinel \
-  --image=busybox:1.37 --quiet -- \
-  cat /var/lib/perf-sentinel/acks.jsonl
+# Confirm the ack store loaded its JSONL at startup (compaction signal):
+kubectl -n observability logs deploy/perf-sentinel-daemon \
+  | grep 'ack store ready'
+# Expected: "Daemon ack store ready path=/var/lib/perf-sentinel/acks.jsonl"
 ```
 
 The report lands at `/tmp/scenario-daemon-ack-workflow-report.md` with

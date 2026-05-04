@@ -142,10 +142,8 @@ ok "sig_a=${SIG_A:0:24}... sig_b=${SIG_B:0:24}... sig_c=${SIG_C:0:24}..."
 # 3. Counter snapshot BEFORE
 #######################################
 step "3. Idempotent cleanup + snapshot counters BEFORE"
-# Re-runs on the same daemon (or same PVC) need to start from a clean
-# slate: the PVC persists acks across runs, so the harvested signatures
-# may already be acked from a prior run. A best-effort DELETE clears
-# them; 204 (was acked) and 404 (not acked) are both fine.
+# The PVC persists acks across runs, so a re-run may find sig_{a,b,c}
+# already acked. Best-effort DELETE; 204 and 404 are both fine here.
 for sig in "${SIG_A}" "${SIG_B}" "${SIG_C}"; do
   enc=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${sig}")
   curl -o /dev/null -s -X DELETE "http://localhost:${DAEMON_LOCAL_PORT}/api/findings/${enc}/ack" 2>/dev/null || true
@@ -263,23 +261,15 @@ try:
 except Exception:
     print('NO')
 " 2>/dev/null || echo "NO")
-  # JSONL line count is best-effort: the daemon image is distroless
-  # (scratch) so kubectl exec into the pod returns ENOEXEC for sh/wc.
-  # Persistence (sig_a still in /api/acks) is the load-bearing assert;
-  # compaction line count is a soft signal we surface when reachable.
-  JSONL_LINES="unknown"
-  if [ -n "${REPORT_COMPACTION_VIA_DEBUG:-}" ]; then
-    DAEMON_POD=$(kubectl -n "${NS}" get pod -l app.kubernetes.io/name=perf-sentinel-daemon -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    if [ -n "${DAEMON_POD}" ]; then
-      JSONL_LINES=$(kubectl -n "${NS}" exec "${DAEMON_POD}" -- sh -c 'wc -l < /var/lib/perf-sentinel/acks.jsonl 2>/dev/null || echo 0' 2>/dev/null \
-        | tr -d ' \n\r' || echo "unknown")
-      JSONL_LINES="${JSONL_LINES:-unknown}"
-    fi
-  fi
+  # Persistence is the load-bearing assert: if sig_a still surfaces in
+  # /api/acks after the rollout, the PVC mount + JSONL replay worked.
+  # Compaction is upstream-tested; the lab cannot easily measure file
+  # size from a distroless container without an ephemeral debug pod
+  # that explicitly mounts the same PVC.
   if [ "${SIG_A_PERSISTED}" = "YES" ]; then
-    VERDICTS+=("PASS: 7 persistence (sig_a survived rollout, jsonl_lines=${JSONL_LINES})")
+    VERDICTS+=("PASS: 7 persistence (sig_a survived rollout via PVC-backed JSONL)")
   else
-    VERDICTS+=("FAIL: 7 persistence (sig_a persisted=${SIG_A_PERSISTED} jsonl_lines=${JSONL_LINES})")
+    VERDICTS+=("FAIL: 7 persistence (sig_a persisted=${SIG_A_PERSISTED})")
   fi
 fi
 

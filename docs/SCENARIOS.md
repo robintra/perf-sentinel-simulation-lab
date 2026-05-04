@@ -1203,7 +1203,8 @@ manifest at `manifests/perf-sentinel-daemon.yaml` mounts a
 `perf-sentinel-acks` PVC at `/var/lib/perf-sentinel/` and enables the
 `[daemon.ack]` section in the ConfigMap.
 
-11 sub-tests cover the full lifecycle:
+11 verification steps cover the full lifecycle (steps 1-3 are setup,
+steps 4-11 each emit one PASS/FAIL verdict for a total of 8 verdicts):
 
 1. Sanity: daemon reachable on `/api/status`.
 2. Seed: harvest 3 distinct finding signatures from
