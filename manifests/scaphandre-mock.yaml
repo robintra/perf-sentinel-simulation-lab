@@ -1,0 +1,193 @@
+---
+# Scaphandre mock for the lab. RAPL is not accessible on Apple Silicon
+# nor on most cloud runners, so this Python stdlib mock stands in for
+# a real Scaphandre exporter and lets the daemon exercise its
+# `[green.scaphandre]` scrape path. The mock exposes only
+# `scaph_process_power_consumption_microwatts`, the single metric
+# perf-sentinel actually consumes (cf upstream parser.rs:39).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scaphandre-mock-script
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: scaphandre-mock
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    app.kubernetes.io/version: "1.0.0"
+data:
+  app.py: |
+    """Minimal Scaphandre mock exposing /metrics in Prometheus format.
+
+    Generates deterministic per-process power values by hashing
+    (exe, pid). Stdlib only: no Flask, no pip install at startup, so
+    the pod boots in seconds and survives the lab zero-trust
+    NetworkPolicy without an egress rule.
+    """
+    import hashlib
+    import os
+    import sys
+    import time
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    PROCESSES = [
+        {"exe": "java",   "cmdline": "/usr/bin/java -jar /app/order-service.jar",       "pid": 1234},
+        {"exe": "java",   "cmdline": "/usr/bin/java -jar /app/payment-service.jar",     "pid": 1235},
+        {"exe": "java",   "cmdline": "/usr/bin/java -jar /app/catalog-service.jar",     "pid": 1236},
+        {"exe": "dotnet", "cmdline": "/usr/bin/dotnet /app/inventory-service.dll",      "pid": 2234},
+        {"exe": "dotnet", "cmdline": "/usr/bin/dotnet /app/auth-service.dll",           "pid": 2235},
+    ]
+
+    INSTANCE_LABEL = os.environ.get("SCAPHANDRE_MOCK_INSTANCE", "scaphandre-mock")
+    STARTUP_EPOCH = time.time()
+
+
+    def hash_to_power_microwatts(exe, pid):
+        # SHA-256 of "exe:pid" -> first 8 bytes as u64 -> [1W, 50W].
+        digest = hashlib.sha256(f"{exe}:{pid}".encode()).digest()[:8]
+        n = int.from_bytes(digest, "big")
+        return 1_000_000 + (n % 49_000_000)
+
+
+    def render_metrics():
+        lines = [
+            "# HELP scaph_process_power_consumption_microwatts Per-process power consumption (uW) - mocked",
+            "# TYPE scaph_process_power_consumption_microwatts gauge",
+        ]
+        for proc in PROCESSES:
+            power_uw = hash_to_power_microwatts(proc["exe"], proc["pid"])
+            labels = (
+                f'exe="{proc["exe"]}",'
+                f'cmdline="{proc["cmdline"]}",'
+                f'pid="{proc["pid"]}",'
+                f'instance="{INSTANCE_LABEL}"'
+            )
+            lines.append(
+                f"scaph_process_power_consumption_microwatts{{{labels}}} {power_uw}"
+            )
+        return "\n".join(lines) + "\n"
+
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/metrics":
+                body = render_metrics().encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; version=0.0.4")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            elif self.path == "/healthz":
+                uptime = int(time.time() - STARTUP_EPOCH)
+                body = f"ok uptime={uptime}s\n".encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            else:
+                self.send_error(404, "Not Found")
+
+        def log_message(self, fmt, *args):
+            sys.stderr.write(f"{self.address_string()} {fmt % args}\n")
+
+
+    if __name__ == "__main__":
+        HTTPServer(("0.0.0.0", 9100), Handler).serve_forever()
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scaphandre-mock
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: scaphandre-mock
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: scaphandre-mock
+  ports:
+    - name: http
+      port: 9100
+      targetPort: 9100
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scaphandre-mock
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: scaphandre-mock
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    app.kubernetes.io/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: scaphandre-mock
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: scaphandre-mock
+        app.kubernetes.io/part-of: perf-sentinel-lab
+        app.kubernetes.io/version: "1.0.0"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mock
+          # python:3.13-alpine pinned by digest. Resolve via
+          # `docker buildx imagetools inspect python:3.13-alpine
+          # --format '{{json .Manifest.Digest}}'` on bump.
+          image: python:3.13-alpine@sha256:420cd0bf0f3998275875e02ecd5808168cf0843cbb4d3c536432f729247b2acc  # 3.13-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["python", "/scripts/app.py"]
+          ports:
+            - name: http
+              containerPort: 9100
+              protocol: TCP
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9100
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+      volumes:
+        - name: script
+          configMap:
+            name: scaphandre-mock-script
+            items:
+              - key: app.py
+                path: app.py

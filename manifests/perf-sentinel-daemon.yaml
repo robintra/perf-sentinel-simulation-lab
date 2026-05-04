@@ -70,6 +70,26 @@ data:
     # One zone is enough to exercise the mapping without hitting the
     # sandbox key quota. Add more entries when validating multi-region.
     "eu-west-3" = "FR"
+
+    [green.scaphandre]
+    # Scaphandre exporter endpoint. RAPL is not accessible on Apple
+    # Silicon and most cloud runners, so the lab uses a minimal Python
+    # stdlib mock at `manifests/scaphandre-mock.yaml`. The endpoint
+    # stays configured at all times: the daemon emits a one-shot warn
+    # and falls back to the proxy model when the mock is not yet
+    # seeded. Run `make seed-scaphandre-mock` to bring it up.
+    endpoint = "http://scaphandre-mock:9100/metrics"
+    scrape_interval_secs = 5
+
+    [green.scaphandre.process_map]
+    # Map perf-sentinel service.name (from span service.name attribute)
+    # to the Scaphandre exe label exposed by the mock. The 5 lab
+    # services span the two runtimes the mock advertises.
+    "order-service" = "java"
+    "payment-service" = "java"
+    "catalog-service" = "java"
+    "inventory-service" = "dotnet"
+    "auth-service" = "dotnet"
 ---
 # Ack store backing volume. Single-node k3d uses local-path-provisioner,
 # which honors fsGroup on the resulting hostPath mount, so the daemon's

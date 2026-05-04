@@ -400,6 +400,52 @@ spec:
         - protocol: TCP
           port: 14318
 ---
+# 4.D.quinquies daemon egress to the Scaphandre mock for the
+# `[green.scaphandre]` scrape path. Scoped to the in-cluster mock
+# Service in the same namespace, port 9100. Without this rule, the
+# zero-trust default-deny silently drops the scrape and the mock
+# scenario sub-test 5 fails with a stagnant gauge.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-scaphandre-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: scaphandre-mock
+      ports:
+        - protocol: TCP
+          port: 9100
+---
+# 4.D.sexies ingress on the Scaphandre mock limited to the daemon.
+# kubectl port-forward bypasses NetworkPolicy (kubelet proxy path),
+# so the verify.sh harness can still curl the mock during validation.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scaphandre-mock-allow-daemon
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: scaphandre-mock
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 9100
+---
 # 4.E perf-sentinel daemon egress to Electricity Maps.
 # Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
 # replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).

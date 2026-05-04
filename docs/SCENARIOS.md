@@ -31,30 +31,30 @@ Each numbered arrow on the diagram is one step in the path of a
 performance-relevant code change from the developer's laptop to the
 production daemon's findings.
 
-| # | What happens | Mode used |
-| --- | --- | --- |
-| (1) | Dev runs a local perf test against the service running on their workstation. | local batch |
-| (2) | The captured `traces.json` is fed to `perf-sentinel analyze --input` (or `report --input`, or `inspect` for the TUI). | local batch |
-| (3) | Findings printed to terminal (or HTML / TUI), the dev iterates until clean. | local batch |
-| (4) | `git push` of the candidate change. | source control |
-| (5) | CI is triggered on the PR. | CI/CD |
-| (6) | CI runs perf integration tests, captures traces, then `analyze --ci`. **Without perf ITs, no findings will fire and the gate is meaningless.** | CI batch |
-| (7) | Quality gate: exit 1 blocks the merge, exit 0 lets it through. | CI batch |
-| (8) | Once merged, the code flows through the deploy pipeline. | CI/CD |
-| (9) | Staging deployment: the focus-service pod ships with a perf-sentinel daemon as sidecar. | sidecar |
-| (10) | The sidecar ingests OTLP over `localhost:14318` (no network hop). | sidecar |
-| (11) | QA / SRE polls `/api/findings` on the staging sidecar to validate the release candidate. | sidecar |
-| (12) | After QA approval, the same artifact is promoted to production. | CI/CD |
-| (13) | Selected heavy services in prod send OTLP directly to the centralized daemon to skip the Collector hop. | centralized |
-| (14) | All other services flow through the OTel Collector, which forwards OTLP to both the centralized daemon and the trace store (Tempo / VictoriaTraces / Jaeger). | centralized |
-| (15) | On-call polls the daemon's HTTP API (`/api/status`, `/api/findings`, `/api/correlations`, `/api/explain/<trace-id>`, `/api/export/report`) and snapshots the Report to a self-contained HTML for post-mortem. | centralized |
-| (16) | Optional nightly CI cron pulls recent traces from the trace store via `perf-sentinel tempo` (Tempo OTLP-JSON) or `perf-sentinel jaeger-query` (Jaeger / VictoriaTraces) to run regression detection on prod traffic. | CI batch |
-| (extra) | **Always-on metrics path**: Prometheus scrapes the daemon's `/metrics` endpoint (works for any daemon, sidecar or centralized — same port as OTLP HTTP) and Grafana renders it via the upstream dashboard at [`examples/grafana-dashboard.json`](https://github.com/robintra/perf-sentinel/blob/main/examples/grafana-dashboard.json) using `perf_sentinel_findings_total`, `perf_sentinel_io_waste_ratio`, `perf_sentinel_service_io_ops_total`. | centralized + sidecar |
-| (extra) | **Always-on log path**: every daemon also streams findings as NDJSON to stdout, picked up by the log aggregator (Loki / Elasticsearch / Splunk) via `kubectl logs` or fluent-bit. Useful for alerting and grep-style triage when the HTTP API is overkill. | centralized + sidecar |
-| (A) | **pg_stat ingestion via CSV file**: a scheduled or on-demand `psql \copy (SELECT ... FROM pg_stat_statements) TO STDOUT WITH CSV HEADER` exports a snapshot of SQL hotspot counters to `pg-stat.csv`. The file is fed to `analyze`, `report` or the standalone `pg-stat` subcommand via `--pg-stat <csv>`. Works in both CI and local dev. | CI batch + local batch |
-| (B) | **pg_stat ingestion via Prometheus**: `postgres_exporter` exposes `pg_stat_statements` on `:9187/metrics`, scraped by the cluster Prometheus. perf-sentinel reaches it via `--pg-stat-prometheus <url>` (one-shot HTTP GET against either `postgres_exporter` directly or the Prometheus aggregating it). Mutually exclusive with `--pg-stat <csv>`. Auth via `--pg-stat-auth-header` (`PERF_SENTINEL_PGSTAT_AUTH_HEADER` env var preferred in production). | CI batch + local batch |
-| (D) | **Live prod triage by dev/architect**: an authorized dev can `curl` the prod daemon's HTTP API directly. Three formats: JSON via `/api/findings`, `/api/correlations`, `/api/explain/<trace-id>` (the explain endpoint only works while the trace is still inside the `trace_ttl_ms=30s` window) ; HTML via `curl /api/export/report \| perf-sentinel report --input - --output report.html` ; NDJSON streaming via `kubectl logs deploy/perf-sentinel-daemon -f` for live tailing. Useful when reproducing a customer issue without waiting for the next CI cycle. | centralized |
-| (E) | **Daemon Report → local batch (best of both worlds)**: pull a Report snapshot from `/api/export/report`, render it with the local CLI. The daemon's `correlations` field is preserved as-is by `report --input` (the local CLI does not recompute correlations in batch — they are only available because the daemon already did the work over its rolling window). pg_stat is **not** part of the Report and must be added at render time: `curl /api/export/report \| perf-sentinel report --input - --pg-stat /tmp/pg-stat.csv --output dashboard.html`. The dev keeps the JSON locally for re-renders. | centralized → local batch |
+| #       | What happens                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Mode used                 |
+|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------|
+| (1)     | Dev runs a local perf test against the service running on their workstation.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | local batch               |
+| (2)     | The captured `traces.json` is fed to `perf-sentinel analyze --input` (or `report --input`, or `inspect` for the TUI).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | local batch               |
+| (3)     | Findings printed to terminal (or HTML / TUI), the dev iterates until clean.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | local batch               |
+| (4)     | `git push` of the candidate change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | source control            |
+| (5)     | CI is triggered on the PR.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | CI/CD                     |
+| (6)     | CI runs perf integration tests, captures traces, then `analyze --ci`. **Without perf ITs, no findings will fire and the gate is meaningless.**                                                                                                                                                                                                                                                                                                                                                                                                                                                             | CI batch                  |
+| (7)     | Quality gate: exit 1 blocks the merge, exit 0 lets it through.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | CI batch                  |
+| (8)     | Once merged, the code flows through the deploy pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | CI/CD                     |
+| (9)     | Staging deployment: the focus-service pod ships with a perf-sentinel daemon as sidecar.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | sidecar                   |
+| (10)    | The sidecar ingests OTLP over `localhost:14318` (no network hop).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | sidecar                   |
+| (11)    | QA / SRE polls `/api/findings` on the staging sidecar to validate the release candidate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | sidecar                   |
+| (12)    | After QA approval, the same artifact is promoted to production.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | CI/CD                     |
+| (13)    | Selected heavy services in prod send OTLP directly to the centralized daemon to skip the Collector hop.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | centralized               |
+| (14)    | All other services flow through the OTel Collector, which forwards OTLP to both the centralized daemon and the trace store (Tempo / VictoriaTraces / Jaeger).                                                                                                                                                                                                                                                                                                                                                                                                                                              | centralized               |
+| (15)    | On-call polls the daemon's HTTP API (`/api/status`, `/api/findings`, `/api/correlations`, `/api/explain/<trace-id>`, `/api/export/report`) and snapshots the Report to a self-contained HTML for post-mortem.                                                                                                                                                                                                                                                                                                                                                                                              | centralized               |
+| (16)    | Optional nightly CI cron pulls recent traces from the trace store via `perf-sentinel tempo` (Tempo OTLP-JSON) or `perf-sentinel jaeger-query` (Jaeger / VictoriaTraces) to run regression detection on prod traffic.                                                                                                                                                                                                                                                                                                                                                                                       | CI batch                  |
+| (extra) | **Always-on metrics path**: Prometheus scrapes the daemon's `/metrics` endpoint (works for any daemon, sidecar or centralized — same port as OTLP HTTP) and Grafana renders it via the upstream dashboard at [`examples/grafana-dashboard.json`](https://github.com/robintra/perf-sentinel/blob/main/examples/grafana-dashboard.json) using `perf_sentinel_findings_total`, `perf_sentinel_io_waste_ratio`, `perf_sentinel_service_io_ops_total`.                                                                                                                                                          | centralized + sidecar     |
+| (extra) | **Always-on log path**: every daemon also streams findings as NDJSON to stdout, picked up by the log aggregator (Loki / Elasticsearch / Splunk) via `kubectl logs` or fluent-bit. Useful for alerting and grep-style triage when the HTTP API is overkill.                                                                                                                                                                                                                                                                                                                                                 | centralized + sidecar     |
+| (A)     | **pg_stat ingestion via CSV file**: a scheduled or on-demand `psql \copy (SELECT ... FROM pg_stat_statements) TO STDOUT WITH CSV HEADER` exports a snapshot of SQL hotspot counters to `pg-stat.csv`. The file is fed to `analyze`, `report` or the standalone `pg-stat` subcommand via `--pg-stat <csv>`. Works in both CI and local dev.                                                                                                                                                                                                                                                                 | CI batch + local batch    |
+| (B)     | **pg_stat ingestion via Prometheus**: `postgres_exporter` exposes `pg_stat_statements` on `:9187/metrics`, scraped by the cluster Prometheus. perf-sentinel reaches it via `--pg-stat-prometheus <url>` (one-shot HTTP GET against either `postgres_exporter` directly or the Prometheus aggregating it). Mutually exclusive with `--pg-stat <csv>`. Auth via `--pg-stat-auth-header` (`PERF_SENTINEL_PGSTAT_AUTH_HEADER` env var preferred in production).                                                                                                                                                | CI batch + local batch    |
+| (D)     | **Live prod triage by dev/architect**: an authorized dev can `curl` the prod daemon's HTTP API directly. Three formats: JSON via `/api/findings`, `/api/correlations`, `/api/explain/<trace-id>` (the explain endpoint only works while the trace is still inside the `trace_ttl_ms=30s` window) ; HTML via `curl /api/export/report \| perf-sentinel report --input - --output report.html` ; NDJSON streaming via `kubectl logs deploy/perf-sentinel-daemon -f` for live tailing. Useful when reproducing a customer issue without waiting for the next CI cycle.                                        | centralized               |
+| (E)     | **Daemon Report → local batch (best of both worlds)**: pull a Report snapshot from `/api/export/report`, render it with the local CLI. The daemon's `correlations` field is preserved as-is by `report --input` (the local CLI does not recompute correlations in batch — they are only available because the daemon already did the work over its rolling window). pg_stat is **not** part of the Report and must be added at render time: `curl /api/export/report \| perf-sentinel report --input - --pg-stat /tmp/pg-stat.csv --output dashboard.html`. The dev keeps the JSON locally for re-renders. | centralized → local batch |
 
 ### Trade-offs by entity and context
 
@@ -62,14 +62,14 @@ The same code-path detection logic powers every entity, but the
 operational characteristics differ. This matrix is what to reach for
 when you need to choose where a finding should come from.
 
-| Entity | Mode | Pros | Cons / limits |
-| --- | --- | --- | --- |
-| **Local CLI** (`analyze --input` / `report --input` / `inspect` / `pg-stat`) | batch on captured trace | Fast iteration, no infra. Multi-format input (auto-detects native OTLP-JSON / Jaeger v1 / Zipkin v2). Re-runs deterministically on the same file. HTML / JSON / TUI / SARIF outputs. **Best-of-both-worlds path** (E): a daemon Report from `/api/export/report` carries `correlations` and is consumed as-is by `report --input -`, so a dev can render a local HTML with prod correlations + cross-reference pg_stat (`--pg-stat <csv>`) in one shot. Window depends on the source: trace dump from Tempo/Jaeger ≈ backend retention (often days/weeks) ; daemon Report = rolling window snapshot at curl time. | **Batch never recomputes correlations** (the correlator is daemon-only by design). When the input is a raw trace file, `correlations: []` always. They only appear when the input IS a daemon-produced Report. Limited to what was captured: forget to enable an exporter and you analyze a partial picture. No live signal, only post-hoc. |
-| **Local daemon** (`perf-sentinel watch` on dev workstation, `127.0.0.1:4317` gRPC / `4318` HTTP) | live, dev session | Same `/api/findings` + `/api/correlations` + `/api/export/report` + `/metrics` surface as the prod daemon, but scoped to whatever the dev runs locally. **Correlations available without leaving the laptop**, no need to round-trip through prod. Snapshot via `curl /api/export/report \| report --input - --output report.html` for a sharable HTML at any moment. Useful when iterating on a feature where cross-trace co-occurrence matters (cascade between two local services, async fanout patterns). | Same windows as prod daemon: `trace_ttl_ms=30s` and `[daemon.correlation] window_minutes=10`. Correlator needs sustained traffic (`min_co_occurrences=3` default) → a single curl to a single endpoint won't fire correlations. The daemon binds `127.0.0.1` by default, so containerised local services need `host.docker.internal:4317` (or `listen_address = "0.0.0.0"` in `~/.perf-sentinel.toml`). RAM cost ~60–150 MiB while the dev session runs. |
-| **CI CLI** (`analyze --ci` / `tempo` / `jaeger-query` / `pg-stat`) | batch on IT capture or trace store | Deterministic PR gate: exit code 1 fails the build, SARIF feeds GitHub / GitLab code scanning. Composable with `--pg-stat[-prometheus]` for SQL hotspot regression. Can pull from prod's trace store nightly via `tempo` / `jaeger-query` for drift detection. | **Useless without perf integration tests** (k6, JMeter, Gatling). A unit-test trace has no N+1 to detect. No correlations from a single CI run (correlator needs `[daemon.correlation] window_minutes=10` of sustained traffic). |
-| **Sidecar daemon** (`watch`, per-pod) | live, scoped to one pod | Smallest live footprint that still gives `/api/findings` + Prometheus `/metrics` + NDJSON stdout. No cross-pod network hop (OTLP over loopback). Findings scoped to one service: zero noise from neighbors. Failure-isolated: sidecar OOM only affects that pod. | **Pod-only scope**: no cross-service correlations possible. **Rolling window only**: `trace_ttl_ms=30s` after last span (so `/api/explain/<trace-id>` evaporates fast); `[daemon.correlation] window_minutes=10` for cross-trace co-occurrences. **Per-pod cost**: ~60–150 MiB RAM per replica, multiplies with replica count. |
-| **Centralized daemon** (`watch`, fleet) | live, fleet-wide | **Cross-service correlations** become available (`/api/correlations` only fires when multi-service co-occurrences are observed). Single API surface for SRE dashboards. Snapshot via `/api/export/report` → HTML for post-mortem. Can ingest both via OTel Collector and direct OTLP from heavy services. Memory metrics + log path + HTTP API in one place. | **Rolling window, not historical**: same `trace_ttl_ms=30s` and `window_minutes=10` defaults. For analysis older than the window, use the trace store (`perf-sentinel tempo` / `jaeger-query`). **Capacity ceiling**: `max_active_traces=10000` (default), LRU eviction past that. **Single point of contention**: one daemon for the fleet means RAM scales with active trace volume. |
-| **HTML report** (`report --input`) | static post-mortem | Self-contained file (~1 MiB), shareable offline, opens in any browser. Embeds findings + pg_stat tab + Explain → pg_stat cross-nav + correlations (when source is a daemon Report). Canonical artifact for sprint reviews and incident reports. | **Frozen snapshot**: no live update. Correlations only present if the input is a daemon Report (batch JSON has no correlator state). Re-rendering requires re-running `report --input`. |
+| Entity                                                                                           | Mode                               | Pros                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Cons / limits                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|--------------------------------------------------------------------------------------------------|------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Local CLI** (`analyze --input` / `report --input` / `inspect` / `pg-stat`)                     | batch on captured trace            | Fast iteration, no infra. Multi-format input (auto-detects native OTLP-JSON / Jaeger v1 / Zipkin v2). Re-runs deterministically on the same file. HTML / JSON / TUI / SARIF outputs. **Best-of-both-worlds path** (E): a daemon Report from `/api/export/report` carries `correlations` and is consumed as-is by `report --input -`, so a dev can render a local HTML with prod correlations + cross-reference pg_stat (`--pg-stat <csv>`) in one shot. Window depends on the source: trace dump from Tempo/Jaeger ≈ backend retention (often days/weeks) ; daemon Report = rolling window snapshot at curl time. | **Batch never recomputes correlations** (the correlator is daemon-only by design). When the input is a raw trace file, `correlations: []` always. They only appear when the input IS a daemon-produced Report. Limited to what was captured: forget to enable an exporter and you analyze a partial picture. No live signal, only post-hoc.                                                                                                              |
+| **Local daemon** (`perf-sentinel watch` on dev workstation, `127.0.0.1:4317` gRPC / `4318` HTTP) | live, dev session                  | Same `/api/findings` + `/api/correlations` + `/api/export/report` + `/metrics` surface as the prod daemon, but scoped to whatever the dev runs locally. **Correlations available without leaving the laptop**, no need to round-trip through prod. Snapshot via `curl /api/export/report \| report --input - --output report.html` for a sharable HTML at any moment. Useful when iterating on a feature where cross-trace co-occurrence matters (cascade between two local services, async fanout patterns).                                                                                                     | Same windows as prod daemon: `trace_ttl_ms=30s` and `[daemon.correlation] window_minutes=10`. Correlator needs sustained traffic (`min_co_occurrences=3` default) → a single curl to a single endpoint won't fire correlations. The daemon binds `127.0.0.1` by default, so containerised local services need `host.docker.internal:4317` (or `listen_address = "0.0.0.0"` in `~/.perf-sentinel.toml`). RAM cost ~60–150 MiB while the dev session runs. |
+| **CI CLI** (`analyze --ci` / `tempo` / `jaeger-query` / `pg-stat`)                               | batch on IT capture or trace store | Deterministic PR gate: exit code 1 fails the build, SARIF feeds GitHub / GitLab code scanning. Composable with `--pg-stat[-prometheus]` for SQL hotspot regression. Can pull from prod's trace store nightly via `tempo` / `jaeger-query` for drift detection.                                                                                                                                                                                                                                                                                                                                                    | **Useless without perf integration tests** (k6, JMeter, Gatling). A unit-test trace has no N+1 to detect. No correlations from a single CI run (correlator needs `[daemon.correlation] window_minutes=10` of sustained traffic).                                                                                                                                                                                                                         |
+| **Sidecar daemon** (`watch`, per-pod)                                                            | live, scoped to one pod            | Smallest live footprint that still gives `/api/findings` + Prometheus `/metrics` + NDJSON stdout. No cross-pod network hop (OTLP over loopback). Findings scoped to one service: zero noise from neighbors. Failure-isolated: sidecar OOM only affects that pod.                                                                                                                                                                                                                                                                                                                                                  | **Pod-only scope**: no cross-service correlations possible. **Rolling window only**: `trace_ttl_ms=30s` after last span (so `/api/explain/<trace-id>` evaporates fast); `[daemon.correlation] window_minutes=10` for cross-trace co-occurrences. **Per-pod cost**: ~60–150 MiB RAM per replica, multiplies with replica count.                                                                                                                           |
+| **Centralized daemon** (`watch`, fleet)                                                          | live, fleet-wide                   | **Cross-service correlations** become available (`/api/correlations` only fires when multi-service co-occurrences are observed). Single API surface for SRE dashboards. Snapshot via `/api/export/report` → HTML for post-mortem. Can ingest both via OTel Collector and direct OTLP from heavy services. Memory metrics + log path + HTTP API in one place.                                                                                                                                                                                                                                                      | **Rolling window, not historical**: same `trace_ttl_ms=30s` and `window_minutes=10` defaults. For analysis older than the window, use the trace store (`perf-sentinel tempo` / `jaeger-query`). **Capacity ceiling**: `max_active_traces=10000` (default), LRU eviction past that. **Single point of contention**: one daemon for the fleet means RAM scales with active trace volume.                                                                   |
+| **HTML report** (`report --input`)                                                               | static post-mortem                 | Self-contained file (~1 MiB), shareable offline, opens in any browser. Embeds findings + pg_stat tab + Explain → pg_stat cross-nav + correlations (when source is a daemon Report). Canonical artifact for sprint reviews and incident reports.                                                                                                                                                                                                                                                                                                                                                                   | **Frozen snapshot**: no live update. Correlations only present if the input is a daemon Report (batch JSON has no correlator state). Re-rendering requires re-running `report --input`.                                                                                                                                                                                                                                                                  |
 
 ### Detection knob: N+1 SQL vs redundant SQL classification
 
@@ -84,12 +84,12 @@ for daemons, in `.perf-sentinel.toml` for CI/local batch) tunes the
 recovery heuristic. Same key, same effect, both modes — just different
 file location.
 
-| Value | Behavior | When to use |
-| --- | --- | --- |
-| `"auto"` (default) | Reclassify to `n_plus_one_sql` when **either** the ORM scope signal (Spring Data, Hibernate, EF Core, SQLAlchemy, ActiveRecord, GORM, Prisma, Diesel, ...) **or** the per-span timing variance fires. | Best recall on production Spring Data / EF Core stacks. |
-| `"strict"` | Reclassify only when **both** signals fire conjointly (ORM scope + timing variance). | When `redundant_sql` itself is actionable signal you don't want absorbed into `n_plus_one_sql` (legacy polling loops, unmemoized config lookups served from row cache). The lab's daemon manifests use this value. |
-| `"always"` | Reclassify any sanitized group reaching `n_plus_one_min_occurrences` spans as `n_plus_one_sql`. | Aggressive; may flip a real single-param redundancy. Use when you don't care about `redundant_sql` precision. |
-| `"never"` | Disable the heuristic, pre-0.5.7 behavior. | Compatibility / debugging only. |
+| Value              | Behavior                                                                                                                                                                                              | When to use                                                                                                                                                                                                        |
+|--------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `"auto"` (default) | Reclassify to `n_plus_one_sql` when **either** the ORM scope signal (Spring Data, Hibernate, EF Core, SQLAlchemy, ActiveRecord, GORM, Prisma, Diesel, ...) **or** the per-span timing variance fires. | Best recall on production Spring Data / EF Core stacks.                                                                                                                                                            |
+| `"strict"`         | Reclassify only when **both** signals fire conjointly (ORM scope + timing variance).                                                                                                                  | When `redundant_sql` itself is actionable signal you don't want absorbed into `n_plus_one_sql` (legacy polling loops, unmemoized config lookups served from row cache). The lab's daemon manifests use this value. |
+| `"always"`         | Reclassify any sanitized group reaching `n_plus_one_min_occurrences` spans as `n_plus_one_sql`.                                                                                                       | Aggressive; may flip a real single-param redundancy. Use when you don't care about `redundant_sql` precision.                                                                                                      |
+| `"never"`          | Disable the heuristic, pre-0.5.7 behavior.                                                                                                                                                            | Compatibility / debugging only.                                                                                                                                                                                    |
 
 Findings reclassified by the heuristic carry
 `classification_method = "sanitizer_heuristic"` in their JSON so
@@ -98,12 +98,12 @@ Findings produced by the standard rule omit the field.
 
 ### What goes where, and why
 
-| Environment | Mode | Why this mode | See scenario |
-| --- | --- | --- | --- |
-| Local dev workstation | **Either** `analyze --input` (batch on a captured trace, fastest iteration) **or** `perf-sentinel watch` (local daemon on `127.0.0.1:4317/4318`, when the dev wants live correlations as they code). Plus `report --input` for HTML, `inspect` for TUI, `pg-stat` for SQL hotspot triage. | Pick batch when the goal is a deterministic post-mortem on a captured `traces.json` (file exporter or saved daemon snapshot). Pick the local daemon when iterating on cross-service flows where rolling correlations matter, or when the dev wants the same `/api/*` surface as prod for parity. The two coexist: a dev can run the daemon while debugging then capture its `/api/export/report` snapshot for offline triage. | [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html), [`multiformat-input`](#multi-format-input-jaeger--zipkin), [`daemon-otlp-direct`](#daemon-otlp-direct-no-collector) |
-| CI/CD pipeline (PR gate) | `perf-sentinel analyze --ci --input traces.json` (or `tempo` to fetch live) | Fail the build when a regression introduces a new finding. **Requires perf integration tests in the pipeline** (k6, JMeter, Gatling). Without realistic load, the trace contains no anti-patterns to detect, so the gate is silently green and meaningless. | [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html), [`batch-tempo-scrape`](#batch-over-tempo) |
-| Staging / pre-prod (focused service) | Sidecar daemon in the same pod, OTLP via `localhost:14318` | One service is in the spotlight for a release candidate or load test. Findings scoped to that pod, no cross-service noise. Cheaper than running a full centralized daemon if only one service matters. | [`sidecar-pattern`](#sidecar-pattern) |
-| Production | Centralized daemon ingesting either via OTel Collector OR direct OTLP from selected services | Catch correlations across the whole fleet, expose `/api/correlations` for SRE dashboards, snapshot HTML reports for post-mortems. Heavy services can bypass the Collector and push OTLP straight to the daemon to skip the extra hop. | [`correlation-finding`](#cross-trace-correlation-finding), [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html), [`pg_stat`](#pg_stat-live-integration) |
+| Environment                          | Mode                                                                                                                                                                                                                                                                                      | Why this mode                                                                                                                                                                                                                                                                                                                                                                                                                 | See scenario                                                                                                                                                               |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Local dev workstation                | **Either** `analyze --input` (batch on a captured trace, fastest iteration) **or** `perf-sentinel watch` (local daemon on `127.0.0.1:4317/4318`, when the dev wants live correlations as they code). Plus `report --input` for HTML, `inspect` for TUI, `pg-stat` for SQL hotspot triage. | Pick batch when the goal is a deterministic post-mortem on a captured `traces.json` (file exporter or saved daemon snapshot). Pick the local daemon when iterating on cross-service flows where rolling correlations matter, or when the dev wants the same `/api/*` surface as prod for parity. The two coexist: a dev can run the daemon while debugging then capture its `/api/export/report` snapshot for offline triage. | [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html), [`multiformat-input`](#multi-format-input-jaeger--zipkin), [`daemon-otlp-direct`](#daemon-otlp-direct-no-collector) |
+| CI/CD pipeline (PR gate)             | `perf-sentinel analyze --ci --input traces.json` (or `tempo` to fetch live)                                                                                                                                                                                                               | Fail the build when a regression introduces a new finding. **Requires perf integration tests in the pipeline** (k6, JMeter, Gatling). Without realistic load, the trace contains no anti-patterns to detect, so the gate is silently green and meaningless.                                                                                                                                                                   | [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html), [`batch-tempo-scrape`](#batch-over-tempo)                                                                           |
+| Staging / pre-prod (focused service) | Sidecar daemon in the same pod, OTLP via `localhost:14318`                                                                                                                                                                                                                                | One service is in the spotlight for a release candidate or load test. Findings scoped to that pod, no cross-service noise. Cheaper than running a full centralized daemon if only one service matters.                                                                                                                                                                                                                        | [`sidecar-pattern`](#sidecar-pattern)                                                                                                                                      |
+| Production                           | Centralized daemon ingesting either via OTel Collector OR direct OTLP from selected services                                                                                                                                                                                              | Catch correlations across the whole fleet, expose `/api/correlations` for SRE dashboards, snapshot HTML reports for post-mortems. Heavy services can bypass the Collector and push OTLP straight to the daemon to skip the extra hop.                                                                                                                                                                                         | [`correlation-finding`](#cross-trace-correlation-finding), [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html), [`pg_stat`](#pg_stat-live-integration)                   |
 
 ### Watch out
 
@@ -134,17 +134,17 @@ Findings produced by the standard rule omit the field.
 
 ## Coverage
 
-| Scenario (slug) | Mode tested | Cluster deps | Status |
-| --- | --- | --- | --- |
-| [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html) | hybrid daemon -> batch HTML | running daemon | PASS |
-| [`batch-tempo-scrape`](#batch-over-tempo) | batch over Tempo via `perf-sentinel tempo` | daemon + Tempo | PASS |
-| [`daemon-otlp-direct`](#daemon-otlp-direct-no-collector) | daemon OTLP direct (no Collector) | dedicated daemon + cloned service | PASS |
-| [`multiformat-input`](#multi-format-input-jaeger--zipkin) | multi-format input (Jaeger + Zipkin) | Jaeger + Zipkin + multi-export collector | PASS |
-| [`calibrate-mode`](#calibrate-energy-coefficients) | calibrate energy coefficients | none (fixture + synthetic CSV) | PASS |
-| [`sidecar-pattern`](#sidecar-pattern) | sidecar pattern (1 daemon per pod) | sidecar pod | PASS |
-| [`correlation-finding`](#cross-trace-correlation-finding) | cross-trace correlation finding | running daemon + cross-service traffic | PASS |
-| [`pg-stat`](#pg_stat-live-integration) | `report --pg-stat` live integration | running daemon + Postgres `pg_stat_statements` | PASS |
-| [`grafana-dashboard`](#grafana-dashboard-validation) | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS |
+| Scenario (slug)                                           | Mode tested                                                    | Cluster deps                                     | Status |
+|-----------------------------------------------------------|----------------------------------------------------------------|--------------------------------------------------|--------|
+| [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html)     | hybrid daemon -> batch HTML                                    | running daemon                                   | PASS   |
+| [`batch-tempo-scrape`](#batch-over-tempo)                 | batch over Tempo via `perf-sentinel tempo`                     | daemon + Tempo                                   | PASS   |
+| [`daemon-otlp-direct`](#daemon-otlp-direct-no-collector)  | daemon OTLP direct (no Collector)                              | dedicated daemon + cloned service                | PASS   |
+| [`multiformat-input`](#multi-format-input-jaeger--zipkin) | multi-format input (Jaeger + Zipkin)                           | Jaeger + Zipkin + multi-export collector         | PASS   |
+| [`calibrate-mode`](#calibrate-energy-coefficients)        | calibrate energy coefficients                                  | none (fixture + synthetic CSV)                   | PASS   |
+| [`sidecar-pattern`](#sidecar-pattern)                     | sidecar pattern (1 daemon per pod)                             | sidecar pod                                      | PASS   |
+| [`correlation-finding`](#cross-trace-correlation-finding) | cross-trace correlation finding                                | running daemon + cross-service traffic           | PASS   |
+| [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
+| [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
 ## Run
 
@@ -192,15 +192,15 @@ Adoption decisions usually start with "what trace format do I have?".
 This table maps perf-sentinel's accepted inputs to the upstream sources
 the lab has exercised live.
 
-| Input format | perf-sentinel entry point | Lab source | Validated by |
-| --- | --- | --- | --- |
-| OTLP/protobuf (live) | daemon `:14317` (gRPC) / `:14318` (HTTP) | OTel Collector or direct from app | daemon-otlp-direct, sidecar-pattern, correlation-finding |
-| OTLP-JSON (Tempo) | `perf-sentinel tempo --endpoint <url>` | Tempo `:3200` | batch-tempo-scrape |
-| Jaeger v1 JSON | `perf-sentinel analyze --input` | Jaeger query API | multiformat-input |
-| Zipkin v2 JSON | `perf-sentinel analyze --input` | Zipkin query API | multiformat-input |
-| Daemon Report JSON | `perf-sentinel report --input` | `/api/export/report` | hybrid-daemon-batch |
-| Postgres `pg_stat_statements` CSV | `perf-sentinel report --pg-stat` | `psql \copy` | pg-stat |
-| Power CSV (`timestamp,service,power_watts`) | `perf-sentinel calibrate --measured-energy` | metered hardware | calibrate-mode |
+| Input format                                | perf-sentinel entry point                   | Lab source                        | Validated by                                             |
+|---------------------------------------------|---------------------------------------------|-----------------------------------|----------------------------------------------------------|
+| OTLP/protobuf (live)                        | daemon `:14317` (gRPC) / `:14318` (HTTP)    | OTel Collector or direct from app | daemon-otlp-direct, sidecar-pattern, correlation-finding |
+| OTLP-JSON (Tempo)                           | `perf-sentinel tempo --endpoint <url>`      | Tempo `:3200`                     | batch-tempo-scrape                                       |
+| Jaeger v1 JSON                              | `perf-sentinel analyze --input`             | Jaeger query API                  | multiformat-input                                        |
+| Zipkin v2 JSON                              | `perf-sentinel analyze --input`             | Zipkin query API                  | multiformat-input                                        |
+| Daemon Report JSON                          | `perf-sentinel report --input`              | `/api/export/report`              | hybrid-daemon-batch                                      |
+| Postgres `pg_stat_statements` CSV           | `perf-sentinel report --pg-stat`            | `psql \copy`                      | pg-stat                                                  |
+| Power CSV (`timestamp,service,power_watts`) | `perf-sentinel calibrate --measured-energy` | metered hardware                  | calibrate-mode                                           |
 
 ---
 
@@ -831,23 +831,23 @@ covers 11/11 (was 6/11 before
 so there is no need for an extended overlay on the daemon side. The
 lab overlay only carries the 2 postgres-exporter panels.
 
-| Metric | Used by upstream | Used by lab overlay |
-| --- | --- | --- |
-| `perf_sentinel_findings_total` | 4 panels | no |
-| `perf_sentinel_io_waste_ratio` | 1 panel | no |
-| `perf_sentinel_active_traces` | 1 panel | no |
-| `perf_sentinel_events_processed_total` | 1 panel | no |
-| `perf_sentinel_service_io_ops_total` | 1 panel | no |
-| `perf_sentinel_slow_duration_seconds` | 2 panels (p95 + heatmap) | no |
-| `perf_sentinel_traces_analyzed_total` | 1 panel | no |
-| `perf_sentinel_total_io_ops` | 1 panel | no |
-| `perf_sentinel_avoidable_io_ops` | 1 panel | no |
-| `perf_sentinel_scaphandre_last_scrape_age_seconds` | shared panel | no |
-| `perf_sentinel_cloud_energy_last_scrape_age_seconds` | shared panel | no |
-| `perf_sentinel_export_report_requests_total` | 1 panel | no |
-| `up{job="perf-sentinel-daemon"}` | 1 panel (Daemon health) | no |
-| `pg_stat_statements_seconds_total` | no | yes (Top 10 slow queries) |
-| `pg_stat_statements_calls_total` | no | yes (DB query rate) |
+| Metric                                               | Used by upstream         | Used by lab overlay       |
+|------------------------------------------------------|--------------------------|---------------------------|
+| `perf_sentinel_findings_total`                       | 4 panels                 | no                        |
+| `perf_sentinel_io_waste_ratio`                       | 1 panel                  | no                        |
+| `perf_sentinel_active_traces`                        | 1 panel                  | no                        |
+| `perf_sentinel_events_processed_total`               | 1 panel                  | no                        |
+| `perf_sentinel_service_io_ops_total`                 | 1 panel                  | no                        |
+| `perf_sentinel_slow_duration_seconds`                | 2 panels (p95 + heatmap) | no                        |
+| `perf_sentinel_traces_analyzed_total`                | 1 panel                  | no                        |
+| `perf_sentinel_total_io_ops`                         | 1 panel                  | no                        |
+| `perf_sentinel_avoidable_io_ops`                     | 1 panel                  | no                        |
+| `perf_sentinel_scaphandre_last_scrape_age_seconds`   | shared panel             | no                        |
+| `perf_sentinel_cloud_energy_last_scrape_age_seconds` | shared panel             | no                        |
+| `perf_sentinel_export_report_requests_total`         | 1 panel                  | no                        |
+| `up{job="perf-sentinel-daemon"}`                     | 1 panel (Daemon health)  | no                        |
+| `pg_stat_statements_seconds_total`                   | no                       | yes (Top 10 slow queries) |
+| `pg_stat_statements_calls_total`                     | no                       | yes (DB query rate)       |
 
 ### Upstream backlog
 
@@ -865,13 +865,13 @@ applied as a `PrometheusRule` in namespace `observability`. Routing
 to Slack/PagerDuty/email is intentionally NOT configured, that stays
 a user concern via Alertmanager `route` and `receivers`.
 
-| Alert | Severity | Trigger | End-to-end test |
-| --- | --- | --- | --- |
-| `PerfSentinelDaemonDown` | critical | `up == 0 or absent(up) == 1` for 2m | yes (verify scales daemon to 0) |
-| `PerfSentinelHighIOWasteRatio` | warning | `io_waste_ratio > 0.30` for 10m | rule loaded only |
-| `PerfSentinelCriticalFindingsSurge` | critical | `> 50 critical/h` for 5m | rule loaded only |
-| `PerfSentinelActiveTracesNearCapacity` | warning | `active_traces > 8000` for 5m | rule loaded only |
-| `PerfSentinelEventProcessingStalled` | warning | `rate(events_processed) == 0` for 5m | rule loaded only |
+| Alert                                  | Severity | Trigger                              | End-to-end test                 |
+|----------------------------------------|----------|--------------------------------------|---------------------------------|
+| `PerfSentinelDaemonDown`               | critical | `up == 0 or absent(up) == 1` for 2m  | yes (verify scales daemon to 0) |
+| `PerfSentinelHighIOWasteRatio`         | warning  | `io_waste_ratio > 0.30` for 10m      | rule loaded only                |
+| `PerfSentinelCriticalFindingsSurge`    | critical | `> 50 critical/h` for 5m             | rule loaded only                |
+| `PerfSentinelActiveTracesNearCapacity` | warning  | `active_traces > 8000` for 5m        | rule loaded only                |
+| `PerfSentinelEventProcessingStalled`   | warning  | `rate(events_processed) == 0` for 5m | rule loaded only                |
 
 The 4 non-trigger-tested rules require crafted load (waste ratio,
 trace count, critical findings) or stopping the OTLP pipeline. The
@@ -1256,34 +1256,90 @@ TTL_SEC=30 TTL_LONG_SEC=300 EXPIRY_SLEEP_SEC=35 EXPIRY_POLL_SEC=15 \
   ./scenarios/daemon-ack-workflow/verify.sh
 ```
 
+### scaphandre-mock-validation
+
+End-to-end validation of the daemon Scaphandre scrape path against a
+Python stdlib mock at `manifests/scaphandre-mock.yaml`. RAPL is not
+accessible on Apple Silicon (registers are Intel-only) nor on most
+cloud runners (no RAPL passthrough), so the lab cannot run a real
+Scaphandre exporter. The mock exposes the single metric perf-sentinel
+consumes, `scaph_process_power_consumption_microwatts`, with
+deterministic per-process power values hashed from `(exe, pid)`.
+
+The lab daemon ConfigMap at `manifests/perf-sentinel-daemon.yaml`
+includes a permanent `[green.scaphandre]` block that points at
+`http://scaphandre-mock:9100/metrics`. The daemon emits a one-shot
+warn and stays on the proxy-model fallback until the mock is seeded
+via `make seed-scaphandre-mock`.
+
+6 sub-tests, each emitting one PASS/FAIL verdict:
+
+1. Sanity: daemon `/api/status` reachable and a `Running`
+   `scaphandre-mock` pod is present. Fails fast with an actionable
+   hint when the mock is not seeded.
+2. Mock `/metrics` shape: 5
+   `scaph_process_power_consumption_microwatts` gauge lines with the
+   required `# HELP` and `# TYPE` directives.
+3. Determinism: two consecutive scrapes return identical power
+   values. Confirms the SHA-256 hash is stable.
+4. Daemon log signal: `"Scaphandre scraper started"` (info-level)
+   present in the recent daemon logs, proving the
+   `[green.scaphandre]` config was loaded and the scraper task
+   spawned. `"Scaphandre scrape failed"` lines tolerated as a soft
+   warning when the mock came up after the daemon.
+5. Daemon gauge signal: `perf_sentinel_scaphandre_last_scrape_age_seconds`
+   sampled twice, `SCRAPE_INTERVAL_SEC + 1` seconds apart. At least
+   one sample must be below `SCRAPE_INTERVAL_SEC + 2` (the gauge
+   resets to 0 on each successful scrape and grows in real time
+   between scrapes).
+6. Mock degradation: scale the mock to 0 replicas, sleep
+   `DEGRADE_WAIT_SEC`, assert daemon `/api/status` still answers and
+   `"Scaphandre scrape failed"` appears in the recent log tail
+   (proxy-model fallback active). The trap restores `--replicas=1`
+   on exit.
+
+```bash
+make verify-scaphandre-mock-validation
+
+# Tunables:
+SCRAPE_INTERVAL_SEC=5 DEGRADE_WAIT_SEC=30 MOCK_LOCAL_PORT=19100 \
+  ./scenarios/scaphandre-mock-validation/verify.sh
+```
+
+When validating on bare-metal Intel/AMD with a real Scaphandre
+exporter, swap the `endpoint` in the daemon ConfigMap to point at the
+real instance and skip `make seed-scaphandre-mock`. The scenario
+still passes as a regression smoke for the lab manifest path.
+
 ### Failure modes responses
 
 A reference of expected daemon behaviour per panne. Useful when
 operating perf-sentinel in a production setup, not just for the lab.
 
-| Panne                              | Expected daemon response                                       |
-| ---------------------------------- | -------------------------------------------------------------- |
-| OTel collector down (push gone)    | Daemon up. Direct OTLP producers keep working on 14318.        |
-| Tempo down (read backend gone)     | Daemon up. Watch mode never reads from Tempo, only batch mode does. |
-| Postgres down                      | Daemon up. The optional `--pg-stat-prometheus` scrape may log a warning, ingestion continues. |
-| OTLP producer flood (bursts)       | Daemon up. Backpressure visible as `events_processed` deficit, no silent drops in critical path. |
-| Daemon redeploy (rollout restart)  | In-flight spans dropped gracefully. New daemon instance accepts traffic within the rollout window. |
-| Network partition (ingress denied) | Daemon up via kubelet liveness path. `events_processed` halts. Resumes once partition heals. |
-| Malformed TOML config              | Fail-fast on startup with a clear parse error. No silent fallback. |
-| Missing EM secret                  | Daemon up. GreenOps fallback to `annual` carbon intensity source. Warning surfaced in the report. |
+| Panne                              | Expected daemon response                                                                                                                                 |
+|------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
+| OTel collector down (push gone)    | Daemon up. Direct OTLP producers keep working on 14318.                                                                                                  |
+| Tempo down (read backend gone)     | Daemon up. Watch mode never reads from Tempo, only batch mode does.                                                                                      |
+| Postgres down                      | Daemon up. The optional `--pg-stat-prometheus` scrape may log a warning, ingestion continues.                                                            |
+| OTLP producer flood (bursts)       | Daemon up. Backpressure visible as `events_processed` deficit, no silent drops in critical path.                                                         |
+| Daemon redeploy (rollout restart)  | In-flight spans dropped gracefully. New daemon instance accepts traffic within the rollout window.                                                       |
+| Network partition (ingress denied) | Daemon up via kubelet liveness path. `events_processed` halts. Resumes once partition heals.                                                             |
+| Malformed TOML config              | Fail-fast on startup with a clear parse error. No silent fallback.                                                                                       |
+| Missing EM secret                  | Daemon up. GreenOps fallback to `annual` carbon intensity source. Warning surfaced in the report.                                                        |
 | Ack store regression               | Acks survive daemon rollout via the PVC-backed JSONL store. Compaction at startup keeps the file size bounded. Expired entries filter out at query time. |
 
 ### Coverage table
 
-| Slug | Scope | Local | GHA |
-| --- | --- | --- | --- |
-| multi-agent-load | concurrent OTLP producers via Job parallelism | yes (50-200 producers) | yes (10 producers, smoke) |
-| long-running-drift | RSS / FD / active_traces drift over hours | yes (2h default, 24h with LONG_RUN=1) | yes (5 min smoke harness) |
-| failure-mode-daemon-restart | rollout during traffic | yes | yes |
-| failure-mode-backend-down | 3 backends scale-to-0 | yes | yes |
-| failure-mode-network-partition | NetworkPolicy ingress isolation | yes | yes |
-| cold-start-edge-cases | 4 cold-start sub-tests | yes (Docker required for 6.C) | yes (Docker available on ubuntu-latest) |
-| daemon-ack-workflow | ack API end-to-end with PVC persistence and 0.5.21 counter asserts | yes (needs >=2 findings seeded) | yes (validate-findings step seeds before) |
+| Slug                           | Scope                                                              | Local                                  | GHA                                       |
+|--------------------------------|--------------------------------------------------------------------|----------------------------------------|-------------------------------------------|
+| multi-agent-load               | concurrent OTLP producers via Job parallelism                      | yes (50-200 producers)                 | yes (10 producers, smoke)                 |
+| long-running-drift             | RSS / FD / active_traces drift over hours                          | yes (2h default, 24h with LONG_RUN=1)  | yes (5 min smoke harness)                 |
+| failure-mode-daemon-restart    | rollout during traffic                                             | yes                                    | yes                                       |
+| failure-mode-backend-down      | 3 backends scale-to-0                                              | yes                                    | yes                                       |
+| failure-mode-network-partition | NetworkPolicy ingress isolation                                    | yes                                    | yes                                       |
+| cold-start-edge-cases          | 4 cold-start sub-tests                                             | yes (Docker required for 6.C)          | yes (Docker available on ubuntu-latest)   |
+| daemon-ack-workflow            | ack API end-to-end with PVC persistence and 0.5.21 counter asserts | yes (needs >=2 findings seeded)        | yes (validate-findings step seeds before) |
+| scaphandre-mock-validation     | Scaphandre scrape path end-to-end against the Python stdlib mock   | yes (Apple Silicon OK, no RAPL needed) | yes (Linux runner, no RAPL needed)        |
 
 ### CI smoke vs local full
 

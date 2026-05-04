@@ -278,6 +278,13 @@ jobs:
       - name: make seed-electricity-maps
         run: make seed-electricity-maps
 
+      - name: Seed Scaphandre mock
+        # Stand-in for a real Scaphandre exporter so the daemon's
+        # `[green.scaphandre]` scrape path stays exercised on hosts
+        # without RAPL passthrough (Apple Silicon, GHA runners).
+        timeout-minutes: 3
+        run: make seed-scaphandre-mock
+
       - name: Bring port-forward back up
         # The seed-electricity-maps daemon rollout leaves the original
         # port-forward in a zombie state. Force-kill, drop pid files,
@@ -335,6 +342,10 @@ jobs:
         timeout-minutes: 6
         run: make verify-daemon-ack-workflow
 
+      - name: scaphandre-mock-validation
+        timeout-minutes: 4
+        run: make verify-scaphandre-mock-validation
+
       - name: Show daemon logs (debug)
         if: always()
         run: |
@@ -357,11 +368,13 @@ jobs:
             /tmp/scenario-failure-mode-network-partition-report.md
             /tmp/scenario-cold-start-edge-cases-report.md
             /tmp/scenario-daemon-ack-workflow-report.md
+            /tmp/scenario-scaphandre-mock-validation-report.md
             /tmp/multi-agent-load/*
             /tmp/long-running-drift/*
             /tmp/failure-mode-*/*
             /tmp/cold-start-edge-cases/*
             /tmp/daemon-ack-workflow/*
+            /tmp/scaphandre-mock-validation/*
           retention-days: 14
           if-no-files-found: warn
 
