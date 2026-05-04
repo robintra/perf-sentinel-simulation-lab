@@ -322,6 +322,19 @@ jobs:
         timeout-minutes: 12
         run: make verify-cold-start-edge-cases
 
+      - name: Seed findings for daemon-ack-workflow
+        # daemon-ack-workflow needs >=2 findings in the store to harvest
+        # signatures. validate-findings.sh fires the 10 k6 anti-pattern
+        # scenarios; we tolerate a non-zero exit (some assertions may
+        # flake under CI load) because the scenario itself fails fast
+        # with an actionable message if seeding produced no findings.
+        timeout-minutes: 12
+        run: make validate-findings || echo "::warning::validate-findings completed with errors, daemon-ack-workflow will verify findings presence itself"
+
+      - name: daemon-ack-workflow
+        timeout-minutes: 6
+        run: make verify-daemon-ack-workflow
+
       - name: Show daemon logs (debug)
         if: always()
         run: |
@@ -343,10 +356,12 @@ jobs:
             /tmp/scenario-failure-mode-backend-down-report.md
             /tmp/scenario-failure-mode-network-partition-report.md
             /tmp/scenario-cold-start-edge-cases-report.md
+            /tmp/scenario-daemon-ack-workflow-report.md
             /tmp/multi-agent-load/*
             /tmp/long-running-drift/*
             /tmp/failure-mode-*/*
             /tmp/cold-start-edge-cases/*
+            /tmp/daemon-ack-workflow/*
           retention-days: 14
           if-no-files-found: warn
 

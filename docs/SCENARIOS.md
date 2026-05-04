@@ -1195,6 +1195,66 @@ make verify-failure-mode-network-partition
 make verify-cold-start-edge-cases
 ```
 
+### daemon-ack-workflow
+
+End-to-end validation of the perf-sentinel daemon ack workflow added in
+0.5.20, with the Prometheus counter surface added in 0.5.21. The lab
+manifest at `manifests/perf-sentinel-daemon.yaml` mounts a
+`perf-sentinel-acks` PVC at `/var/lib/perf-sentinel/` and enables the
+`[daemon.ack]` section in the ConfigMap.
+
+11 sub-tests cover the full lifecycle:
+
+1. Sanity: daemon reachable on `/api/status`.
+2. Seed: harvest 3 distinct finding signatures from
+   `/api/export/report` (`sig_a`, `sig_b`, `sig_c`). Fails fast if
+   fewer than 3 findings are present, with an actionable message
+   asking the operator to run `make seed-services` and
+   `scripts/validate-findings.sh`.
+3. Idempotent cleanup: best-effort `DELETE` on each harvested
+   signature so a re-run on a daemon with a persisted ack store
+   starts from a clean slate. Counter snapshot baseline (`ack`,
+   `unack`, `fail_already_acked`) taken right after.
+4. `POST /api/findings/<sig_a>/ack` with body `{by, reason,
+   expires_at = now + TTL_LONG_SEC}`, expect 201 Created. The long
+   TTL keeps `sig_a` active across the rollout restart in step 7.
+5. Filter check: feature-detect `/api/findings`. If exposed, default
+   GET hides `sig_a` and `?include_acked=true` exposes the
+   `acknowledged_by.by` annotation. Soft assert when the build does
+   not surface the annotation field.
+6. Counter delta `ack_operations_total{action="ack"} += 1`. Falls
+   back to a `GET /api/acks` lookup when the 0.5.21 counter surface
+   is absent (verdict source `counter_absent_0520_fallback`).
+7. `kubectl rollout restart` the daemon. After the rollout completes,
+   verify `sig_a` still surfaces in `GET /api/acks`, validating the
+   PVC-backed JSONL store survives the process recycle.
+8. `POST /api/findings/<sig_b>/ack` with a long TTL, kept for steps
+   9-10.
+9. Conflict path: a duplicate POST on `sig_b` returns 409 and
+   increments `ack_operations_failed_total{action="ack",reason="already_acked"}`.
+10. `DELETE /api/findings/<sig_b>/ack` returns 204 No Content and
+    increments the `unack` counter. The `unack` counter is
+    re-snapshotted right before the DELETE because the rollout in
+    step 7 recycled the daemon process.
+11. TTL filter on a fresh signature: `POST /api/findings/<sig_c>/ack`
+    with a short TTL, sleep past the deadline, poll `GET /api/acks`
+    and confirm `sig_c` is no longer surfaced (query-time
+    filtering).
+
+Counter assertions tolerate a 0.5.20 daemon that has not yet adopted
+the 0.5.21 pre-warmed series. When the surface is absent the verdict
+falls back to API-list lookups; the report records the verdict source
+so any regression in counter pre-warming is visible without breaking
+the scenario.
+
+```bash
+make verify-daemon-ack-workflow
+
+# Tunables:
+TTL_SEC=30 TTL_LONG_SEC=300 EXPIRY_SLEEP_SEC=35 EXPIRY_POLL_SEC=15 \
+  ./scenarios/daemon-ack-workflow/verify.sh
+```
+
 ### Failure modes responses
 
 A reference of expected daemon behaviour per panne. Useful when
@@ -1210,6 +1270,7 @@ operating perf-sentinel in a production setup, not just for the lab.
 | Network partition (ingress denied) | Daemon up via kubelet liveness path. `events_processed` halts. Resumes once partition heals. |
 | Malformed TOML config              | Fail-fast on startup with a clear parse error. No silent fallback. |
 | Missing EM secret                  | Daemon up. GreenOps fallback to `annual` carbon intensity source. Warning surfaced in the report. |
+| Ack store regression               | Acks survive daemon rollout via the PVC-backed JSONL store. Compaction at startup keeps the file size bounded. Expired entries filter out at query time. |
 
 ### Coverage table
 
@@ -1221,6 +1282,7 @@ operating perf-sentinel in a production setup, not just for the lab.
 | failure-mode-backend-down | 3 backends scale-to-0 | yes | yes |
 | failure-mode-network-partition | NetworkPolicy ingress isolation | yes | yes |
 | cold-start-edge-cases | 4 cold-start sub-tests | yes (Docker required for 6.C) | yes (Docker available on ubuntu-latest) |
+| daemon-ack-workflow | ack API end-to-end with PVC persistence and 0.5.21 counter asserts | yes (needs >=2 findings seeded) | yes (validate-findings step seeds before) |
 
 ### CI smoke vs local full
 

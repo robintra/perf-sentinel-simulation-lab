@@ -33,6 +33,15 @@ data:
     min_co_occurrences = 2
     min_confidence = 0.5
 
+    # Ack store introduced in 0.5.20. JSONL appended on POST/DELETE,
+    # compacted at startup. Storage path lives on the perf-sentinel-acks
+    # PVC mount; the rest of the rootfs stays read-only. No api_key is
+    # set: the API binds to a ClusterIP Service so loopback access
+    # control is sufficient for the lab.
+    [daemon.ack]
+    enabled = true
+    storage_path = "/var/lib/perf-sentinel/acks.jsonl"
+
     [detection]
     n_plus_one_min_occurrences = 5
     # Strict mode: require both signals (ORM scope marker AND timing
@@ -61,6 +70,27 @@ data:
     # One zone is enough to exercise the mapping without hitting the
     # sandbox key quota. Add more entries when validating multi-region.
     "eu-west-3" = "FR"
+---
+# Ack store backing volume. Single-node k3d uses local-path-provisioner,
+# which honors fsGroup on the resulting hostPath mount, so the daemon's
+# UID 65534 can write the JSONL file. ReadWriteOnce + Deployment is safe
+# because the daemon's strategy is Recreate (line 99): the old pod
+# releases the PVC before the new pod claims it.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: perf-sentinel-acks
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: perf-sentinel-daemon
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 64Mi
 ---
 apiVersion: v1
 kind: Service
@@ -92,7 +122,7 @@ metadata:
   labels:
     app.kubernetes.io/name: perf-sentinel-daemon
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "0.5.16"
+    app.kubernetes.io/version: "0.5.21"
 spec:
   replicas: 1
   strategy:
@@ -105,7 +135,7 @@ spec:
       labels:
         app.kubernetes.io/name: perf-sentinel-daemon
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "0.5.16"
+        app.kubernetes.io/version: "0.5.21"
     spec:
       automountServiceAccountToken: false
       # UID 65534 matches the upstream perf-sentinel scratch image USER.
@@ -118,7 +148,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: perf-sentinel
-          image: ghcr.io/robintra/perf-sentinel@sha256:7557b265e72c56555c80321eb56fcfcb1b956d67e43250d712461ee8a8d691b3  # 0.5.19
+          image: ghcr.io/robintra/perf-sentinel@sha256:a68a1db1b5fca61772375c6919e336195d940c417b02e549888c25bf80446a59  # 0.5.21
           imagePullPolicy: IfNotPresent
           args:
             - watch
@@ -146,6 +176,10 @@ spec:
             - name: config
               mountPath: /etc/perf-sentinel
               readOnly: true
+            # The container rootfs stays read-only (see securityContext
+            # below); the daemon writes ack JSONL only under this mount.
+            - name: acks
+              mountPath: /var/lib/perf-sentinel
           # Bump to 512Mi if OOM under load. See docs/RESOURCES.md.
           resources:
             requests:
@@ -184,6 +218,9 @@ spec:
             items:
               - key: config.toml
                 path: config.toml
+        - name: acks
+          persistentVolumeClaim:
+            claimName: perf-sentinel-acks
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

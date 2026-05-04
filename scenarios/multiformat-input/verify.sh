@@ -12,7 +12,7 @@ set -euo pipefail
 SCENARIO="multiformat-input"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.19"
+IMAGE="ghcr.io/robintra/perf-sentinel:0.5.21"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 mkdir -p "${TMP_DIR}"
