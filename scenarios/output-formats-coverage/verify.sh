@@ -117,8 +117,12 @@ docker run --rm "${DOCKER_NET_FLAGS[@]}" -v "${TMP_DIR}:/workdir" "${IMAGE}" \
   > "${TMP_DIR}/findings.txt" 2> "${TMP_DIR}/analyze-text.log" \
   || warn "analyze --format text exited non-zero (gate may be tripping); see ${TMP_DIR}/findings.txt"
 
-# HTML via separate `report` subcommand
-docker run --rm "${DOCKER_NET_FLAGS[@]}" -v "${TMP_DIR}:/workdir" "${IMAGE}" \
+# HTML via separate `report` subcommand. `-u` matches the host UID so the
+# container can write into the bind-mounted dir. Without it Linux Docker
+# fails with EACCES (the image's USER 65534 cannot write to a host dir
+# owned by the runner user). macOS Docker Desktop hides this via uid-squash.
+docker run --rm "${DOCKER_NET_FLAGS[@]}" -u "$(id -u):$(id -g)" \
+  -v "${TMP_DIR}:/workdir" "${IMAGE}" \
   report --input /workdir/source.json --output /workdir/findings.html \
   > "${TMP_DIR}/report-html.log" 2>&1 \
   || die "report --output html failed, see ${TMP_DIR}/report-html.log"
@@ -193,7 +197,9 @@ fi
 # === 6.B. Diff mode ===
 step "6.B. Diff mode (--before baseline, --after regression)"
 
-docker run --rm "${DOCKER_NET_FLAGS[@]}" -v "${TMP_DIR}:/workdir" "${IMAGE}" \
+# `-u` for the same bind-mount-EACCES reason as the `report` invocation.
+docker run --rm "${DOCKER_NET_FLAGS[@]}" -u "$(id -u):$(id -g)" \
+  -v "${TMP_DIR}:/workdir" "${IMAGE}" \
   diff \
   --before /workdir/baseline.json \
   --after /workdir/source.json \
