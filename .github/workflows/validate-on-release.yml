@@ -208,6 +208,8 @@ jobs:
             /tmp/perf-sentinel-simulation-lab-*.md
             /tmp/scenario-ci-shift-left-report.md
             /tmp/scenario-output-formats-coverage-report.md
+            /tmp/ci-shift-left/
+            /tmp/output-formats-coverage/
           retention-days: 14
           if-no-files-found: warn
 
