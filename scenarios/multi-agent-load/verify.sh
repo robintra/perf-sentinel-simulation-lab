@@ -99,10 +99,10 @@ ACTIVE_END="${ACTIVE_END:-0}"
 # in which case we fall back to the events_delta gate alone.
 REJECTED_CHANNEL_FULL=$(awk '/^perf_sentinel_otlp_rejected_total\{reason="channel_full"\}/ {print int($2); exit}' "${TMP_DIR}/metrics-after.txt")
 if [ -n "${REJECTED_CHANNEL_FULL}" ]; then
-  VERDICT_SOURCE="0.5.19_counter"
+  VERDICT_SOURCE="counter_present"
 else
   REJECTED_CHANNEL_FULL="MISSING"
-  VERDICT_SOURCE="0.5.18_fallback"
+  VERDICT_SOURCE="counter_absent"
 fi
 RSS_MIB=$(kubectl top pod -n observability -l app.kubernetes.io/name=perf-sentinel-daemon --no-headers 2>/dev/null | awk '{gsub("Mi","",$3); print int($3)}' | head -1)
 RSS_MIB="${RSS_MIB:-0}"
