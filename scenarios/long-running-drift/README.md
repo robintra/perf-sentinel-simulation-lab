@@ -23,11 +23,11 @@ drift detection).
 ## Architecture
 
 ```
-+----------------+        OTLP HTTP        +-------------------------+
-| long-running-drift ns    |  ---->                  |  observability ns        |
-|  Job paral=2   |        14318            |  perf-sentinel-daemon    |
-|  rate=Nsps     |                         |  (production deployment) |
-+----------------+                         +-------------------------+
+      +----------------------+  OTLP HTTP  +--------------------------+
+      | long-running-drift ns|  ------->   |  observability ns        |
+      |  Job paral=2         |    14318    |  perf-sentinel-daemon    |
+      |  rate=Nsps           |             |  (production deployment) |
+      +----------------------+             +--------------------------+
                                                       |
                                               every SAMPLE_INTERVAL s
                                                       |
