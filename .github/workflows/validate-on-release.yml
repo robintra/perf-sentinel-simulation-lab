@@ -101,6 +101,15 @@ jobs:
       - name: make seed-electricity-maps
         run: make seed-electricity-maps
 
+      - name: Seed Scaphandre mock
+        # Stand-in for a real Scaphandre exporter. Without it the
+        # daemon emits a periodic `Scaphandre endpoint unreachable`
+        # warn that pollutes the artifact tail. RAPL is not available
+        # on GHA runners (no Intel/AMD passthrough), so the mock
+        # carries the scrape path end-to-end here too.
+        timeout-minutes: 3
+        run: make seed-scaphandre-mock
+
       - name: make validate-findings (10/10 anti-patterns)
         # Background kubectl port-forwards spawned by make up-cni survive
         # in the runner container but the seed-electricity-maps daemon
@@ -182,11 +191,16 @@ jobs:
       - name: B1 verify-output-formats-coverage (depends on ci-shift-left)
         run: make verify-output-formats-coverage
 
-      - name: B1 templates (LOCAL ONLY, surface as warnings)
+      - name: B1 templates (LOCAL ONLY, surface as notices)
+        # Notices instead of warnings: these 3 scenarios are
+        # intentionally local-only (GitLab CE RAM, jenkinsfile-runner
+        # flakiness, act-in-act recursion). Surfacing them as warnings
+        # promoted them to the orange annotation strip on every clean
+        # run, drowning real warnings. Documented in docs/SCENARIOS.md.
         run: |
-          echo "::warning::template-gitlab-ci skipped in CI (GitLab CE RAM constraint), run 'make verify-template-gitlab-ci' locally"
-          echo "::warning::template-jenkinsfile skipped in CI (jenkinsfile-runner flaky in hosted env), run 'make verify-template-jenkinsfile' locally"
-          echo "::warning::template-github-actions skipped in CI (act-in-act convolu), run 'make verify-template-github-actions' locally"
+          echo "::notice::template-gitlab-ci skipped in CI (GitLab CE RAM constraint), run 'make verify-template-gitlab-ci' locally"
+          echo "::notice::template-jenkinsfile skipped in CI (jenkinsfile-runner flaky in hosted env), run 'make verify-template-jenkinsfile' locally"
+          echo "::notice::template-github-actions skipped in CI (act-in-act convolu), run 'make verify-template-github-actions' locally"
 
       - name: Show daemon logs (debug)
         if: always()
