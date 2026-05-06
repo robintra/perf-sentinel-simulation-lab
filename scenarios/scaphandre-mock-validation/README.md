@@ -126,9 +126,11 @@ regression smoke for the lab manifest path.
 
 ## Local vs CI runtime
 
-Total runtime ~50 seconds:
+Total runtime ~55-60 seconds:
 
-- Sub-tests 1-4 are quick (~5s).
+- Sub-tests 1-3 are quick (~5s).
+- Sub-test 4 sleeps `SCRAPE_INTERVAL_SEC + 1` = ~6s between the
+  before/after counter samples.
 - Sub-test 5 sleeps `2 * (SCRAPE_INTERVAL_SEC + 1)` = ~12s.
 - Sub-test 6 sleeps `DEGRADE_WAIT_SEC` (default 30s) plus the
   rollback rollout (~5-10s).
