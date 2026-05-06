@@ -14,8 +14,9 @@
 #   4. Counter success   : scrape_total{status=success} delta over scrape_interval
 #   5. Daemon gauge      : perf_sentinel_scaphandre_last_scrape_age_seconds
 #                          stays < scrape_interval (proves recent success)
-#   6. Counter fail      : scale mock to 0, scrape_failed_total{reason=unreachable}
-#                          delta proves the daemon classified the outage
+#   6. Counter fail      : scale mock to 0, scrape_failed_total{reason in
+#                          unreachable, timeout} delta proves the daemon
+#                          classified the outage as a connectivity failure
 
 set -euo pipefail
 
@@ -28,7 +29,12 @@ mkdir -p "${TMP_DIR}"
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 MOCK_LOCAL_PORT="${MOCK_LOCAL_PORT:-19100}"
 SCRAPE_INTERVAL_SEC="${SCRAPE_INTERVAL_SEC:-5}"
-DEGRADE_WAIT_SEC="${DEGRADE_WAIT_SEC:-30}"
+# Must exceed the mock's terminationGracePeriodSeconds (30s on
+# scaphandre-mock) plus at least one scrape_interval. The Python stdlib
+# HTTP server ignores SIGTERM, so it keeps answering until the SIGKILL
+# at the end of the grace period — sampling earlier than 35s would
+# capture the pod still responding, not a truly-dead endpoint.
+DEGRADE_WAIT_SEC="${DEGRADE_WAIT_SEC:-45}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -212,28 +218,39 @@ else
 fi
 
 #######################################
-# 6. Mock degradation: counter-delta on failed{reason=unreachable}
+# 6. Mock degradation: counter-delta on failed{reason in unreachable,timeout}
 #######################################
-step "6. Mock degradation: scale to 0, daemon classifies as unreachable"
-UNREACHABLE_BEFORE=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason unreachable)
+# Either reason is a valid classification of "service has no endpoints"
+# depending on the cluster network stack: Cilium drops silently → timeout
+# at the daemon's reqwest layer; kube-proxy iptables rejects with ICMP
+# → unreachable. Asserting on the union still rules out the 5 other reasons
+# (http_error, body_read_error, body_too_large, request_error, invalid_utf8)
+# which would all be upstream bugs in this fault model.
+step "6. Mock degradation: scale to 0, daemon classifies as unreachable+timeout"
+UNREACH_BEFORE=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason unreachable)
+TIMEOUT_BEFORE=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason timeout)
 
 kubectl -n "${NS}" scale deployment/scaphandre-mock --replicas=0 >/dev/null
 MOCK_SCALED_DOWN="yes"
-# DEGRADE_WAIT_SEC=30s with scrape_interval=5s gives ~5-6 failed scrapes,
-# enough margin for the daemon's reqwest timeout to fire.
+# With DEGRADE_WAIT_SEC=45s default and scrape_interval=5s, the daemon
+# observes ~3 failed scrapes after the mock's SIGKILL at t=30s. Increase
+# DEGRADE_WAIT_SEC if the mock's terminationGracePeriodSeconds rises.
 sleep "${DEGRADE_WAIT_SEC}"
 
 DAEMON_AFTER_SCALE="up"
 curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 \
   || DAEMON_AFTER_SCALE="down"
 
-UNREACHABLE_AFTER=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason unreachable)
-UNREACHABLE_DELTA_POS=$(awk -v a="${UNREACHABLE_AFTER}" -v b="${UNREACHABLE_BEFORE}" 'BEGIN{print (a+0 > b+0) ? 1 : 0}')
+UNREACH_AFTER=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason unreachable)
+TIMEOUT_AFTER=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason timeout)
+UNAVAIL_DELTA_POS=$(awk -v ua="${UNREACH_AFTER}" -v ub="${UNREACH_BEFORE}" \
+                       -v ta="${TIMEOUT_AFTER}" -v tb="${TIMEOUT_BEFORE}" \
+                       'BEGIN{print ((ua+ta) > (ub+tb)) ? 1 : 0}')
 
-if [ "${DAEMON_AFTER_SCALE}" = "up" ] && [ "${UNREACHABLE_DELTA_POS}" = "1" ]; then
-  VERDICTS+=("PASS: 6 daemon up, scrape_failed_total{reason=unreachable} before=${UNREACHABLE_BEFORE} after=${UNREACHABLE_AFTER} (fallback active, failure classified)")
+if [ "${DAEMON_AFTER_SCALE}" = "up" ] && [ "${UNAVAIL_DELTA_POS}" = "1" ]; then
+  VERDICTS+=("PASS: 6 daemon up, unreachable+timeout before=(${UNREACH_BEFORE},${TIMEOUT_BEFORE}) after=(${UNREACH_AFTER},${TIMEOUT_AFTER}) (fallback active, mock unavailability classified)")
 elif [ "${DAEMON_AFTER_SCALE}" = "up" ]; then
-  VERDICTS+=("FAIL: 6 daemon up but no 'unreachable' delta before=${UNREACHABLE_BEFORE} after=${UNREACHABLE_AFTER} (scrape failures not classified as unreachable, check daemon /metrics for reason distribution)")
+  VERDICTS+=("FAIL: 6 daemon up but no unreachable+timeout delta before=(${UNREACH_BEFORE},${TIMEOUT_BEFORE}) after=(${UNREACH_AFTER},${TIMEOUT_AFTER}) (mock outage classified as another reason, check /metrics)")
 else
   VERDICTS+=("FAIL: 6 daemon /api/status down after mock scale to 0")
 fi

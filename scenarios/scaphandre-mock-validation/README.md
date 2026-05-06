@@ -58,13 +58,16 @@ prior `kubectl port-forward` on 9100.
    without the Scaphandre module).
 6. Mock degradation: `kubectl scale deployment/scaphandre-mock
    --replicas=0`, sleep `DEGRADE_WAIT_SEC`, assert daemon
-   `/api/status` still answers and the counter
-   `perf_sentinel_scaphandre_scrape_failed_total{reason="unreachable"}`
-   shows a positive delta. The `reason` label is asserted explicitly,
-   so a daemon that mis-classifies the outage as `timeout` or
-   `http_error` fails this sub-test (proof of failure-mode
-   discrimination, not just "any failure was seen"). The trap
-   restores `--replicas=1` on exit, even on interruption.
+   `/api/status` still answers and the union
+   `scrape_failed_total{reason="unreachable"} + scrape_failed_total{reason="timeout"}`
+   shows a positive delta. Either reason is a valid classification of
+   "service has no endpoints" depending on the network stack (Cilium
+   drops silently → `timeout` at the reqwest layer; kube-proxy iptables
+   rejects with ICMP → `unreachable`). Asserting on the union still
+   rules out the 5 other reasons (`http_error`, `body_read_error`,
+   `body_too_large`, `request_error`, `invalid_utf8`), which would all
+   be upstream bugs in this fault model. The trap restores
+   `--replicas=1` on exit, even on interruption.
 
 ## How to run
 
@@ -126,13 +129,15 @@ regression smoke for the lab manifest path.
 
 ## Local vs CI runtime
 
-Total runtime ~55-60 seconds:
+Total runtime ~70-80 seconds:
 
 - Sub-tests 1-3 are quick (~5s).
 - Sub-test 4 sleeps `SCRAPE_INTERVAL_SEC + 1` = ~6s between the
   before/after counter samples.
 - Sub-test 5 sleeps `2 * (SCRAPE_INTERVAL_SEC + 1)` = ~12s.
-- Sub-test 6 sleeps `DEGRADE_WAIT_SEC` (default 30s) plus the
-  rollback rollout (~5-10s).
+- Sub-test 6 sleeps `DEGRADE_WAIT_SEC` (default 45s, must exceed the
+  mock's `terminationGracePeriodSeconds=30s` plus one scrape interval
+  to observe failures from a truly-dead pod) plus the rollback rollout
+  (~5-10s).
 
 `timeout-minutes: 4` in CI covers worst case plus a margin.
