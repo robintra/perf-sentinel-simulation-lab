@@ -10,12 +10,36 @@ CLUSTER_NAME="perf-sentinel-lab"
 SERVICES=(order-service payment-service notification-service)
 TAG="s2"
 
-color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
-color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
-color_red()   { printf "\033[31m%s\033[0m\n" "$*"; }
+color_blue()   { printf "\033[34m%s\033[0m\n" "$*"; }
+color_green()  { printf "\033[32m%s\033[0m\n" "$*"; }
+color_red()    { printf "\033[31m%s\033[0m\n" "$*"; }
+color_yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
 step() { color_blue "==> $*"; }
 ok()   { color_green "    ok: $*"; }
 die()  { color_red   "    error: $*"; exit 1; }
+
+# Confirm the image is loaded into containerd on every k3d worker
+# node. `k3d image import` has been observed to return 0 even when
+# one node silently misses the image (race or transient containerd
+# error), which then surfaces 5 minutes later as ImagePullBackOff
+# during `helm --wait`. Issue #9 traced exactly this on the CI
+# multi-node cluster.
+verify_image_on_all_nodes() {
+  local image="$1" node missing=()
+  while read -r node; do
+    [ -z "${node}" ] && continue
+    if ! docker exec "${node}" ctr -n k8s.io images list -q 2>/dev/null \
+        | grep -qE "(^|/)${image}\$"; then
+      missing+=("${node}")
+    fi
+  done < <(k3d node list --no-headers 2>/dev/null \
+            | awk -v c="${CLUSTER_NAME}" '$2 ~ /^(server|agent)$/ && $3 == c {print $1}')
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf '%s\n' "${missing[@]}"
+    return 1
+  fi
+  return 0
+}
 
 PASSWORD_FILE="${REPO_ROOT}/.postgres-password"
 if [ ! -f "${PASSWORD_FILE}" ]; then
@@ -33,12 +57,25 @@ for svc in "${SERVICES[@]}"; do
 done
 
 step "Importing images into k3d cluster ${CLUSTER_NAME}"
+mkdir -p "${REPO_ROOT}/tmp"
 for svc in "${SERVICES[@]}"; do
-  if k3d image import "${svc}:${TAG}" -c "${CLUSTER_NAME}" >/dev/null 2>&1; then
-    ok "${svc}:${TAG} imported"
-  else
-    color_red "    warn: import failed for ${svc}, kubelets will fall back to image pull"
-  fi
+  image="${svc}:${TAG}"
+  import_log="${REPO_ROOT}/tmp/import-${svc}.log"
+  for attempt in 1 2; do
+    k3d image import "${image}" -c "${CLUSTER_NAME}" \
+      > "${import_log}" 2>&1 || true
+    if missing="$(verify_image_on_all_nodes "${image}")"; then
+      ok "${svc}:${TAG} imported on all nodes"
+      break
+    fi
+    if [ "${attempt}" -eq 1 ]; then
+      color_yellow "    retry: ${image} absent on $(echo "${missing}" | tr '\n' ' ')"
+    else
+      color_red "    error: ${image} still absent on $(echo "${missing}" | tr '\n' ' ') after retry"
+      color_red "    import log: ${import_log}"
+      die "k3d image import unreliable, helm install would hang on ImagePullBackOff"
+    fi
+  done
 done
 
 step "Helm upgrade --install for the 3 charts"
