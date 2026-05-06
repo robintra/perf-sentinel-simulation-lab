@@ -72,6 +72,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/wait-for-ready.sh
 	@bash -n scripts/port-forward.sh
 	@bash -n scripts/seed-electricity-maps.sh
+	@bash -n scripts/seed-services.sh
+	@bash -n scripts/k3d-image.sh
 	@bash -n scripts/verify-electricity-maps.sh
 	@bash -n scripts/capture-greenops-screenshot.sh
 	@bash -n scripts/redeploy-services.sh

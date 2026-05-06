@@ -26,6 +26,8 @@ OTEL_CHART_VERSION="0.153.0"
 
 # shellcheck source=./wait-for-ready.sh
 . "${REPO_ROOT}/scripts/wait-for-ready.sh"
+# shellcheck source=./k3d-image.sh
+. "${REPO_ROOT}/scripts/k3d-image.sh"
 
 color_red()    { printf "\033[31m%s\033[0m\n" "$*"; }
 color_green()  { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -65,50 +67,30 @@ create_cluster() {
   ok "cluster created"
 }
 
-# Confirm the image is loaded into containerd on every k3d worker
-# node. Same pattern as scripts/seed-services.sh, applied here
-# defensively after issue #9 traced a partial multi-node import
-# masked by `>/dev/null`. Less critical here because the daemon
-# image lives on GHCR and kubelets can fall back to pull-on-demand,
-# so a persistent miss only degrades to a slower first start.
-verify_perf_sentinel_image_on_all_nodes() {
-  local image="$1" node missing=()
-  while read -r node; do
-    [ -z "${node}" ] && continue
-    if ! docker exec "${node}" ctr -n k8s.io images list -q 2>/dev/null \
-        | grep -qF "${image}"; then
-      missing+=("${node}")
-    fi
-  done < <(k3d node list --no-headers 2>/dev/null \
-            | awk -v c="${CLUSTER_NAME}" '$2 ~ /^(server|agent)$/ && $3 == c {print $1}')
-  if [ "${#missing[@]}" -gt 0 ]; then
-    printf '%s\n' "${missing[@]}"
-    return 1
-  fi
-  return 0
-}
-
 import_image() {
   step "Importing perf-sentinel image into k3d (best effort)"
   # k3d image import has been flaky on Docker Desktop in some setups
   # (failed digest lookups). The manifest references the GHCR image
   # directly so kubelets can fall back to pulling on demand. We still
-  # try the import to make the lab work offline once the image is on the
-  # host.
+  # try the import (with a 2s back-off retry) to make the lab work
+  # offline once the image is on the host.
   mkdir -p "${REPO_ROOT}/tmp"
   local import_log="${REPO_ROOT}/tmp/import-perf-sentinel.log"
+  local diag
   for attempt in 1 2; do
     k3d image import "${PERF_SENTINEL_IMAGE}" -c "${CLUSTER_NAME}" \
       > "${import_log}" 2>&1 || true
-    if missing="$(verify_perf_sentinel_image_on_all_nodes "${PERF_SENTINEL_IMAGE}")"; then
+    if diag="$(verify_k3d_image_on_all_nodes "${CLUSTER_NAME}" "${PERF_SENTINEL_IMAGE}")"; then
       ok "image imported on all nodes"
       return
     fi
     if [ "${attempt}" -eq 1 ]; then
-      warn "retry: image absent on $(echo "${missing}" | tr '\n' ' ')"
+      warn "retry in 2s: image not yet ready ($(echo "${diag}" | tr '\n' ' '))"
+      sleep 2
     fi
   done
   warn "k3d image import partial after retry, kubelets will pull from GHCR (slower first start)"
+  warn "diag: $(echo "${diag}" | tr '\n' ' ')"
   warn "import log: ${import_log}"
 }
 
