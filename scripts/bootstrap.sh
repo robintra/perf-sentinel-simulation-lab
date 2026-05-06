@@ -65,6 +65,29 @@ create_cluster() {
   ok "cluster created"
 }
 
+# Confirm the image is loaded into containerd on every k3d worker
+# node. Same pattern as scripts/seed-services.sh, applied here
+# defensively after issue #9 traced a partial multi-node import
+# masked by `>/dev/null`. Less critical here because the daemon
+# image lives on GHCR and kubelets can fall back to pull-on-demand,
+# so a persistent miss only degrades to a slower first start.
+verify_perf_sentinel_image_on_all_nodes() {
+  local image="$1" node missing=()
+  while read -r node; do
+    [ -z "${node}" ] && continue
+    if ! docker exec "${node}" ctr -n k8s.io images list -q 2>/dev/null \
+        | grep -qF "${image}"; then
+      missing+=("${node}")
+    fi
+  done < <(k3d node list --no-headers 2>/dev/null \
+            | awk -v c="${CLUSTER_NAME}" '$2 ~ /^(server|agent)$/ && $3 == c {print $1}')
+  if [ "${#missing[@]}" -gt 0 ]; then
+    printf '%s\n' "${missing[@]}"
+    return 1
+  fi
+  return 0
+}
+
 import_image() {
   step "Importing perf-sentinel image into k3d (best effort)"
   # k3d image import has been flaky on Docker Desktop in some setups
@@ -72,11 +95,21 @@ import_image() {
   # directly so kubelets can fall back to pulling on demand. We still
   # try the import to make the lab work offline once the image is on the
   # host.
-  if k3d image import "${PERF_SENTINEL_IMAGE}" -c "${CLUSTER_NAME}" >/dev/null 2>&1; then
-    ok "image imported"
-  else
-    warn "k3d image import failed, kubelets will pull from GHCR at run time"
-  fi
+  mkdir -p "${REPO_ROOT}/tmp"
+  local import_log="${REPO_ROOT}/tmp/import-perf-sentinel.log"
+  for attempt in 1 2; do
+    k3d image import "${PERF_SENTINEL_IMAGE}" -c "${CLUSTER_NAME}" \
+      > "${import_log}" 2>&1 || true
+    if missing="$(verify_perf_sentinel_image_on_all_nodes "${PERF_SENTINEL_IMAGE}")"; then
+      ok "image imported on all nodes"
+      return
+    fi
+    if [ "${attempt}" -eq 1 ]; then
+      warn "retry: image absent on $(echo "${missing}" | tr '\n' ' ')"
+    fi
+  done
+  warn "k3d image import partial after retry, kubelets will pull from GHCR (slower first start)"
+  warn "import log: ${import_log}"
 }
 
 add_helm_repos() {
