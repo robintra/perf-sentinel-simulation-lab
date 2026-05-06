@@ -178,6 +178,20 @@ deploy_grafana_dashboards() {
   ok "dashboards configmap applied"
 }
 
+deploy_scaphandre_mock() {
+  step "Deploying Scaphandre mock"
+  # RAPL is not accessible on Apple Silicon nor on most cloud runners,
+  # so the mock provides the metric the daemon scraper consumes
+  # (`scaph_process_power_consumption_microwatts`) and lets the
+  # `[green.scaphandre]` block in the daemon ConfigMap be exercised
+  # without a real exporter. Deployed before the daemon so the very
+  # first scraper tick at startup hits a Ready endpoint and no
+  # transient `Scaphandre scrape failed` WARN appears in the log.
+  kubectl apply -f "${REPO_ROOT}/manifests/scaphandre-mock.yaml" >/dev/null
+  kubectl -n observability rollout status deployment/scaphandre-mock --timeout=120s
+  ok "scaphandre mock ready"
+}
+
 deploy_perf_sentinel_daemon() {
   step "Deploying perf-sentinel daemon"
   kubectl apply -f "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"
@@ -241,6 +255,7 @@ main() {
   deploy_tempo
   deploy_otel_collector
   deploy_grafana_dashboards
+  deploy_scaphandre_mock
   deploy_perf_sentinel_daemon
   start_port_forwards
   print_summary

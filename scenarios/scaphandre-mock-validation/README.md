@@ -22,9 +22,10 @@ with deterministic per-process power values hashed from `(exe, pid)`.
 - Cluster bootstrapped: `make up-cni`. The daemon ConfigMap at
   `manifests/perf-sentinel-daemon.yaml` already includes the
   `[green.scaphandre]` block pointing at
-  `http://scaphandre-mock:9100/metrics`.
-- Mock deployed: `make seed-scaphandre-mock`. The script applies the
-  manifest and waits for the Deployment rollout.
+  `http://scaphandre-mock:9100/metrics`, and `bootstrap.sh` deploys
+  the mock right before the daemon so the scraper hits a Ready
+  endpoint at startup. Re-seed manually via `make seed-scaphandre-mock`
+  if the mock is ever scaled down or removed.
 - Daemon port-forward live: `./scripts/port-forward.sh start`.
 
 The scenario opens its own ephemeral port-forward to the mock on

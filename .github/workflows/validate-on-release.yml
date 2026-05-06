@@ -101,15 +101,6 @@ jobs:
       - name: make seed-electricity-maps
         run: make seed-electricity-maps
 
-      - name: Seed Scaphandre mock
-        # Stand-in for a real Scaphandre exporter. Without it the
-        # daemon emits a periodic `Scaphandre endpoint unreachable`
-        # warn that pollutes the artifact tail. RAPL is not available
-        # on GHA runners (no Intel/AMD passthrough), so the mock
-        # carries the scrape path end-to-end here too.
-        timeout-minutes: 3
-        run: make seed-scaphandre-mock
-
       - name: make validate-findings (10/10 anti-patterns)
         # Background kubectl port-forwards spawned by make up-cni survive
         # in the runner container but the seed-electricity-maps daemon
@@ -291,13 +282,6 @@ jobs:
 
       - name: make seed-electricity-maps
         run: make seed-electricity-maps
-
-      - name: Seed Scaphandre mock
-        # Stand-in for a real Scaphandre exporter so the daemon's
-        # `[green.scaphandre]` scrape path stays exercised on hosts
-        # without RAPL passthrough (Apple Silicon, GHA runners).
-        timeout-minutes: 3
-        run: make seed-scaphandre-mock
 
       - name: Bring port-forward back up
         # The seed-electricity-maps daemon rollout leaves the original

@@ -1268,9 +1268,12 @@ deterministic per-process power values hashed from `(exe, pid)`.
 
 The lab daemon ConfigMap at `manifests/perf-sentinel-daemon.yaml`
 includes a permanent `[green.scaphandre]` block that points at
-`http://scaphandre-mock:9100/metrics`. The daemon emits a one-shot
-warn and stays on the proxy-model fallback until the mock is seeded
-via `make seed-scaphandre-mock`.
+`http://scaphandre-mock:9100/metrics`. `scripts/bootstrap.sh` deploys
+the mock right before the daemon (during `make up-cni`) so the
+scraper hits a Ready endpoint at the very first tick. `make
+seed-scaphandre-mock` stays available for re-seeding when the mock is
+manually scaled to 0 (e.g. by the scenario itself testing graceful
+degradation).
 
 6 sub-tests, each emitting one PASS/FAIL verdict:
 
