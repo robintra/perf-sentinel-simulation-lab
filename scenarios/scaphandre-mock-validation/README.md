@@ -43,11 +43,12 @@ prior `kubectl port-forward` on 9100.
    gauge lines with the required `# HELP` and `# TYPE` directives.
 3. Determinism: two consecutive scrapes return identical power
    values. Confirms the SHA-256 hash is stable.
-4. Daemon log signal: `"Scaphandre scraper started"` (info-level)
-   present in the last 500 daemon log lines, proving the
-   `[green.scaphandre]` config was loaded and the scraper task
-   spawned. `"Scaphandre scrape failed"` lines are tolerated as a
-   soft warning (the mock may have come up after the daemon).
+4. Counter scrape success: `perf_sentinel_scaphandre_scrape_total{status="success"}`
+   sampled before and after a `SCRAPE_INTERVAL_SEC + 1` window. The
+   delta must be strictly positive, proving the scraper task is still
+   running (a stale daemon that spawned the task at boot but later
+   stopped scraping silently is caught here, where the old log-grep
+   approach would PASS).
 5. Daemon gauge signal: `perf_sentinel_scaphandre_last_scrape_age_seconds`
    sampled twice, `SCRAPE_INTERVAL_SEC + 1` seconds apart. At least
    one sample must be below `SCRAPE_INTERVAL_SEC + 2` seconds (the
@@ -57,10 +58,13 @@ prior `kubectl port-forward` on 9100.
    without the Scaphandre module).
 6. Mock degradation: `kubectl scale deployment/scaphandre-mock
    --replicas=0`, sleep `DEGRADE_WAIT_SEC`, assert daemon
-   `/api/status` still answers and `"Scaphandre scrape failed"`
-   appears in the recent log tail (proof the daemon registered the
-   outage and is now on the proxy-model fallback). The trap restores
-   `--replicas=1` on exit, even on interruption.
+   `/api/status` still answers and the counter
+   `perf_sentinel_scaphandre_scrape_failed_total{reason="unreachable"}`
+   shows a positive delta. The `reason` label is asserted explicitly,
+   so a daemon that mis-classifies the outage as `timeout` or
+   `http_error` fails this sub-test (proof of failure-mode
+   discrimination, not just "any failure was seen"). The trap
+   restores `--replicas=1` on exit, even on interruption.
 
 ## How to run
 
@@ -77,11 +81,14 @@ PF=$!; sleep 2
 curl -fsS http://localhost:9100/metrics
 kill $PF
 
-# Confirm the daemon picked up the Scaphandre scraper:
-kubectl -n observability logs deploy/perf-sentinel-daemon \
-  | grep 'Scaphandre scraper started'
-# Expected: "Scaphandre scraper started endpoint=... scrape_interval_secs=5
-#            process_count=5"
+# Confirm the daemon scraper is active and classifying failures correctly:
+curl -fsS http://localhost:14318/metrics \
+  | grep -E '^perf_sentinel_scaphandre_scrape(_failed)?_total\{'
+# Expected (cluster + mock seeded, daemon running):
+#   perf_sentinel_scaphandre_scrape_total{status="success"} <growing>
+#   perf_sentinel_scaphandre_scrape_total{status="failed"}  <stable at low>
+#   perf_sentinel_scaphandre_scrape_failed_total{reason="unreachable"} <small>
+#   ... (other reasons pre-warmed at 0)
 ```
 
 The report lands at
@@ -91,7 +98,8 @@ samples, per-step PASS/FAIL breakdown, and a daemon log tail on FAIL.
 ## Failure modes covered
 
 - **TOML config regression**: a typo in `[green.scaphandre]` keeps the
-  scraper from spawning, sub-test 4 catches the missing log line.
+  scraper from spawning, sub-test 4 catches the missing
+  `scrape_total{status="success"}` delta.
 - **Mock format regression**: missing label `exe` or different metric
   name silently skips the line in the upstream parser, sub-test 2
   asserts the format the parser expects.

@@ -11,12 +11,11 @@
 #   1. Sanity            : daemon /api/status + mock pod Running
 #   2. Mock /metrics     : 5 lines of scaph_process_power_consumption_microwatts
 #   3. Determinism       : 2 consecutive scrapes return identical power values
-#   4. Daemon log signal : "Scaphandre scraper started" present, no
-#                          "Scaphandre scrape failed"
+#   4. Counter success   : scrape_total{status=success} delta over scrape_interval
 #   5. Daemon gauge      : perf_sentinel_scaphandre_last_scrape_age_seconds
 #                          stays < scrape_interval (proves recent success)
-#   6. Mock degradation  : scale mock to 0, daemon stays up, "scrape failed"
-#                          appears in logs (proxy fallback active)
+#   6. Counter fail      : scale mock to 0, scrape_failed_total{reason=unreachable}
+#                          delta proves the daemon classified the outage
 
 set -euo pipefail
 
@@ -30,10 +29,6 @@ DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 MOCK_LOCAL_PORT="${MOCK_LOCAL_PORT:-19100}"
 SCRAPE_INTERVAL_SEC="${SCRAPE_INTERVAL_SEC:-5}"
 DEGRADE_WAIT_SEC="${DEGRADE_WAIT_SEC:-30}"
-# Log lookback window: covers the daemon uptime in CI (45 min job
-# timeout) and a busy local session, without overpaying on a quiet
-# daemon where --tail bounds the buffer naturally.
-LOG_SINCE="${LOG_SINCE:-2h}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -90,6 +85,25 @@ gauge_scrape_age() {
   else
     printf '%s\n' "${val}"
   fi
+}
+
+# Read a Prometheus counter sample value from the daemon /metrics,
+# matching on metric name plus a single label=value pair. Counters are
+# pre-warmed at daemon startup so a missing sample is a real anomaly
+# (build without Scaphandre module).
+counter_value() {
+  local metric_name="$1"
+  local label_name="$2"
+  local label_value="$3"
+  local body val
+  body=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/metrics" 2>/dev/null) || body=""
+  val=$(printf '%s\n' "${body}" | awk -v m="${metric_name}" -v ln="${label_name}" -v lv="${label_value}" '
+    $0 ~ "^"m"\\{" {
+      pat = ln "=\"" lv "\""
+      if ($0 ~ pat) { print $NF; exit }
+    }
+  ')
+  if [ -z "${val}" ]; then printf '0\n'; else printf '%s\n' "${val}"; fi
 }
 
 #######################################
@@ -149,28 +163,18 @@ fi
 mock_pf_stop
 
 #######################################
-# 4. Daemon log signal
+# 4. Daemon counter: scrape success delta
 #######################################
-step "4. Daemon log: 'Scaphandre scraper started' + no 'scrape failed'"
-DAEMON_LOG="${TMP_DIR}/daemon.log"
-# Use --since to span the daemon uptime: --tail=500 can drop the
-# one-shot startup line after a busy CI sequence (long-running-drift,
-# validate-findings emit thousands of lines).
-kubectl -n "${NS}" logs deploy/perf-sentinel-daemon --since="${LOG_SINCE}" \
-  > "${DAEMON_LOG}" 2>&1 || true
-if grep -q 'Scaphandre scraper started' "${DAEMON_LOG}"; then
-  STARTED_LINE=$(grep 'Scaphandre scraper started' "${DAEMON_LOG}" | tail -1)
-  if grep -q 'Scaphandre scrape failed' "${DAEMON_LOG}"; then
-    # Mock may have come up after the daemon: any failure since the
-    # last "scrape succeeded" debug line is the load-bearing signal,
-    # but debug logs are often filtered. Treat presence of any failure
-    # as a soft warning when started is also present.
-    VERDICTS+=("PASS: 4 daemon scraper started (warn: 'scrape failed' lines exist, mock likely came up after daemon)")
-  else
-    VERDICTS+=("PASS: 4 daemon scraper started, no scrape failures: ${STARTED_LINE}")
-  fi
+step "4. Daemon /metrics counter: scrape_total{status=success} delta"
+SUCCESS_BEFORE=$(counter_value perf_sentinel_scaphandre_scrape_total status success)
+sleep $(( SCRAPE_INTERVAL_SEC + 1 ))
+SUCCESS_AFTER=$(counter_value perf_sentinel_scaphandre_scrape_total status success)
+SUCCESS_DELTA_POS=$(awk -v a="${SUCCESS_AFTER}" -v b="${SUCCESS_BEFORE}" 'BEGIN{print (a+0 > b+0) ? 1 : 0}')
+
+if [ "${SUCCESS_DELTA_POS}" = "1" ]; then
+  VERDICTS+=("PASS: 4 scrape_total{status=success} before=${SUCCESS_BEFORE} after=${SUCCESS_AFTER} (scraper active)")
 else
-  VERDICTS+=("FAIL: 4 'Scaphandre scraper started' absent from daemon logs (config TOML missing or parse error)")
+  VERDICTS+=("FAIL: 4 scrape_total{status=success} before=${SUCCESS_BEFORE} after=${SUCCESS_AFTER} (no positive delta over $((SCRAPE_INTERVAL_SEC+1))s, scraper inactive)")
 fi
 
 #######################################
@@ -208,28 +212,28 @@ else
 fi
 
 #######################################
-# 6. Mock degradation: scale to 0, fallback graceful
+# 6. Mock degradation: counter-delta on failed{reason=unreachable}
 #######################################
-step "6. Mock degradation: scale to 0, daemon stays up"
+step "6. Mock degradation: scale to 0, daemon classifies as unreachable"
+UNREACHABLE_BEFORE=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason unreachable)
+
 kubectl -n "${NS}" scale deployment/scaphandre-mock --replicas=0 >/dev/null
 MOCK_SCALED_DOWN="yes"
-# Wait DEGRADE_WAIT_SEC for the daemon to register the failure.
+# DEGRADE_WAIT_SEC=30s with scrape_interval=5s gives ~5-6 failed scrapes,
+# enough margin for the daemon's reqwest timeout to fire.
 sleep "${DEGRADE_WAIT_SEC}"
+
 DAEMON_AFTER_SCALE="up"
 curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 \
   || DAEMON_AFTER_SCALE="down"
-DAEMON_LOG_AFTER="${TMP_DIR}/daemon-after-scale.log"
-# Same --since rationale as sub-test 4. The "scrape failed" warn is
-# one-shot upstream (subsequent failures log at debug level), so if
-# the daemon already emitted it earlier (mock startup race), no new
-# line surfaces here. The PASS path below tolerates that case.
-kubectl -n "${NS}" logs deploy/perf-sentinel-daemon --since="${LOG_SINCE}" \
-  > "${DAEMON_LOG_AFTER}" 2>&1 || true
-FAILED_LINES=$(grep -c 'Scaphandre scrape failed' "${DAEMON_LOG_AFTER}" || true)
-if [ "${DAEMON_AFTER_SCALE}" = "up" ] && [ "${FAILED_LINES}" -ge 1 ]; then
-  VERDICTS+=("PASS: 6 daemon up, ${FAILED_LINES} 'scrape failed' line(s) recorded (proxy fallback active)")
+
+UNREACHABLE_AFTER=$(counter_value perf_sentinel_scaphandre_scrape_failed_total reason unreachable)
+UNREACHABLE_DELTA_POS=$(awk -v a="${UNREACHABLE_AFTER}" -v b="${UNREACHABLE_BEFORE}" 'BEGIN{print (a+0 > b+0) ? 1 : 0}')
+
+if [ "${DAEMON_AFTER_SCALE}" = "up" ] && [ "${UNREACHABLE_DELTA_POS}" = "1" ]; then
+  VERDICTS+=("PASS: 6 daemon up, scrape_failed_total{reason=unreachable} before=${UNREACHABLE_BEFORE} after=${UNREACHABLE_AFTER} (fallback active, failure classified)")
 elif [ "${DAEMON_AFTER_SCALE}" = "up" ]; then
-  VERDICTS+=("PASS: 6 daemon up (warn: no 'scrape failed' line in last 200 logs, daemon may have suppressed after first warn)")
+  VERDICTS+=("FAIL: 6 daemon up but no 'unreachable' delta before=${UNREACHABLE_BEFORE} after=${UNREACHABLE_AFTER} (scrape failures not classified as unreachable, check daemon /metrics for reason distribution)")
 else
   VERDICTS+=("FAIL: 6 daemon /api/status down after mock scale to 0")
 fi
@@ -253,7 +257,7 @@ step "Write report"
   echo
   echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "DAEMON_LOCAL_PORT=${DAEMON_LOCAL_PORT} MOCK_LOCAL_PORT=${MOCK_LOCAL_PORT}"
-  echo "SCRAPE_INTERVAL_SEC=${SCRAPE_INTERVAL_SEC} DEGRADE_WAIT_SEC=${DEGRADE_WAIT_SEC} LOG_SINCE=${LOG_SINCE}"
+  echo "SCRAPE_INTERVAL_SEC=${SCRAPE_INTERVAL_SEC} DEGRADE_WAIT_SEC=${DEGRADE_WAIT_SEC}"
   echo
   echo "## Gauge readings"
   echo
@@ -269,7 +273,7 @@ step "Write report"
     echo "## Daemon logs (tail at end of run)"
     echo
     echo '```'
-    tail -120 "${DAEMON_LOG_AFTER}" 2>/dev/null || tail -120 "${DAEMON_LOG}" 2>/dev/null || true
+    kubectl -n "${NS}" logs deploy/perf-sentinel-daemon --tail=120 2>/dev/null || true
     echo '```'
     echo
   fi
