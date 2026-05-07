@@ -18,6 +18,34 @@ at every layer of the SDLC, with a different mode per environment.
 This section is the 10000-foot view; the per-scenario sections below
 detail each mode in depth.
 
+### Per-environment views
+
+Start here. Each environment has its own focused diagram covering only
+the surface that mode exposes. Four different deployment topologies: local
+dev, CI, staging and production.
+
+**Local dev**
+
+![Local dev zoom-in: batch on captured trace, local daemon at 127.0.0.1, inspect TUI, report HTML](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/perf-sentinel-local-dev.svg)
+
+**CI/CD**
+
+![CI zoom-in: perf integration tests + analyze --ci quality gate, SARIF for code scanning, optional Tempo / jaeger-query nightly](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/perf-sentinel-CI.svg)
+
+**Staging**
+
+![Staging zoom-in: focus-service pod with sidecar daemon, /api/findings polled by QA / SRE](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/perf-sentinel-staging.svg)
+
+**Production**
+
+![Production zoom-in: centralized daemon ingesting via OTel Collector and direct OTLP, /api/* + /metrics + NDJSON](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/perf-sentinel-production.svg)
+
+### End-to-end view: how the four environments fit together
+
+Once each mode is clear on its own, this is the integration view that
+puts all four side by side and traces a code change from the developer's
+laptop all the way to the production daemon's findings.
+
 ![Global perf-sentinel integration across local dev, CI, staging and prod](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/global-integration.svg)
 
 Source: [`global-integration.mmd`](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/mmd/global-integration.mmd).
