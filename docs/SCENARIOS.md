@@ -40,6 +40,18 @@ dev, CI, staging and production.
 
 ![Production zoom-in: centralized daemon ingesting via OTel Collector and direct OTLP, /api/* + /metrics + NDJSON](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/perf-sentinel-production.svg)
 
+### GreenOps view
+
+A cross-cutting view of the data sources that feed perf-sentinel for
+energy and carbon estimation. Two external real-time sources
+(Scaphandre for kWh, Electricity Maps for gCO2/kWh) and three internal
+cold tables (Cloud SPECpower across AWS / GCP / Azure for kWh, embodied
+carbon per request via Boavizta + HotCarbon 2024 for gCO2e, network
+transport via Mytton 2024 for kWh/GB). Works in both batch and daemon
+mode, with linear, hourly, and monthly + hourly resolution.
+
+![GreenOps integration: external real-time sources (Scaphandre kWh, Electricity Maps gCO2/kWh) plus internal cold sources (Cloud SPECpower kWh, embodied carbon gCO2e/req via Boavizta + HotCarbon 2024, network transport kWh/GB via Mytton 2024) feeding perf-sentinel in batch or daemon mode, emitting energy and carbon alongside traces](https://raw.githubusercontent.com/robintra/perf-sentinel-simulation-lab/main/docs/diagrams/svg/perf-sentinel-GreenOps.svg)
+
 ### End-to-end view: how the four environments fit together
 
 Once each mode is clear on its own, this is the integration view that
