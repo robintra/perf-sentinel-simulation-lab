@@ -47,11 +47,15 @@ kubectl -n db exec sts/postgres -- psql -U lab -d lab -c "SELECT pg_stat_stateme
 ok "counters reset"
 
 step "Generate workload (validate-findings drives 1500+ SQL queries)"
-make -C "$(dirname "$0")/../.." validate-findings >/dev/null 2>&1 || true
-ok "workload done"
+VF_LOG="${TMP_DIR}/validate-findings.log"
+if ! make -C "$(dirname "$0")/../.." validate-findings > "${VF_LOG}" 2>&1; then
+  tail -20 "${VF_LOG}" >&2 || true
+  die "validate-findings failed, see ${VF_LOG}"
+fi
+ok "workload done (log: ${VF_LOG})"
 
 step "Wait for stat collector to flush"
-sleep 5
+sleep 15
 
 step "Dump pg_stat_statements via psql COPY"
 # Flatten newlines/tabs/CRs in the `query` column so each pg_stat row
