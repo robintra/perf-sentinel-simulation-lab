@@ -270,6 +270,9 @@ verify-ci-shift-left: ## CI shift-left workflow (clean / regression / acked) pos
 verify-output-formats-coverage: ## Output formats, diff mode, signature presence, ack cap loader
 	./scenarios/output-formats-coverage/verify.sh
 
+verify-verify-hash-roundtrip: ## verify-hash CLI contract (exit codes 1/3/4 + identity-required default)
+	./scenarios/verify-hash-roundtrip/verify.sh
+
 verify-template-gitlab-ci: ## Validate upstream gitlab-ci.yml template via GitLab CE in-cluster
 	./scenarios/template-gitlab-ci/verify.sh
 
@@ -303,19 +306,21 @@ verify-daemon-ack-workflow: ## ack API end-to-end with PVC persistence and 0.5.2
 verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against the Python stdlib mock
 	./scenarios/scaphandre-mock-validation/verify.sh
 
-verify-all-scenarios: ## Run all 22 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 23 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
 	@# - ci-shift-left before output-formats-coverage because the latter
 	@#   reuses /tmp/ci-shift-left/regression-report.json artefacts.
+	@# - verify-hash-roundtrip is CLI-only (no cluster contact); placed
+	@#   next to the other CLI-heavy scenarios for grouping clarity.
 	@# - templates run before the resilience scenarios because they may
 	@#   SKIP runtime steps when the GitLab/Jenkins/act environment is
 	@#   not fully available.
 	@# - resilience scenarios run last: they restart the daemon, scale
 	@#   shared backends to 0, and apply temporary NetworkPolicies.
 	@#   Running them after the rest avoids polluting earlier scenarios.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation; do \
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
