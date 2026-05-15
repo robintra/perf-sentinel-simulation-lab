@@ -6,7 +6,7 @@ redesigned to 0/1/2/3/4).
 
 ## What it covers
 
-5 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
+7 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
 (defaults to the lab's currently-pinned version):
 
 1. **Placeholder hash detection** (exit 1, UNTRUSTED).
@@ -38,20 +38,34 @@ redesigned to 0/1/2/3/4).
    and --expected-issuer must be passed together`. Prevents accidental
    single-flag use that would silently downgrade verification.
 
+6. **hash-bake roundtrip on unsigned report** (verify-hash exit 2
+   PARTIAL, v0.7.2 `hash-bake`). Bakes the canonical `content_hash`
+   into the G2 fixture, then runs `verify-hash` against the baked file.
+   With the signature still null in the fixture, the run returns
+   `[OK] Content hash` (the bake produced the canonical value) and
+   `PARTIAL` overall (signature NotProvided). Locks that hash-bake
+   produces what verify-hash recomputes, and the exit 2 PARTIAL path.
+
+7. **hash-bake refuses signed report by default** (exit 1, accepts with
+   `--allow-signed`). Re-runs hash-bake on the synthetic-signature
+   variant from sub-test 4. Asserts the safety default: hash-bake
+   refuses to rewrite a report whose `integrity.signature` is already
+   populated, and only accepts the rewrite when `--allow-signed` is
+   passed explicitly. Locks the v0.7.2 guard against accidental
+   signature-invalidation.
+
 ## Coverage gaps tracked
 
-- **exit 0 (TRUSTED) end-to-end roundtrip**: requires a fixture with the
-  canonical content hash baked in. Today this hash is only computable
-  through the in-process Rust API `compute_content_hash()`; there is no
-  CLI surface (`disclose` produces a Report but requires a full archive
-  + org-config, not friendly to a 5-sub-test scenario). When a CLI
-  helper like `perf-sentinel hash-bake --report <in> --output <out>`
-  ships upstream, add a 6th sub-test.
+- **exit 0 (TRUSTED) end-to-end roundtrip**: still uncovered, requires
+  a real cosign-signed bundle paired with `cosign verify-blob`
+  succeeding and a matching `--expected-identity`/`--expected-issuer`.
+  Out of scope without an OIDC ceremony in the lab. Future unlock
+  candidate: a sigstore mock returning a deterministic valid bundle,
+  or a committed pre-signed fixture maintained as the canonical
+  signing identity rotates.
 
-- **exit 2 (PARTIAL) on hash-valid + signature-absent**: same
-  prerequisite. Today the placeholder example exits 1 because the hash
-  itself fails to validate; with a baked hash + no signature block the
-  CLI would return 2 and we could lock that mapping too.
+- **exit 2 (PARTIAL) on hash-valid + signature-absent**: covered by
+  sub-test 6 since v0.7.2 (closed).
 
 ## Runtime
 

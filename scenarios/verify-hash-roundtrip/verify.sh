@@ -52,7 +52,7 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURE="${SCENARIO_DIR}/fixtures/example-official-public-G2.json"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.7.1}"
+PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.7.2}"
 IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
 
 mkdir -p "${TMP_DIR}"
@@ -105,6 +105,19 @@ run_verify() {
         -u "$(id -u):$(id -g)" \
         -v "${TMP_DIR}:/workdir" \
         "${IMAGE}" verify-hash "$@" 2>&1)
+  RUN_EXIT=$?
+  set -e
+  RUN_OUT="${out}"
+}
+
+# Sibling helper for hash-bake. Same shape.
+run_bake() {
+  local out
+  set +e
+  out=$(docker run --rm "${DOCKER_NET_FLAGS[@]}" \
+        -u "$(id -u):$(id -g)" \
+        -v "${TMP_DIR}:/workdir" \
+        "${IMAGE}" hash-bake "$@" 2>&1)
   RUN_EXIT=$?
   set -e
   RUN_OUT="${out}"
@@ -175,6 +188,40 @@ else
   record "5. half-pair rejection" FAIL "exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | grep -i together | head -1 || echo none)"
 fi
 
+# === Sub-test 6: hash-bake roundtrip on unsigned -> PARTIAL (exit 2) ===
+step "6. hash-bake roundtrip on unsigned report (verify-hash exit 2 PARTIAL)"
+run_bake --report /workdir/g2.json --output /workdir/baked-g2.json
+if [ "${RUN_EXIT}" -ne 0 ]; then
+  fail "hash-bake failed unexpectedly; exit=${RUN_EXIT}"
+  record "6. hash-bake + verify PARTIAL" FAIL "hash-bake exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | head -1)"
+else
+  run_verify --report /workdir/baked-g2.json
+  if [ "${RUN_EXIT}" -eq 2 ] && [[ "${RUN_OUT}" == *"[OK] Content hash"* ]] && [[ "${RUN_OUT}" == *"PARTIAL"* ]]; then
+    ok "verify-hash exit=2, content hash OK, signature NotProvided"
+    record "6. hash-bake + verify PARTIAL" PASS "verify-hash exit=2 PARTIAL after bake"
+  else
+    fail "expected verify exit=2 PARTIAL; got exit=${RUN_EXIT}"
+    record "6. hash-bake + verify PARTIAL" FAIL "verify exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | grep -iE 'partial|hash' | head -1 || echo none)"
+  fi
+fi
+
+# === Sub-test 7: hash-bake refusal on signed report without --allow-signed ===
+step "7. hash-bake refuses signed report without --allow-signed (exit 1), accepts with flag (exit 0)"
+run_bake --report /workdir/g2-signed.json --output /workdir/baked-signed.json
+if [ "${RUN_EXIT}" -ne 1 ]; then
+  fail "hash-bake should refuse signed report by default; got exit=${RUN_EXIT}"
+  record "7. hash-bake refuses signed" FAIL "no-flag exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | head -1)"
+else
+  run_bake --report /workdir/g2-signed.json --output /workdir/baked-signed.json --allow-signed
+  if [ "${RUN_EXIT}" -eq 0 ]; then
+    ok "default refusal exit=1, --allow-signed exit=0"
+    record "7. hash-bake refuses signed" PASS "default exit=1, --allow-signed exit=0"
+  else
+    fail "expected exit=0 with --allow-signed; got exit=${RUN_EXIT}"
+    record "7. hash-bake refuses signed" FAIL "--allow-signed exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | head -1)"
+  fi
+fi
+
 # === Aggregate verdict + report ===
 overall="PASS"
 for v in "${SUBTEST_VERDICTS[@]}"; do
@@ -198,12 +245,12 @@ done
   echo "## Verdict: ${overall}"
   echo
   echo "## Known coverage gaps"
-  echo "- exit 0 TRUSTED roundtrip: requires baked content_hash (no CLI surface)"
-  echo "- exit 2 PARTIAL (hash-valid + signature absent): requires baked content_hash"
+  echo "- exit 0 TRUSTED roundtrip: requires real cosign-signed bundle + matching identity"
+  echo "- exit 2 PARTIAL: covered by sub-test 6 (hash-bake + verify-hash)"
 } > "${REPORT}"
 
 if [ "${overall}" = "PASS" ]; then
-  ok "PASS 5/5, see ${REPORT}"
+  ok "PASS 7/7, see ${REPORT}"
   exit 0
 else
   fail "see ${REPORT}"
