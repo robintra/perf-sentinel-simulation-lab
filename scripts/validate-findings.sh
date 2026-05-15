@@ -183,10 +183,19 @@ print_summary() {
 }
 
 main() {
-    if ! curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
-        color_red "daemon not reachable at ${DAEMON_URL}, run make up first"
-        exit 1
-    fi
+    local max_probe_attempts=5 probe_sleep_s=2 attempt=1
+    while [ "${attempt}" -le "${max_probe_attempts}" ]; do
+        if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
+            break
+        fi
+        if [ "${attempt}" -eq "${max_probe_attempts}" ]; then
+            color_red "daemon not reachable at ${DAEMON_URL} after ${max_probe_attempts} attempts, run make up first"
+            exit 1
+        fi
+        color_yellow "daemon probe attempt ${attempt}/${max_probe_attempts} failed, retrying in ${probe_sleep_s}s"
+        sleep "${probe_sleep_s}"
+        attempt=$((attempt + 1))
+    done
     if ! kubectl get namespace "${NAMESPACE}" >/dev/null 2>&1; then
         color_red "namespace ${NAMESPACE} missing, run make seed-services first"
         exit 1
