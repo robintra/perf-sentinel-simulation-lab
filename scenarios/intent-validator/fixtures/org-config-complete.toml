@@ -1,0 +1,29 @@
+# Complete org-config that satisfies the v0.7.0 official-intent validator.
+# Used by sub-tests 1, 2, 3 of the intent-validator scenario.
+
+[organisation]
+name = "Lab Example SAS"
+country = "FR"
+
+[organisation.identifiers]
+domain = "lab.example.fr"
+
+[methodology]
+sci_specification = "ISO/IEC 21031:2024"
+enabled_patterns = [
+    "n_plus_one_sql",
+    "n_plus_one_http",
+    "redundant_sql",
+    "redundant_http",
+]
+disabled_patterns = []
+conformance = "core-required"
+
+[methodology.calibration]
+carbon_intensity_source = "electricity_maps"
+specpower_table_version = "2024-2026"
+scaphandre_used = false
+
+[scope_manifest]
+total_applications_declared = 1
+environments_measured = ["prod"]
