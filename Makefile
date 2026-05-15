@@ -86,6 +86,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/up-cni.sh
 	@bash -n scripts/hubble-ui.sh
 	@bash -n scripts/verify-network-policies.sh
+	@bash -n scripts/record-validation.sh
+	@bash -n release-gate/check-lab-validation.sh
 	@bash -n scenarios/hybrid-daemon-batch/verify.sh
 	@bash -n scenarios/batch-tempo-scrape/verify.sh
 	@bash -n scenarios/daemon-otlp-direct/verify.sh
