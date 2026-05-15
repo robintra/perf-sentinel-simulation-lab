@@ -9,7 +9,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .DEFAULT_GOAL := help
 
-.PHONY: help up down reset validate smoke status logs grafana inspect psql ps clean-images \
+.PHONY: help up down reset recover validate smoke status logs grafana inspect psql ps clean-images \
         seed-services teardown-services inject-all validate-findings \
         seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services \
         up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel \
@@ -44,6 +44,19 @@ down: ## Tear down the cluster
 	./scripts/teardown.sh
 
 reset: down up ## Teardown then bootstrap
+
+recover: ## Bounce Cilium worker agents and not-Ready shop pods after k3d cluster start
+	@echo "==> bouncing Cilium agents on worker nodes (DNS recovery after k3d cluster start)"
+	@victims=$$(for node in $$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane' -o jsonpath='{.items[*].metadata.name}'); do \
+	  kubectl get pod -n kube-system -l k8s-app=cilium --field-selector=spec.nodeName=$$node -o jsonpath='{.items[0].metadata.name} ' 2>/dev/null; \
+	done); \
+	if [ -n "$$(echo $$victims | tr -d ' ')" ]; then echo "  delete:$$victims"; kubectl delete pod -n kube-system $$victims --grace-period=5; fi
+	@kubectl rollout status ds/cilium -n kube-system --timeout=120s
+	@echo "==> bouncing not-Ready shop pods (escape CrashLoopBackOff faster)"
+	@stale=$$(kubectl get pod -n shop --no-headers 2>/dev/null | awk '$$3 != "Running" || $$2 != "1/1" {print $$1}'); \
+	if [ -n "$$stale" ]; then echo "  delete: $$stale" | tr '\n' ' '; echo; echo "$$stale" | xargs kubectl delete pod -n shop --grace-period=5; else echo "  no stale shop pods"; fi
+	@kubectl wait --for=condition=Ready pod --all -n shop --timeout=180s
+	@echo "==> recovery complete"
 
 validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@echo "==> yaml parse on manifests and values"
