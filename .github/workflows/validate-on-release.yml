@@ -42,8 +42,18 @@ jobs:
           echo "Trigger: ${{ github.event_name }}"
 
       - name: Install k3d
+        env:
+          K3D_TAG: v5.8.3
         run: |
-          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if curl -fsSL "https://raw.githubusercontent.com/k3d-io/k3d/${K3D_TAG}/install.sh" \
+                | TAG="${K3D_TAG}" bash; then
+              break
+            fi
+            echo "k3d install attempt ${attempt} failed, retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
           k3d version
 
       - name: Install helm
@@ -236,8 +246,18 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install k3d
+        env:
+          K3D_TAG: v5.8.3
         run: |
-          curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if curl -fsSL "https://raw.githubusercontent.com/k3d-io/k3d/${K3D_TAG}/install.sh" \
+                | TAG="${K3D_TAG}" bash; then
+              break
+            fi
+            echo "k3d install attempt ${attempt} failed, retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
           k3d version
 
       - name: Install helm
