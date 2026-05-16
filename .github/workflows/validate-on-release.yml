@@ -347,17 +347,11 @@ jobs:
         timeout-minutes: 12
         run: make verify-cold-start-edge-cases
 
-      - name: Seed findings for daemon-ack-workflow
-        # daemon-ack-workflow needs >=2 findings in the store to harvest
-        # signatures. validate-findings.sh fires the 10 k6 anti-pattern
-        # scenarios; we tolerate a non-zero exit (some assertions may
-        # flake under CI load) because the scenario itself fails fast
-        # with an actionable message if seeding produced no findings.
-        timeout-minutes: 12
-        run: make validate-findings || echo "::warning::validate-findings completed with errors, daemon-ack-workflow will verify findings presence itself"
-
       - name: daemon-ack-workflow
-        timeout-minutes: 6
+        # The Makefile target re-seeds findings before running the
+        # scenario (validate-findings.sh, ~9 min in CI), then the
+        # scenario itself (~3 min). Total ~12 min plus margin.
+        timeout-minutes: 18
         run: make verify-daemon-ack-workflow
 
       - name: scaphandre-mock-validation

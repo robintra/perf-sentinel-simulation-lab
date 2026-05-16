@@ -320,7 +320,7 @@ verify-cold-start-edge-cases: ## 4 sub-tests of cold-start corner cases
 	./scenarios/cold-start-edge-cases/verify.sh
 
 verify-daemon-ack-workflow: ## ack API end-to-end with PVC persistence and 0.5.21 counter asserts
-	@echo "==> seed findings (mirrors validate-on-release.yml CI step)"
+	@echo "==> seed findings (scenario needs >=2 distinct sigs in the store)"
 	@./scripts/validate-findings.sh > /tmp/daemon-ack-workflow-seed.log 2>&1 || true
 	./scenarios/daemon-ack-workflow/verify.sh
 
