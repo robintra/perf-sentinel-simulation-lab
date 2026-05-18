@@ -116,7 +116,13 @@ refresh_pf || { VERDICTS+=("FAIL: 6.B daemon did not come back from rollout"); }
 B_EVENTS_BEFORE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))")
 
-cat <<EOF | kubectl apply -f - > "${TMP_DIR}/6b-apply.log" 2>&1
+# Apply Namespace + NetworkPolicies first and give Cilium ~5s to
+# install the egress allow rules across all nodes before the Job pods
+# spawn. Without this gap, telemetrygen can start, hit a deny on DNS or
+# the daemon's port, exit 0 after --duration anyway, and leave the
+# daemon's events_processed counter unchanged (observed flake on
+# 2026-05-18 scheduled run 26011136609).
+cat <<EOF | kubectl apply -f - > "${TMP_DIR}/6b-apply-policies.log" 2>&1
 ---
 apiVersion: v1
 kind: Namespace
@@ -173,6 +179,10 @@ spec:
               kubernetes.io/metadata.name: ${NS}
       ports:
         - { protocol: TCP, port: 14318 }
+EOF
+sleep 5
+
+cat <<EOF | kubectl apply -f - > "${TMP_DIR}/6b-apply-job.log" 2>&1
 ---
 apiVersion: batch/v1
 kind: Job
@@ -215,10 +225,26 @@ spec:
               drop: [ALL]
 EOF
 kubectl -n "${NS}" wait --for=condition=Complete --timeout=180s job/cold-burst > "${TMP_DIR}/6b-wait.log" 2>&1 || true
-sleep 15
-B_EVENTS_AFTER=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
-  | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))")
-B_DELTA=$(( B_EVENTS_AFTER - B_EVENTS_BEFORE ))
+
+# Poll events_processed for up to 60s. The daemon batches OTLP ingest
+# and the analyser has its own debounce window, so a fixed sleep can
+# miss in-flight spans on a slow runner. Break as soon as delta > 0.
+B_DELTA=0
+B_EVENTS_AFTER="${B_EVENTS_BEFORE}"
+for _i in $(seq 1 12); do
+  sleep 5
+  B_EVENTS_AFTER=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
+    | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))" 2>/dev/null || echo "${B_EVENTS_AFTER}")
+  B_DELTA=$(( B_EVENTS_AFTER - B_EVENTS_BEFORE ))
+  if [ "${B_DELTA}" -gt 0 ]; then
+    break
+  fi
+done
+
+# Capture telemetrygen logs to help postmortem when delta stays 0.
+kubectl -n "${NS}" logs -l job-name=cold-burst --tail=80 --prefix=true \
+  > "${TMP_DIR}/6b-telemetrygen.log" 2>&1 || true
+
 B_ALIVE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 && echo yes || echo no)
 if [ "${B_ALIVE}" = "yes" ] && [ "${B_DELTA}" -gt 0 ]; then
   VERDICTS+=("PASS: 6.B cold-start + 5x200sps burst (delta=${B_DELTA}, alive=${B_ALIVE})")
