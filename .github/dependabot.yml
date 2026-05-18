@@ -13,7 +13,7 @@ updates:
       prefix: "chore(deps)"
 
   - package-ecosystem: "docker"
-    directory: "/"
+    directory: "/services/shared-dockerfile"
     schedule:
       interval: "weekly"
       day: "monday"
