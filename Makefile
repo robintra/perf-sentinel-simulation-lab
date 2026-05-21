@@ -25,6 +25,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-failure-mode-network-partition verify-cold-start-edge-cases \
         verify-daemon-ack-workflow \
         seed-scaphandre-mock verify-scaphandre-mock-validation \
+        seed-kepler-mock seed-redfish-mock verify-measured-energy-chain \
         verify-all-scenarios
 
 help: ## List available targets
@@ -119,6 +120,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/cold-start-edge-cases/verify.sh
 	@bash -n scenarios/daemon-ack-workflow/verify.sh
 	@bash -n scenarios/scaphandre-mock-validation/verify.sh
+	@bash -n scenarios/measured-energy-chain/verify.sh
 	@echo "==> yaml parse on resilience scenario manifests"
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/multi-agent-load/manifests.yaml \
@@ -214,6 +216,14 @@ verify-electricity-maps: ## Confirm the daemon picked up the Electricity Maps to
 seed-scaphandre-mock: ## Apply the Scaphandre mock manifest (RAPL stand-in for the daemon scrape path)
 	@kubectl apply -f manifests/scaphandre-mock.yaml
 	@kubectl rollout status deployment/scaphandre-mock -n observability --timeout=120s
+
+seed-kepler-mock: ## Apply the Kepler mock manifest (eBPF stand-in for the daemon scrape path)
+	@kubectl apply -f manifests/kepler-mock.yaml
+	@kubectl rollout status deployment/kepler-mock -n observability --timeout=120s
+
+seed-redfish-mock: ## Apply the Redfish mock manifest (BMC stand-in for the daemon scrape path)
+	@kubectl apply -f manifests/redfish-mock.yaml
+	@kubectl rollout status deployment/redfish-mock -n observability --timeout=120s
 
 capture-greenops-screenshot: ## Capture the daemon report banner to artifacts/greenops-bandeau.png
 	./scripts/capture-greenops-screenshot.sh
@@ -327,7 +337,10 @@ verify-daemon-ack-workflow: ## ack API end-to-end with PVC persistence and 0.5.2
 verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against the Python stdlib mock
 	./scenarios/scaphandre-mock-validation/verify.sh
 
-verify-all-scenarios: ## Run all 24 scenarios sequentially (see docs/SCENARIOS.md)
+verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
+	./scenarios/measured-energy-chain/verify.sh
+
+verify-all-scenarios: ## Run all 25 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -341,7 +354,7 @@ verify-all-scenarios: ## Run all 24 scenarios sequentially (see docs/SCENARIOS.m
 	@# - resilience scenarios run last: they restart the daemon, scale
 	@#   shared backends to 0, and apply temporary NetworkPolicies.
 	@#   Running them after the rest avoids polluting earlier scenarios.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation; do \
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

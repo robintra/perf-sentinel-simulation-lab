@@ -192,6 +192,21 @@ deploy_scaphandre_mock() {
   ok "scaphandre mock ready"
 }
 
+deploy_measured_energy_mocks() {
+  step "Deploying Kepler and Redfish mocks"
+  # Same rationale as scaphandre-mock: the lab nodes have neither
+  # eBPF perf counters (Kepler) nor BMC hardware (Redfish), so two
+  # Python stdlib mocks stand in. Both daemon scrapers ([green.kepler]
+  # and [green.redfish] in the ConfigMap) hit Ready endpoints at the
+  # very first tick and no transient `unreachable` WARN appears in
+  # the log on a fresh bootstrap.
+  kubectl apply -f "${REPO_ROOT}/manifests/kepler-mock.yaml" >/dev/null
+  kubectl apply -f "${REPO_ROOT}/manifests/redfish-mock.yaml" >/dev/null
+  kubectl -n observability rollout status deployment/kepler-mock --timeout=120s
+  kubectl -n observability rollout status deployment/redfish-mock --timeout=120s
+  ok "kepler and redfish mocks ready"
+}
+
 deploy_perf_sentinel_daemon() {
   step "Deploying perf-sentinel daemon"
   kubectl apply -f "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"
@@ -256,6 +271,7 @@ main() {
   deploy_otel_collector
   deploy_grafana_dashboards
   deploy_scaphandre_mock
+  deploy_measured_energy_mocks
   deploy_perf_sentinel_daemon
   start_port_forwards
   print_summary

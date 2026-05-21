@@ -21,18 +21,28 @@ data:
   app.py: |
     """Minimal Kepler mock exposing /metrics in Prometheus format.
 
-    Serves a cumulative counter per container_name. Each scrape
-    increments the counter by a deterministic per-container amount so
-    the daemon-side scraper sees real deltas. Stdlib only, same
-    reasoning as the Scaphandre mock.
+    Cumulative joule counters per container_name, advanced by a
+    background thread on a wall-clock cadence independent of the HTTP
+    scrape rate. The real Kepler exporter updates its counters from
+    eBPF samples regardless of who scrapes them; matching that
+    semantic means a second scraper (e.g. a Prometheus ServiceMonitor
+    layered on top of the daemon's direct scrape) cannot inflate the
+    visible rate.
+
+    Only the `metric_kind = "container"` variant
+    (`kepler_container_joules_total`) is exposed. `process_package`
+    and `process_dram` are not implemented; configure the daemon
+    accordingly.
     """
     import sys
     import threading
     import time
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    TICK_INTERVAL_SEC = 5
 
     CONTAINERS = [
-        # (container_name as exposed by Kepler, joules per scrape tick)
+        # (container_name as exposed by Kepler, joules added per tick)
         ("order-svc", 12.0),
         ("payment-svc", 18.0),
         ("notification-svc", 7.0),
@@ -43,15 +53,21 @@ data:
     COUNTERS_LOCK = threading.Lock()
 
 
-    def advance_counters():
+    def tick_loop():
+        while True:
+            time.sleep(TICK_INTERVAL_SEC)
+            with COUNTERS_LOCK:
+                for name, delta in CONTAINERS:
+                    COUNTERS[name] += delta
+
+
+    def snapshot_counters():
         with COUNTERS_LOCK:
-            for name, delta in CONTAINERS:
-                COUNTERS[name] += delta
             return dict(COUNTERS)
 
 
     def render_metrics():
-        snapshot = advance_counters()
+        snapshot = snapshot_counters()
         lines = [
             "# HELP kepler_container_joules_total Cumulative joules per container - mocked",
             "# TYPE kepler_container_joules_total counter",
@@ -88,7 +104,8 @@ data:
 
 
     if __name__ == "__main__":
-        HTTPServer(("0.0.0.0", 9102), Handler).serve_forever()
+        threading.Thread(target=tick_loop, daemon=True).start()
+        ThreadingHTTPServer(("0.0.0.0", 9102), Handler).serve_forever()
 ---
 apiVersion: v1
 kind: Service
