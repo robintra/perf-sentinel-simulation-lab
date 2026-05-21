@@ -31,8 +31,23 @@ die()  { color_red   "    error: $*"; exit 1; }
 case "${CNI}" in
   cilium)
     step "Installing Cilium ${CILIUM_VERSION} via Helm"
-    helm repo add cilium https://helm.cilium.io >/dev/null 2>&1 || true
-    helm repo update cilium >/dev/null
+    # Add the cilium repo with retries. helm.cilium.io occasionally
+    # returns 5xx or times out from GitHub-hosted runners and the
+    # previous `|| true` swallowed those errors, leaving the next
+    # `helm repo update` to fail loudly with "no repositories matching
+    # 'cilium'" (observed on scheduled run 26202794690, 2026-05-21).
+    add_attempts=3
+    for attempt in $(seq 1 "${add_attempts}"); do
+      if helm repo add cilium https://helm.cilium.io; then
+        break
+      fi
+      if [ "${attempt}" -eq "${add_attempts}" ]; then
+        die "helm repo add cilium failed after ${add_attempts} attempts"
+      fi
+      color_red "    helm repo add cilium attempt ${attempt}/${add_attempts} failed, retrying in 5s"
+      sleep 5
+    done
+    helm repo update cilium
 
     helm upgrade --install cilium cilium/cilium \
       --namespace kube-system \
