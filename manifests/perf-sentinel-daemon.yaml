@@ -90,6 +90,41 @@ data:
     "catalog-service" = "java"
     "inventory-service" = "dotnet"
     "auth-service" = "dotnet"
+
+    [green.kepler]
+    # Kepler eBPF exporter scrape path. The real exporter needs
+    # bare-metal perf counters which the lab cannot provide, so a
+    # Python stdlib mock at manifests/kepler-mock.yaml serves the
+    # `kepler_container_joules_total` counter perf-sentinel consumes
+    # in container mode. Scaphandre wins precedence when both are
+    # active. Comment this block out to fall through to Kepler if
+    # Scaphandre is unreachable.
+    endpoint = "http://kepler-mock.observability.svc.cluster.local:9102/metrics"
+    scrape_interval_secs = 5
+    metric_kind = "container"
+
+    [green.kepler.service_mappings]
+    "order-service" = "order-svc"
+    "payment-service" = "payment-svc"
+    "notification-service" = "notification-svc"
+
+    [green.redfish]
+    # Redfish BMC wall-plug wattage scrape. Real BMC hardware is not
+    # available in CI, so a Python stdlib mock at
+    # manifests/redfish-mock.yaml exposes two chassis endpoints and
+    # serves the canonical PowerControl[0].PowerConsumedWatts shape.
+    # Stays HTTP-only: setting ca_bundle_path would refuse to start
+    # because custom-CA TLS is not implemented in v0.7.4.
+    scrape_interval_secs = 60
+
+    [green.redfish.endpoints]
+    "chassis-1" = "http://redfish-mock.observability.svc.cluster.local:8000/redfish/v1/Chassis/1/Power"
+    "chassis-2" = "http://redfish-mock.observability.svc.cluster.local:8000/redfish/v1/Chassis/2/Power"
+
+    [green.redfish.service_mappings]
+    "order-service" = "chassis-1"
+    "payment-service" = "chassis-1"
+    "notification-service" = "chassis-2"
 ---
 # Ack store backing volume. Single-node k3d uses local-path-provisioner,
 # which honors fsGroup on the resulting hostPath mount, so the daemon's

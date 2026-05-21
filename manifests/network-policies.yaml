@@ -446,6 +446,90 @@ spec:
         - protocol: TCP
           port: 9100
 ---
+# 4.D.septies daemon egress to the Kepler mock for the
+# `[green.kepler]` scrape path. Scoped to the in-cluster mock
+# Service in the same namespace, port 9102 (Kepler convention).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-kepler-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kepler-mock
+      ports:
+        - protocol: TCP
+          port: 9102
+---
+# 4.D.octies ingress on the Kepler mock limited to the daemon.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kepler-mock-allow-daemon
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kepler-mock
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 9102
+---
+# 4.D.nonies daemon egress to the Redfish mock for the
+# `[green.redfish]` scrape path. Multi-chassis fan-out, single mock
+# Service backing both chassis URLs on port 8000.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-redfish-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redfish-mock
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# 4.D.decies ingress on the Redfish mock limited to the daemon.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redfish-mock-allow-daemon
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redfish-mock
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 8000
+---
 # 4.E perf-sentinel daemon egress to Electricity Maps.
 # Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
 # replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).
