@@ -358,6 +358,13 @@ jobs:
         timeout-minutes: 4
         run: make verify-scaphandre-mock-validation
 
+      - name: measured-energy-chain
+        # 7.B polls the redfish-mock for up to 75s waiting for the
+        # 60s-interval scrape to land at least once on each chassis.
+        # 3 min covers the worst case plus startup jitter.
+        timeout-minutes: 3
+        run: make verify-measured-energy-chain
+
       - name: Show daemon logs (debug)
         if: always()
         run: |
@@ -381,12 +388,14 @@ jobs:
             /tmp/scenario-cold-start-edge-cases-report.md
             /tmp/scenario-daemon-ack-workflow-report.md
             /tmp/scenario-scaphandre-mock-validation-report.md
+            /tmp/scenario-measured-energy-chain-report.md
             /tmp/multi-agent-load/*
             /tmp/long-running-drift/*
             /tmp/failure-mode-*/*
             /tmp/cold-start-edge-cases/*
             /tmp/daemon-ack-workflow/*
             /tmp/scaphandre-mock-validation/*
+            /tmp/measured-energy-chain/*
           retention-days: 14
           if-no-files-found: warn
 
