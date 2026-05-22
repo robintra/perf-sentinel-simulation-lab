@@ -48,22 +48,39 @@ count_grep() {
   awk -v pat="$1" 'index($0, pat) { c++ } END { print c+0 }' "$2"
 }
 
+logs_since_start() {
+  # Pull deployment logs scoped to the scenario's observation window.
+  # `kubectl --since` queries kubelet for lines newer than the given
+  # duration, so the count returned reflects scrapes that actually
+  # landed during the wait rather than the cumulative history since
+  # mock pod start. +5s margin absorbs clock skew between the local
+  # date(1) reading and kubelet's timestamping.
+  # Args: <pod_label> <window_start_epoch> <out_file>
+  local label="$1" window_start="$2" out="$3"
+  local elapsed=$(( $(date +%s) - window_start + 5 ))
+  kubectl -n "${NS}" logs deploy/"${label}" --since="${elapsed}s" > "${out}" 2>&1 || true
+}
+
 wait_for_hits() {
-  # Poll a log file for a substring count to reach >0 within a budget.
-  # Args: <pod_label> <substring> <budget_seconds> <out_file>
+  # Poll a deployment's log within its scenario observation window
+  # until <needle> appears or the budget expires. Returns the hit
+  # count observed within the window (zero on timeout).
+  # Args: <pod_label> <needle> <budget_seconds> <out_file>
   local label="$1" needle="$2" budget="$3" out="$4"
-  local deadline=$(( $(date +%s) + budget ))
+  local start
+  start=$(date +%s)
+  local deadline=$(( start + budget ))
+  local hits=0
   while [ "$(date +%s)" -lt "${deadline}" ]; do
-    kubectl -n "${NS}" logs deploy/"${label}" --tail=400 > "${out}" 2>&1 || true
-    local hits
+    sleep 5
+    logs_since_start "${label}" "${start}" "${out}"
     hits=$(count_grep "${needle}" "${out}")
     if [ "${hits}" -gt 0 ]; then
       echo "${hits}"
       return 0
     fi
-    sleep 5
   done
-  echo 0
+  echo "${hits}"
 }
 
 step "7.A: kepler-mock integration"
@@ -85,16 +102,17 @@ if ! kubectl -n "${NS}" wait --for=condition=Ready pod \
   VERDICTS+=("FAIL: 7.B redfish-mock not Ready in 30s, run 'make seed-redfish-mock' first")
 else
   R_OUT="${TMP_DIR}/redfish-mock.log"
-  deadline=$(( $(date +%s) + REDFISH_WAIT_SEC ))
+  R_START=$(date +%s)
+  R_DEADLINE=$(( R_START + REDFISH_WAIT_SEC ))
   R1_HITS=0; R2_HITS=0
-  while [ "$(date +%s)" -lt "${deadline}" ]; do
-    kubectl -n "${NS}" logs deploy/redfish-mock --tail=400 > "${R_OUT}" 2>&1 || true
+  while [ "$(date +%s)" -lt "${R_DEADLINE}" ]; do
+    sleep 5
+    logs_since_start "redfish-mock" "${R_START}" "${R_OUT}"
     R1_HITS=$(count_grep "GET /redfish/v1/Chassis/1/Power" "${R_OUT}")
     R2_HITS=$(count_grep "GET /redfish/v1/Chassis/2/Power" "${R_OUT}")
     if [ "${R1_HITS}" -gt 0 ] && [ "${R2_HITS}" -gt 0 ]; then
       break
     fi
-    sleep 5
   done
   if [ "${R1_HITS}" -gt 0 ] && [ "${R2_HITS}" -gt 0 ]; then
     VERDICTS+=("PASS: 7.B redfish-mock served chassis-1=${R1_HITS} chassis-2=${R2_HITS} scrapes within ${REDFISH_WAIT_SEC}s")
