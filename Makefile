@@ -26,6 +26,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-daemon-ack-workflow \
         seed-scaphandre-mock verify-scaphandre-mock-validation \
         seed-kepler-mock seed-redfish-mock verify-measured-energy-chain \
+        seed-kepler-exporter \
         verify-all-scenarios
 
 help: ## List available targets
@@ -224,6 +225,10 @@ seed-kepler-mock: ## Apply the Kepler mock manifest (eBPF stand-in for the daemo
 seed-redfish-mock: ## Apply the Redfish mock manifest (BMC stand-in for the daemon scrape path)
 	@kubectl apply -f manifests/redfish-mock.yaml
 	@kubectl rollout status deployment/redfish-mock -n observability --timeout=120s
+
+seed-kepler-exporter: ## Apply the upstream Kepler exporter (opt-in harness for post-release validation)
+	@kubectl apply -f manifests/kepler-exporter.yaml
+	@kubectl -n kepler rollout status daemonset/kepler --timeout=240s
 
 capture-greenops-screenshot: ## Capture the daemon report banner to artifacts/greenops-bandeau.png
 	./scripts/capture-greenops-screenshot.sh

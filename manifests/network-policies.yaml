@@ -488,6 +488,58 @@ spec:
         - protocol: TCP
           port: 9102
 ---
+# 4.D.octies-bis daemon egress to the real upstream Kepler exporter
+# (opt-in harness in manifests/kepler-exporter.yaml). The real
+# exporter lives in its own `kepler` namespace and listens on TCP
+# 28282 per upstream defaults, so the rule is cross-namespace and
+# uses the system-managed `kubernetes.io/metadata.name` label.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-kepler-exporter-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kepler
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kepler-exporter
+      ports:
+        - protocol: TCP
+          port: 28282
+---
+# 4.D.octies-ter ingress on the real Kepler exporter limited to the
+# daemon. The kepler namespace currently has no deny-by-default, so
+# this rule is hygiene for the day zero-trust extends to it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kepler-exporter-allow-daemon
+  namespace: kepler
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kepler-exporter
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 28282
+---
 # 4.D.nonies daemon egress to the Redfish mock for the
 # `[green.redfish]` scrape path. Multi-chassis fan-out, single mock
 # Service backing both chassis URLs on port 8000.

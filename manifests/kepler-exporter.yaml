@@ -1,0 +1,205 @@
+---
+# Upstream Kepler v2 exporter, opt-in via `make seed-kepler-exporter`.
+# This harness lets post-release validations confirm perf-sentinel's
+# Kepler scraper against the real metric names exposed by Kepler,
+# rather than against a lab-side mock built from parser assumptions.
+# The mock at manifests/kepler-mock.yaml is retained as the negative
+# fixture for v0.7.5's zero-sample diagnostic (it exposes the legacy
+# metric name without `_cpu_`).
+#
+# Not applied by scripts/bootstrap.sh: the DaemonSet runs privileged,
+# pulls a ~200 MB image, and only emits synthetic readings on a lab
+# without RAPL. Keep `make up-cni` light for daily development.
+#
+# Image is amd64-only on quay; k3d nodes are amd64 containers so the
+# pod runs natively inside them, transparently emulated on the Apple
+# Silicon host by Docker Desktop.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kepler
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    pod-security.kubernetes.io/enforce: privileged
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kepler
+  namespace: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kepler
+subjects:
+  - kind: ServiceAccount
+    name: kepler
+    namespace: kepler
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kepler
+  namespace: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+data:
+  # `dev.fake-cpu-meter.enabled: true` is the actual knob (the
+  # `cpu.meters` field documented in early v0.11 release notes does
+  # not exist in the parsed schema). Lets Kepler emit /metrics with
+  # canonical names and synthetic readings on hosts without RAPL.
+  # Metric names come from the real Kepler Go code regardless of the
+  # meter source, so parser conformance is still validated for real.
+  #
+  # `kube.podInformer.mode: apiserver` switches off the default
+  # kubelet pod informer (port 10250, needs kubelet RBAC we cannot
+  # grant in k3d) and uses the kube-apiserver instead, for which the
+  # ClusterRole below grants the needed pod/node read access.
+  config.yaml: |
+    log:
+      level: info
+      format: text
+    monitor:
+      interval: 5s
+      staleness: 1000ms
+      maxTerminated: 100
+      minTerminatedEnergyThreshold: 10
+    web:
+      listenAddresses:
+        - ":28282"
+    kube:
+      podInformer:
+        mode: apiserver
+        pollInterval: 15s
+    dev:
+      fake-cpu-meter:
+        enabled: true
+        zones: []
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kepler
+  namespace: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: kepler-exporter
+  ports:
+    - name: http
+      port: 28282
+      targetPort: 28282
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kepler
+  namespace: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    app.kubernetes.io/version: "0.11.4"
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kepler-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kepler-exporter
+        app.kubernetes.io/part-of: perf-sentinel-lab
+        app.kubernetes.io/version: "0.11.4"
+    spec:
+      serviceAccountName: kepler
+      hostPID: true
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+      containers:
+        - name: kepler
+          image: quay.io/sustainable_computing_io/kepler@sha256:45571f233951fb96c3a2900e1d5e4cbb4ade9cd36ed419dcd87661e067168fdf  # v0.11.4 amd64
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/bin/kepler"]
+          args:
+            - --config.file=/etc/kepler/config.yaml
+            - --kube.enable
+            - --kube.node-name=$(NODE_NAME)
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          ports:
+            - name: http
+              containerPort: 28282
+              protocol: TCP
+          securityContext:
+            privileged: true
+            runAsUser: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: sysfs
+              mountPath: /host/sys
+              readOnly: true
+            - name: procfs
+              mountPath: /host/proc
+              readOnly: true
+            - name: config
+              mountPath: /etc/kepler
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 500m
+              memory: 400Mi
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 28282
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            timeoutSeconds: 5
+      volumes:
+        - name: sysfs
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: procfs
+          hostPath:
+            path: /proc
+            type: Directory
+        - name: config
+          configMap:
+            name: kepler
