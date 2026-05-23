@@ -47,48 +47,45 @@ data:
 
     STARTUP_EPOCH = time.time()
 
-    CHASSIS_POWER_WATTS = {
-        "1": 250.5,
-        "2": 180.0,
-    }
 
-
-    def render_legacy_power(chassis_id):
+    def render_legacy_power(chassis_id, watts):
         return json.dumps({
             "@odata.id": f"/redfish/v1/Chassis/{chassis_id}/Power",
             "PowerControl": [
                 {
                     "MemberId": "0",
                     "Name": f"chassis-{chassis_id}-power",
-                    "PowerConsumedWatts": CHASSIS_POWER_WATTS[chassis_id],
+                    "PowerConsumedWatts": watts,
                 }
             ],
         }).encode()
 
 
-    def render_environment_metrics(chassis_id):
+    def render_environment_metrics(chassis_id, watts):
         return json.dumps({
             "@odata.id": f"/redfish/v1/Chassis/{chassis_id}/EnvironmentMetrics",
             "PowerWatts": {
-                "Reading": CHASSIS_POWER_WATTS[chassis_id],
+                "Reading": watts,
             },
         }).encode()
 
 
+    # Fixture table: each entry pairs a Redfish path with the renderer
+    # that produces the schema served at that path, the chassis id and
+    # the wattage value. Adding a new fixture (extra chassis or extra
+    # schema) is a single-row append.
+    FIXTURES = {
+        "/redfish/v1/Chassis/1/Power":              (render_legacy_power,       "1", 250.5),
+        "/redfish/v1/Chassis/2/EnvironmentMetrics": (render_environment_metrics, "2", 180.0),
+    }
+
+
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            # chassis-1 is the legacy_power fixture (Power resource).
-            if self.path == "/redfish/v1/Chassis/1/Power":
-                body = render_legacy_power("1")
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(body)))
-                self.end_headers()
-                self.wfile.write(body)
-                return
-            # chassis-2 is the environment_metrics fixture.
-            if self.path == "/redfish/v1/Chassis/2/EnvironmentMetrics":
-                body = render_environment_metrics("2")
+            fixture = FIXTURES.get(self.path)
+            if fixture is not None:
+                renderer, chassis_id, watts = fixture
+                body = renderer(chassis_id, watts)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
