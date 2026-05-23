@@ -17,6 +17,11 @@
 #   6. Counter fail      : scale mock to 0, scrape_failed_total{reason in
 #                          unreachable, timeout} delta proves the daemon
 #                          classified the outage as a connectivity failure
+#   7. Label fidelity    : every gauge line carries an absolute `exe`
+#                          path and a separator-free `cmdline`, the two
+#                          invariants the real Scaphandre upholds and
+#                          the daemon's typed `process_map` matcher
+#                          relies on (cf v0.7.6 breaking change)
 
 set -euo pipefail
 
@@ -255,6 +260,40 @@ else
   VERDICTS+=("FAIL: 6 daemon /api/status down after mock scale to 0")
 fi
 # Cleanup is performed by the trap.
+
+#######################################
+# 7. Label fidelity: exe absolute + cmdline separator-free
+#######################################
+# The real Scaphandre emits `exe` from /proc/<pid>/exe (always an
+# absolute path) and `cmdline` from /proc/<pid>/cmdline with the NUL
+# separators stripped, producing a separator-free string. The daemon's
+# v0.7.6 typed matcher relies on both invariants, so a mock that drops
+# either would silently let a misconfigured `process_map` look healthy.
+# Inspect the scrape captured in sub-test 2 (no extra port-forward).
+step "7. Label fidelity: exe absolute path + cmdline separator-free"
+if [ ! -s "${TMP_DIR}/scrape-1.txt" ]; then
+  VERDICTS+=("FAIL: 7 skipped (scrape-1 was empty, sub-test 2 failed)")
+else
+  # Extract the values of exe="..." and cmdline="..." from every gauge
+  # line. awk handles the quoted Prometheus label syntax robustly.
+  BAD_EXE=$(awk -F'exe="' '
+    /^scaph_process_power_consumption_microwatts\{/ {
+      split($2, a, "\"")
+      if (substr(a[1], 1, 1) != "/") { print a[1] }
+    }
+  ' "${TMP_DIR}/scrape-1.txt")
+  BAD_CMDLINE=$(awk -F'cmdline="' '
+    /^scaph_process_power_consumption_microwatts\{/ {
+      split($2, a, "\"")
+      if (index(a[1], " ") > 0) { print a[1] }
+    }
+  ' "${TMP_DIR}/scrape-1.txt")
+  if [ -z "${BAD_EXE}" ] && [ -z "${BAD_CMDLINE}" ]; then
+    VERDICTS+=("PASS: 7 every gauge line carries exe=/abs/path and cmdline without space (typed matcher invariants upheld)")
+  else
+    VERDICTS+=("FAIL: 7 fidelity violations exe_relative=[${BAD_EXE}] cmdline_with_space=[${BAD_CMDLINE}] (mock drifts from the real Scaphandre wire shape)")
+  fi
+fi
 
 #######################################
 # Aggregate verdicts

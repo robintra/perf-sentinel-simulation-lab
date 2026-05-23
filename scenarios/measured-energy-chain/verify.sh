@@ -6,8 +6,10 @@
 # daemon report:
 #   7.A  kepler-mock is Ready and the daemon has scraped /metrics
 #        within the last KEPLER_WAIT_SEC window
-#   7.B  redfish-mock is Ready and the daemon has scraped each of
-#        the two chassis Power endpoints within REDFISH_WAIT_SEC
+#   7.B  redfish-mock is Ready and the daemon has scraped both
+#        schemas v0.7.6 dispatches on within REDFISH_WAIT_SEC:
+#        chassis-1 on /Power (legacy_power) and chassis-2 on
+#        /EnvironmentMetrics (environment_metrics).
 #
 # Why mock-side and not daemon-report-side: precedence selection in
 # the daemon's report depends on which sources are reachable AND on
@@ -109,15 +111,15 @@ else
     sleep 5
     logs_since_start "redfish-mock" "${R_START}" "${R_OUT}"
     R1_HITS=$(count_grep "GET /redfish/v1/Chassis/1/Power" "${R_OUT}")
-    R2_HITS=$(count_grep "GET /redfish/v1/Chassis/2/Power" "${R_OUT}")
+    R2_HITS=$(count_grep "GET /redfish/v1/Chassis/2/EnvironmentMetrics" "${R_OUT}")
     if [ "${R1_HITS}" -gt 0 ] && [ "${R2_HITS}" -gt 0 ]; then
       break
     fi
   done
   if [ "${R1_HITS}" -gt 0 ] && [ "${R2_HITS}" -gt 0 ]; then
-    VERDICTS+=("PASS: 7.B redfish-mock served chassis-1=${R1_HITS} chassis-2=${R2_HITS} scrapes within ${REDFISH_WAIT_SEC}s")
+    VERDICTS+=("PASS: 7.B redfish-mock served chassis-1=${R1_HITS} (legacy_power) chassis-2=${R2_HITS} (environment_metrics) scrapes within ${REDFISH_WAIT_SEC}s")
   else
-    VERDICTS+=("FAIL: 7.B redfish-mock missing chassis scrapes (chassis-1=${R1_HITS} chassis-2=${R2_HITS}) within ${REDFISH_WAIT_SEC}s")
+    VERDICTS+=("FAIL: 7.B redfish-mock missing chassis scrapes (chassis-1 Power=${R1_HITS} chassis-2 EnvironmentMetrics=${R2_HITS}) within ${REDFISH_WAIT_SEC}s")
   fi
 fi
 
