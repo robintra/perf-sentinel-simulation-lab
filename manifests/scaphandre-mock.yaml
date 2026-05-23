@@ -37,12 +37,27 @@ data:
     import time
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
+    # exe paths mirror what Scaphandre reads from /proc/<pid>/exe for
+    # the runtimes the lab cares about:
+    #   - Java: the lab's services ship on gcr.io/distroless/java25:nonroot
+    #     (services/shared-dockerfile/Dockerfile), where the OpenJDK 25
+    #     binary lives at /usr/lib/jvm/java-25-openjdk-amd64/bin/java.
+    #     Temurin (eclipse-temurin:25-jdk-alpine) is the BUILD stage only,
+    #     never the runtime — so the exe path here is OpenJDK, not Temurin.
+    #     "bin/java" is the stable substring across OpenJDK variants.
+    #   - .NET: /usr/share/dotnet/dotnet, the path the Microsoft apt
+    #     package and tar layout install across .NET 8, 9 and 10 (no
+    #     version in the path). "share/dotnet" discriminates against the
+    #     Java entries. NB: there is no real .NET service in the lab
+    #     today; these two entries are SYNTHETIC fixtures kept so the
+    #     mock exercises the daemon's runtime-disambiguation logic on
+    #     two distinct exe shapes.
     PROCESSES = [
-        {"exe": "/usr/bin/java",   "cmdline": "java-jar/app/order-service.jar",       "pid": 1234},
-        {"exe": "/usr/bin/java",   "cmdline": "java-jar/app/payment-service.jar",     "pid": 1235},
-        {"exe": "/usr/bin/java",   "cmdline": "java-jar/app/catalog-service.jar",     "pid": 1236},
-        {"exe": "/usr/bin/dotnet", "cmdline": "dotnet/app/inventory-service.dll",     "pid": 2234},
-        {"exe": "/usr/bin/dotnet", "cmdline": "dotnet/app/auth-service.dll",          "pid": 2235},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/order-service.jar",   "pid": 1234},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/payment-service.jar", "pid": 1235},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/catalog-service.jar", "pid": 1236},
+        {"exe": "/usr/share/dotnet/dotnet",                    "cmdline": "dotnet/app/inventory-service.dll", "pid": 2234},
+        {"exe": "/usr/share/dotnet/dotnet",                    "cmdline": "dotnet/app/auth-service.dll",      "pid": 2235},
     ]
 
     INSTANCE_LABEL = os.environ.get("SCAPHANDRE_MOCK_INSTANCE", "scaphandre-mock")

@@ -83,13 +83,18 @@ data:
 
     # Per-service typed ProcessMatcher (v0.7.6 form, validated with
     # #[serde(deny_unknown_fields)]). `exe_contains` matches the
-    # runtime path Scaphandre emits as an absolute path; the lab mock
-    # exposes /usr/bin/java and /usr/bin/dotnet, so "bin/java" /
-    # "bin/dotnet" is a stable substring that also matches a real
-    # Linux deployment. `cmdline_contains` discriminates the service
-    # within a shared runtime; the jar/dll filename is the part the
-    # real Scaphandre keeps when concatenating argv without
-    # separators.
+    # runtime path Scaphandre emits via /proc/<pid>/exe:
+    #   - "bin/java" matches /usr/lib/jvm/java-25-openjdk-amd64/bin/java,
+    #     the path baked into gcr.io/distroless/java25:nonroot, which
+    #     is what the lab's Java services run on (see
+    #     services/shared-dockerfile/Dockerfile). Stable across OpenJDK
+    #     point releases since the binary is always under .../bin/java.
+    #   - "share/dotnet" matches /usr/share/dotnet/dotnet, the path
+    #     the Microsoft apt package and tar layout install on across
+    #     .NET 8, 9 and 10. Discriminates against the Java entries.
+    # `cmdline_contains` discriminates between services that share a
+    # runtime; the jar/dll filename is the stable substring the real
+    # Scaphandre keeps when concatenating argv without separators.
     [green.scaphandre.process_map."order-service"]
     exe_contains = "bin/java"
     cmdline_contains = "order-service.jar"
@@ -103,11 +108,11 @@ data:
     cmdline_contains = "catalog-service.jar"
 
     [green.scaphandre.process_map."inventory-service"]
-    exe_contains = "bin/dotnet"
+    exe_contains = "share/dotnet"
     cmdline_contains = "inventory-service.dll"
 
     [green.scaphandre.process_map."auth-service"]
-    exe_contains = "bin/dotnet"
+    exe_contains = "share/dotnet"
     cmdline_contains = "auth-service.dll"
 
     [green.kepler]
