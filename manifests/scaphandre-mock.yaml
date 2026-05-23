@@ -22,6 +22,14 @@ data:
     (exe, pid). Stdlib only: no Flask, no pip install at startup, so
     the pod boots in seconds and survives the lab zero-trust
     NetworkPolicy without an egress rule.
+
+    Label shape mirrors the real Scaphandre exporter (cf
+    perf-sentinel docs/CONFIGURATION.md "Why both exe_contains and
+    cmdline_contains"): `exe` is the absolute path of the runtime
+    binary, and `cmdline` is argv concatenated WITHOUT separators
+    (Scaphandre joins argv tokens with no space), so configs that
+    rely on `cmdline_contains` must target a substring of that
+    concatenated form (typically the jar/dll filename).
     """
     import hashlib
     import os
@@ -30,11 +38,11 @@ data:
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
     PROCESSES = [
-        {"exe": "java",   "cmdline": "/usr/bin/java -jar /app/order-service.jar",       "pid": 1234},
-        {"exe": "java",   "cmdline": "/usr/bin/java -jar /app/payment-service.jar",     "pid": 1235},
-        {"exe": "java",   "cmdline": "/usr/bin/java -jar /app/catalog-service.jar",     "pid": 1236},
-        {"exe": "dotnet", "cmdline": "/usr/bin/dotnet /app/inventory-service.dll",      "pid": 2234},
-        {"exe": "dotnet", "cmdline": "/usr/bin/dotnet /app/auth-service.dll",           "pid": 2235},
+        {"exe": "/usr/bin/java",   "cmdline": "java-jar/app/order-service.jar",       "pid": 1234},
+        {"exe": "/usr/bin/java",   "cmdline": "java-jar/app/payment-service.jar",     "pid": 1235},
+        {"exe": "/usr/bin/java",   "cmdline": "java-jar/app/catalog-service.jar",     "pid": 1236},
+        {"exe": "/usr/bin/dotnet", "cmdline": "dotnet/app/inventory-service.dll",     "pid": 2234},
+        {"exe": "/usr/bin/dotnet", "cmdline": "dotnet/app/auth-service.dll",          "pid": 2235},
     ]
 
     INSTANCE_LABEL = os.environ.get("SCAPHANDRE_MOCK_INSTANCE", "scaphandre-mock")
