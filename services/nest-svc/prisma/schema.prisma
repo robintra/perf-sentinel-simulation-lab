@@ -1,0 +1,42 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-arm64-openssl-3.0.x"]
+}
+
+model Order {
+  id        BigInt   @id @default(autoincrement())
+  customer  String   @db.VarChar(255)
+  status    String   @default("PENDING") @db.VarChar(32)
+  totalCents BigInt  @default(0) @map("total_cents")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        BigInt @id @default(autoincrement())
+  orderId   BigInt @map("order_id")
+  sku       String @db.VarChar(64)
+  quantity  Int
+  priceCents BigInt @map("price_cents")
+
+  @@index([orderId], name: "idx_nest_order_items_order_id")
+  @@map("order_items")
+}
+
+model Payment {
+  id         BigInt   @id @default(autoincrement())
+  orderId    BigInt   @map("order_id")
+  customerId BigInt   @map("customer_id")
+  amountCents BigInt  @default(0) @map("amount_cents")
+  status     String   @default("AUTHORIZED") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([customerId], name: "idx_nest_payments_customer_id")
+  @@map("payments")
+}

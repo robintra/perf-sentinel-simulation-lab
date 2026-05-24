@@ -1,0 +1,29 @@
+{
+  "name": "nest-svc",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@nestjs/axios": "4.0.1",
+    "@nestjs/common": "11.1.23",
+    "@nestjs/core": "11.1.23",
+    "@nestjs/platform-express": "11.1.23",
+    "@opentelemetry/exporter-trace-otlp-http": "0.218.0",
+    "@opentelemetry/instrumentation-http": "0.218.0",
+    "@opentelemetry/sdk-node": "0.218.0",
+    "@prisma/client": "6.19.3",
+    "@prisma/instrumentation": "6.19.3",
+    "axios": "1.16.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "11.0.5",
+    "prisma": "6.19.3",
+    "typescript": "5.9.3"
+  }
+}
