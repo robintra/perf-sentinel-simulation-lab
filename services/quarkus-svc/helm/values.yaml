@@ -1,0 +1,33 @@
+image:
+  repository: quarkus-svc
+  tag: s2
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8083
+
+database:
+  url: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=quarkus
+  username: quarkus_user
+  password: lab_quarkus
+
+otel:
+  serviceName: quarkus-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+# Self-loop base URL: the HTTP-side faults call back into this same
+# service's business endpoints, so the URL points at localhost. The
+# application.properties default already points here; the env var
+# below is the override hook for ad-hoc routing during debugging.
+selfBaseUrl: "http://localhost:8083"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 800m
+    memory: 768Mi
