@@ -11,7 +11,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .PHONY: help up down reset recover validate smoke status logs grafana inspect psql ps clean-images \
         seed-services teardown-services inject-all validate-findings \
-        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc seed-helidon-se-svc seed-dotnet-svc seed-go-svc seed-nest-svc \
+        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc seed-helidon-se-svc seed-dotnet-svc seed-go-svc seed-nest-svc seed-django-svc \
         seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services \
         up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel \
         up-cni reset-cni install-cni apply-network-policies remove-network-policies \
@@ -171,6 +171,9 @@ seed-go-svc: ## Build + import + helm install the Go 1.26 multistack member
 
 seed-nest-svc: ## Build + import + helm install the NestJS 11 + Prisma multistack member
 	./scripts/seed-nest-svc.sh
+
+seed-django-svc: ## Build + import + helm install the Django 5.2 LTS multistack member
+	./scripts/seed-django-svc.sh
 
 inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)
 	./scripts/inject-all.sh
