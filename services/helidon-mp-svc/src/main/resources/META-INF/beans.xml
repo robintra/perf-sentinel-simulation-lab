@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Required for CDI / Weld to discover JAX-RS resources and other beans
+     under the com.perfsim.helidonmpsvc package. Without this file Helidon
+     MP starts but logs "There are no JAX-RS applications or resources"
+     and serves nothing on the configured port. `bean-discovery-mode="all"`
+     scans every class on the classpath; `annotated` would only pick beans
+     marked with a CDI scope annotation (which all our resources are), but
+     `all` matches the Helidon MP archetype defaults so any future bean
+     added without an explicit annotation also gets registered. -->
+<beans xmlns="https://jakarta.ee/xml/ns/jakartaee"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee
+           https://jakarta.ee/xml/ns/jakartaee/beans_4_0.xsd"
+       version="4.0"
+       bean-discovery-mode="all">
+</beans>

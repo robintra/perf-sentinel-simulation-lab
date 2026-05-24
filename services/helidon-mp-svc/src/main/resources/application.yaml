@@ -1,0 +1,29 @@
+server:
+  port: ${QUARKUS_HTTP_PORT:8086}
+  host: 0.0.0.0
+
+# Helidon JDBC datasource (HikariCP-backed via the Helidon CDI extension).
+# Capped at 10 connections so pool-saturation can reproducibly queue
+# 10 of 20 concurrent queries.
+javax:
+  sql:
+    DataSource:
+      helidonMpDataSource:
+        dataSourceClassName: org.postgresql.ds.PGSimpleDataSource
+        dataSource:
+          url: ${DB_URL:jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=helidon_mp}
+          user: ${DB_USER:helidon_mp_user}
+          password: ${DB_PASSWORD:lab_helidon_mp}
+        maximumPoolSize: 10
+        minimumIdle: 2
+        connectionTimeout: 5000
+
+# Flyway runs the V1__init.sql at startup against the same datasource.
+flyway:
+  schemas: helidon_mp
+  default-schema: helidon_mp
+  baseline-on-migrate: true
+  locations: classpath:db/migration
+
+tracing:
+  service: helidon-mp-svc
