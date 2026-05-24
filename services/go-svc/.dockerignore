@@ -1,0 +1,7 @@
+bin/
+.idea/
+.vscode/
+.dockerignore
+Dockerfile
+helm/
+*.md
