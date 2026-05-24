@@ -27,8 +27,11 @@ COPY --from=builder /app /app
 EXPOSE 8091
 USER 65532:65532
 
-CMD ["gunicorn", "djangosvc.wsgi:application", \
-     "--bind", "0.0.0.0:8091", \
-     "--workers", "2", \
-     "--threads", "4", \
-     "--timeout", "120"]
+ENV PYTHONDONTWRITEBYTECODE=1
+# Shell form so ${HTTP_PORT} is expanded at runtime (exec form does
+# not do shell variable expansion). Matches the HTTP_PORT env var
+# injected by the helm deployment template.
+CMD gunicorn djangosvc.wsgi:application \
+    --bind "0.0.0.0:${HTTP_PORT:-8091}" \
+    --workers 2 --threads 4 --timeout 120 \
+    --worker-tmp-dir /tmp

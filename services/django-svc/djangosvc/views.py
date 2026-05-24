@@ -40,6 +40,11 @@ def _get(path):
 
 @require_GET
 def health(_request):
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1")
+    except Exception:
+        return JsonResponse({"status": "DOWN"}, status=503)
     return JsonResponse({"status": "UP"})
 
 
