@@ -1,0 +1,245 @@
+---
+# Multistack Postgres bootstrap. Idempotent Kubernetes Job that creates
+# the 11 schemas + service roles + GRANTs the multistack services need.
+# Mirrors the pattern of manifests/postgres-init-schemas.yaml (which
+# only runs on a fresh Postgres bootstrap via docker-entrypoint-initdb.d)
+# but works on an already-running Postgres without dropping the PVC.
+#
+# Why a separate Job vs editing the init ConfigMap: the init ConfigMap
+# is read by postgres at first boot only. On an existing cluster the
+# init script never re-runs. This Job is the explicit "apply after the
+# fact" mechanism; it is idempotent (CREATE SCHEMA IF NOT EXISTS,
+# CREATE ROLE wrapped in pg_roles lookup) so multiple applies are safe.
+#
+# Trigger:
+#   kubectl apply -f manifests/postgres-multistack-schemas.yaml
+#   kubectl -n db wait --for=condition=Complete job/postgres-multistack-schemas --timeout=60s
+#
+# Each multistack service owns one schema named exactly as the service
+# slug without the `-svc` suffix and with hyphens replaced by
+# underscores (SQL identifier limitation). See docs/MULTISTACK.md.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-multistack-schemas-sql
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: perf-sentinel-lab
+data:
+  multistack.sql: |
+    -- Multistack schemas (one per service, idempotent).
+    CREATE SCHEMA IF NOT EXISTS quarkus;
+    CREATE SCHEMA IF NOT EXISTS mutiny;
+    CREATE SCHEMA IF NOT EXISTS helidon_se;
+    CREATE SCHEMA IF NOT EXISTS helidon_mp;
+    CREATE SCHEMA IF NOT EXISTS dotnet;
+    CREATE SCHEMA IF NOT EXISTS diesel;
+    CREATE SCHEMA IF NOT EXISTS seaorm;
+    CREATE SCHEMA IF NOT EXISTS nest;
+    CREATE SCHEMA IF NOT EXISTS django;
+    CREATE SCHEMA IF NOT EXISTS fastapi;
+    CREATE SCHEMA IF NOT EXISTS go;
+
+    -- Multistack service roles. Passwords are lab-only placeholders;
+    -- they are overridden by per-service Kubernetes Secrets when each
+    -- service lands. The DO block keeps re-runs idempotent.
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'quarkus_user') THEN
+        CREATE ROLE quarkus_user LOGIN PASSWORD 'lab_quarkus';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mutiny_user') THEN
+        CREATE ROLE mutiny_user LOGIN PASSWORD 'lab_mutiny';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'helidon_se_user') THEN
+        CREATE ROLE helidon_se_user LOGIN PASSWORD 'lab_helidon_se';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'helidon_mp_user') THEN
+        CREATE ROLE helidon_mp_user LOGIN PASSWORD 'lab_helidon_mp';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'dotnet_user') THEN
+        CREATE ROLE dotnet_user LOGIN PASSWORD 'lab_dotnet';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'diesel_user') THEN
+        CREATE ROLE diesel_user LOGIN PASSWORD 'lab_diesel';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'seaorm_user') THEN
+        CREATE ROLE seaorm_user LOGIN PASSWORD 'lab_seaorm';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'nest_user') THEN
+        CREATE ROLE nest_user LOGIN PASSWORD 'lab_nest';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'django_user') THEN
+        CREATE ROLE django_user LOGIN PASSWORD 'lab_django';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fastapi_user') THEN
+        CREATE ROLE fastapi_user LOGIN PASSWORD 'lab_fastapi';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'go_user') THEN
+        CREATE ROLE go_user LOGIN PASSWORD 'lab_go';
+      END IF;
+    END
+    $$;
+
+    GRANT USAGE, CREATE ON SCHEMA quarkus    TO quarkus_user;
+    GRANT USAGE, CREATE ON SCHEMA mutiny     TO mutiny_user;
+    GRANT USAGE, CREATE ON SCHEMA helidon_se TO helidon_se_user;
+    GRANT USAGE, CREATE ON SCHEMA helidon_mp TO helidon_mp_user;
+    GRANT USAGE, CREATE ON SCHEMA dotnet     TO dotnet_user;
+    GRANT USAGE, CREATE ON SCHEMA diesel     TO diesel_user;
+    GRANT USAGE, CREATE ON SCHEMA seaorm     TO seaorm_user;
+    GRANT USAGE, CREATE ON SCHEMA nest       TO nest_user;
+    GRANT USAGE, CREATE ON SCHEMA django     TO django_user;
+    GRANT USAGE, CREATE ON SCHEMA fastapi    TO fastapi_user;
+    GRANT USAGE, CREATE ON SCHEMA "go"       TO go_user;
+
+    ALTER ROLE quarkus_user    SET search_path = quarkus, public;
+    ALTER ROLE mutiny_user     SET search_path = mutiny, public;
+    ALTER ROLE helidon_se_user SET search_path = helidon_se, public;
+    ALTER ROLE helidon_mp_user SET search_path = helidon_mp, public;
+    ALTER ROLE dotnet_user     SET search_path = dotnet, public;
+    ALTER ROLE diesel_user     SET search_path = diesel, public;
+    ALTER ROLE seaorm_user     SET search_path = seaorm, public;
+    ALTER ROLE nest_user       SET search_path = nest, public;
+    ALTER ROLE django_user     SET search_path = django, public;
+    ALTER ROLE fastapi_user    SET search_path = fastapi, public;
+    ALTER ROLE go_user         SET search_path = "go", public;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-multistack-schemas
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  ttlSecondsAfterFinished: 600
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-multistack-schemas
+        app.kubernetes.io/part-of: perf-sentinel-lab
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: psql
+          image: postgres@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7  # 18.3-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - >
+              psql "host=postgres.db.svc.cluster.local port=5432
+              dbname=${POSTGRES_DB} user=${POSTGRES_USER} sslmode=disable"
+              -v ON_ERROR_STOP=1 -f /sql/multistack.sql
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: username
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
+            - name: POSTGRES_DB
+              value: lab
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: sql
+          configMap:
+            name: postgres-multistack-schemas-sql
+            items:
+              - key: multistack.sql
+                path: multistack.sql
+---
+# Symmetric ingress on the Postgres pod, locked down to the Job's
+# psql container in the same namespace. Default-deny-all in `db`
+# would otherwise block the Job from reaching postgres-0 on 5432.
+# Colocated with the Job so applying this manifest creates both at
+# once; manifests/network-policies.yaml stays focused on the shop
+# ingress contract. Mirrors the pattern of
+# `manifests/kepler-exporter.yaml`'s `kepler-exporter-allow-daemon`.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-allow-multistack-schemas-job
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres-multistack-schemas
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+# Egress from the Job pod back to the Postgres service. The `db`
+# default-deny-all blocks all egress by default; allow only 5432 to
+# the postgres pod and DNS for the cluster.local lookup.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres-multistack-schemas-job-egress
+  namespace: db
+  labels:
+    app.kubernetes.io/name: postgres-multistack-schemas
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres-multistack-schemas
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
