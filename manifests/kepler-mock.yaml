@@ -6,8 +6,8 @@
 # mock stands in for a real Kepler DaemonSet and lets the daemon
 # exercise its `[green.kepler]` Prometheus scrape path. The mock
 # exposes only `kepler_container_cpu_joules_total`, the single metric
-# perf-sentinel consumes in `metric_kind = "container"` mode
-# (cf upstream parser.rs).
+# perf-sentinel consumes in `metric_kind = "container"` mode (canonical
+# name baked at `crates/sentinel-core/src/score/kepler/config.rs:37`).
 apiVersion: v1
 kind: ConfigMap
 metadata:

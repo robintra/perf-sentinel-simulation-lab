@@ -2,11 +2,13 @@
 # Kepler mock variant exposing the PRE-v0.10 legacy metric name
 # (`kepler_container_joules_total`, without the `_cpu_` infix). Kept
 # as a negative fixture for the daemon's zero-sample safety net
-# introduced in v0.7.5 (cf `crates/sentinel-core/src/score/kepler/scraper.rs`,
-# `ZERO_SAMPLE_WARN_THRESHOLD = 3`): when the lab daemon, configured
-# for the v0.10+ name `kepler_container_cpu_joules_total`, scrapes
-# this legacy mock, it observes 200 OK but matches zero samples and
-# logs the actionable warn-once at T+15s (3 ticks × 5s).
+# introduced in v0.7.5 (cf
+# `crates/sentinel-core/src/score/kepler/scraper.rs:28` for the
+# `ZERO_SAMPLE_WARN_THRESHOLD = 3` constant and lines 263-285 for the
+# warn-once gate): when the lab daemon, configured for the v0.10+
+# name `kepler_container_cpu_joules_total`, scrapes this legacy mock
+# it observes 200 OK but matches zero samples and logs the
+# actionable warn at T+15s (3 ticks × 5s).
 #
 # Not deployed by default. Opt-in for the scenario that asserts the
 # warn fires correctly when a cluster runs a pre-v0.10 Kepler
@@ -15,7 +17,11 @@
 # names (`kepler-mock-legacy`) so the two can coexist, and a
 # scenario that wants to exercise the safety net repoints the
 # daemon's `[green.kepler].endpoint` ConfigMap to
-# `kepler-mock-legacy.observability.svc.cluster.local:9102`.
+# `kepler-mock-legacy.observability.svc.cluster.local:9102`. The
+# accompanying NetworkPolicy ingress shipped in this same manifest
+# lets the daemon reach the legacy pod through the namespace's
+# default-deny-all (mirrors the pattern of
+# `manifests/kepler-exporter.yaml` for the real opt-in exporter).
 #
 # Apply with:  kubectl apply -f manifests/kepler-mock-legacy.yaml
 # Remove with: kubectl delete -f manifests/kepler-mock-legacy.yaml
@@ -207,3 +213,32 @@ spec:
             items:
               - key: app.py
                 path: app.py
+---
+# Symmetric ingress on the legacy mock pod, locked down to the
+# perf-sentinel daemon in the same namespace. Colocated with the
+# Deployment so applying the opt-in fixture creates both at once;
+# `manifests/network-policies.yaml` does not need to know about
+# this variant. Mirrors the pattern of
+# `manifests/kepler-exporter.yaml`'s `kepler-exporter-allow-daemon`
+# policy for the real upstream exporter.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kepler-mock-legacy-allow-daemon
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: kepler-mock-legacy
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kepler-mock-legacy
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 9102

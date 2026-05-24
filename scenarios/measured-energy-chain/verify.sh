@@ -129,12 +129,13 @@ else
 fi
 
 step "7.C: kepler happy path (no zero-sample warn over scenario window)"
-# 18s covers ZERO_SAMPLE_WARN_THRESHOLD = 3 ticks at 5s + a 3s margin
-# against the daemon's tokio scheduler jitter. The kubectl --since
-# window starts now (after 7.A and 7.B have given the scrapers time
-# to settle), so the assertion measures steady-state kepler health
-# rather than startup transients.
-KEPLER_WARN_WINDOW_SEC="${KEPLER_WARN_WINDOW_SEC:-18}"
+# 25s covers ZERO_SAMPLE_WARN_THRESHOLD = 3 ticks at 5s, plus two
+# extra ticks of margin so a fresh post-rollout daemon (whose first
+# warn cannot fire before T+15s) cannot slip into the window. The
+# `kubectl --since` window starts now (after 7.A and 7.B have given
+# the scrapers time to settle), so the assertion measures steady-
+# state kepler health rather than startup transients.
+KEPLER_WARN_WINDOW_SEC="${KEPLER_WARN_WINDOW_SEC:-25}"
 sleep "${KEPLER_WARN_WINDOW_SEC}"
 KEPLER_WARN_HITS=$(kubectl -n "${NS}" logs deploy/perf-sentinel-daemon \
                      --since="${KEPLER_WARN_WINDOW_SEC}s" 2>/dev/null \
