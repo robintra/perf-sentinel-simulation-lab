@@ -1,0 +1,33 @@
+server:
+  port: 8085
+  host: 0.0.0.0
+
+# HikariCP datasource. Raw JDBC — no ORM, no Hibernate scope marker on
+# the spans, which is exactly the point of helidon-se-svc: a third
+# data point on perf-sentinel's Gap #20 (n+1 SQL detection without
+# ORM scope) after mutiny-svc. Pool capped at 10 so the pool-saturation
+# fault can queue 10 of 20 concurrent acquires.
+#
+# These are baseline defaults. Env vars (DB_URL, DB_USER, DB_PASSWORD,
+# SELF_BASE_URL, QUARKUS_HTTP_PORT) are read in
+# com.perfsim.helidonsesvc.Main and override at runtime. Helidon Config
+# does NOT do ${VAR} substitution out of the box on YAML sources, so
+# we keep this YAML free of placeholders to avoid silently passing the
+# literal string `${DB_URL:...}` to HikariCP.
+datasource:
+  jdbc-url: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=helidon_se
+  username: helidon_se_user
+  password: lab_helidon_se
+  maximum-pool-size: 10
+  minimum-idle: 2
+  connection-timeout: 5000
+
+self:
+  base-url: http://localhost:8085
+
+# Enable Helidon's OpenTelemetry tracing provider. The OTel Java agent
+# at runtime exports the spans; this section just tells Helidon
+# WebClient + WebServer to emit spans into the OTel SDK the agent
+# already installs.
+tracing:
+  service: helidon-se-svc

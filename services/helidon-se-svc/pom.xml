@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.perfsim</groupId>
+    <artifactId>helidon-se-svc</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>perf-sentinel helidon-se-svc</name>
+    <description>Helidon SE 4.4.0 LTS stack member. Low-level WebServer routing + JDK stdlib HttpClient (Helidon WebClient not instrumented by the OTel agent v2.27) + raw JDBC via HikariCP (no ORM). Surfaces lab gap #20 (n+1 SQL on bare driver) again after mutiny-svc, and the new gap #22 (Helidon SE Loom outbound HTTP context propagation).</description>
+
+    <parent>
+        <groupId>io.helidon.applications</groupId>
+        <artifactId>helidon-se</artifactId>
+        <version>4.4.0</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <mainClass>com.perfsim.helidonsesvc.Main</mainClass>
+        <flyway.version>11.7.2</flyway.version>
+        <hikaricp.version>6.0.0</hikaricp.version>
+    </properties>
+
+    <dependencies>
+        <!-- Helidon SE WebServer + JSON support -->
+        <dependency>
+            <groupId>io.helidon.webserver</groupId>
+            <artifactId>helidon-webserver</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.helidon.http.media</groupId>
+            <artifactId>helidon-http-media-jsonp</artifactId>
+        </dependency>
+
+        <!-- YAML config parser. Without this, Helidon Config sees
+             application.yaml on the classpath but ignores it
+             ("no parser configured for it"), and every config read fails
+             with MissingValueException. -->
+        <dependency>
+            <groupId>io.helidon.config</groupId>
+            <artifactId>helidon-config-yaml</artifactId>
+        </dependency>
+
+        <!-- Outbound HTTP uses java.net.http.HttpClient (JDK 25 stdlib),
+             not Helidon WebClient. The OTel Java agent v2.27 instruments
+             the JDK client under the `io.opentelemetry.java-http-client`
+             scope. Helidon's own webclient + tracing-providers route
+             was tried first (helidon-se-svc validation v2/v3) and
+             produced 0 CLIENT spans: `helidon-tracing-providers-opentelemetry`
+             calls `GlobalOpenTelemetry.set(...)` which is a documented
+             no-op when the OTel Java agent is active. Gap reported
+             upstream for Helidon + opentelemetry-java-instrumentation.
+             WebServer remains Helidon SE 4.4 (instrumented by the agent
+             under `io.opentelemetry.helidon-4.3`). -->
+        <!-- helidon-webserver-tracing dropped: WebServer is already
+             auto-instrumented by the OTel Java agent v2.27 under the
+             `io.opentelemetry.helidon-4.3` scope (verified in the
+             v1 helidon-se-svc validation logs). -->
+
+
+        <!-- HikariCP datasource + Postgres driver. Raw JDBC, no ORM. -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+
+        <!-- Flyway -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>${flyway.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Lightweight /health/live and /health/ready are served by
+             Main directly through plain routing handlers — no
+             helidon-webserver-observe-health dependency needed. -->
+    </dependencies>
+
+    <build>
+        <finalName>${project.artifactId}</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>25</release>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-libs</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/libs</outputDirectory>
+                            <includeScope>runtime</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addClasspath>true</addClasspath>
+                            <classpathPrefix>libs/</classpathPrefix>
+                            <mainClass>${mainClass}</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
