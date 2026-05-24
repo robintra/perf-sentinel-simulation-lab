@@ -11,7 +11,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .PHONY: help up down reset recover validate smoke status logs grafana inspect psql ps clean-images \
         seed-services teardown-services inject-all validate-findings \
-        seed-quarkus-svc seed-mutiny-svc \
+        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc \
         seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services \
         up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel \
         up-cni reset-cni install-cni apply-network-policies remove-network-policies \
@@ -156,6 +156,9 @@ seed-quarkus-svc: ## Build + import + helm install the Quarkus multistack pilot
 
 seed-mutiny-svc: ## Build + import + helm install the Quarkus+Mutiny reactive multistack member
 	./scripts/seed-mutiny-svc.sh
+
+seed-helidon-mp-svc: ## Build + import + helm install the Helidon MP 4.4 multistack member
+	./scripts/seed-helidon-mp-svc.sh
 
 inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)
 	./scripts/inject-all.sh
