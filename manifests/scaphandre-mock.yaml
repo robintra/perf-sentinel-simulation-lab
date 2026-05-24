@@ -37,20 +37,39 @@ data:
     import time
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
-    # One process per service actually running in the lab (order,
-    # payment, notification). All three share the OpenJDK 25 runtime
-    # baked into gcr.io/distroless/java25:nonroot
-    # (services/shared-dockerfile/Dockerfile), so exe is identical
-    # across the three and cmdline is what discriminates them. Temurin
+    # One process per service running in the lab. The 3 Java baseline
+    # services (order, payment, notification) all share the OpenJDK 25
+    # runtime baked into gcr.io/distroless/java25:nonroot
+    # (services/shared-dockerfile/Dockerfile). The 11 multistack
+    # services (quarkus, mutiny, helidon-se/mp, dotnet, diesel, seaorm,
+    # nest, django, fastapi, go) each expose a fictional process whose
+    # exe matches the runtime path their container would bake. Temurin
     # (eclipse-temurin:25-jdk-alpine) is the BUILD stage only, never
-    # the runtime — the exe path here is OpenJDK, not Temurin. The
-    # cmdline values are concatenated without separators, mirroring
-    # the real Scaphandre behaviour documented in
-    # docs/CONFIGURATION.md "Why both exe_contains and cmdline_contains".
+    # the runtime — the Java exe paths here are OpenJDK distroless.
+    # cmdline values are concatenated without separators, mirroring the
+    # real Scaphandre behaviour documented in docs/CONFIGURATION.md
+    # "Why both exe_contains and cmdline_contains".
     PROCESSES = [
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/order-service.jar",        "pid": 1234},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/payment-service.jar",      "pid": 1235},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/notification-service.jar", "pid": 1236},
+        # Multistack services (4 Java-based: quarkus, mutiny, helidon-se, helidon-mp)
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/quarkus-svc.jar",          "pid": 1240},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/mutiny-svc.jar",           "pid": 1241},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/helidon-se-svc.jar",       "pid": 1242},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/helidon-mp-svc.jar",       "pid": 1243},
+        # Multistack: .NET (chiseled Ubuntu Noble)
+        {"exe": "/usr/share/dotnet/dotnet",                    "cmdline": "dotnet/app/dotnet-svc.dll",             "pid": 2240},
+        # Multistack: Rust (static binary per service)
+        {"exe": "/usr/local/bin/diesel-svc-bin",               "cmdline": "diesel-svc-bin",                         "pid": 3240},
+        {"exe": "/usr/local/bin/seaorm-svc-bin",               "cmdline": "seaorm-svc-bin",                         "pid": 3241},
+        # Multistack: Node (distroless nodejs24)
+        {"exe": "/usr/local/bin/node",                         "cmdline": "node/app/dist/main.js-nest-svc",         "pid": 4240},
+        # Multistack: Python (distroless python3)
+        {"exe": "/usr/bin/python3.13",                         "cmdline": "python3-mmanage.py-runserver-django-svc","pid": 5240},
+        {"exe": "/usr/bin/python3.13",                         "cmdline": "python3-muvicorn-app.main:app-fastapi-svc","pid": 5241},
+        # Multistack: Go (static binary)
+        {"exe": "/usr/local/bin/go-svc-bin",                   "cmdline": "go-svc-bin",                             "pid": 6240},
     ]
 
     INSTANCE_LABEL = os.environ.get("SCAPHANDRE_MOCK_INSTANCE", "scaphandre-mock")

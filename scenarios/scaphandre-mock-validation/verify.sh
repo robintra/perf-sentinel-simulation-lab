@@ -9,8 +9,10 @@
 #
 # Sub-tests:
 #   1. Sanity            : daemon /api/status + mock pod Running
-#   2. Mock /metrics     : 3 lines of scaph_process_power_consumption_microwatts
-#                          (one per real lab service: order, payment, notification)
+#   2. Mock /metrics     : 14 lines of scaph_process_power_consumption_microwatts
+#                          (3 real Java services + 11 fictional multistack
+#                          fixtures: quarkus, mutiny, helidon-se/mp, dotnet,
+#                          diesel, seaorm, nest, django, fastapi, go)
 #   3. Determinism       : 2 consecutive scrapes return identical power values
 #   4. Counter success   : scrape_total{status=success} delta over scrape_interval
 #   5. Daemon gauge      : perf_sentinel_scaphandre_last_scrape_age_seconds
@@ -146,10 +148,10 @@ else
     GAUGE_LINES=$(grep -c '^scaph_process_power_consumption_microwatts{' "${TMP_DIR}/scrape-1.txt" || true)
     HAS_HELP=$(grep -c '^# HELP scaph_process_power_consumption_microwatts' "${TMP_DIR}/scrape-1.txt" || true)
     HAS_TYPE=$(grep -c '^# TYPE scaph_process_power_consumption_microwatts gauge' "${TMP_DIR}/scrape-1.txt" || true)
-    if [ "${GAUGE_LINES}" -ge 3 ] && [ "${HAS_HELP}" -eq 1 ] && [ "${HAS_TYPE}" -eq 1 ]; then
+    if [ "${GAUGE_LINES}" -ge 14 ] && [ "${HAS_HELP}" -eq 1 ] && [ "${HAS_TYPE}" -eq 1 ]; then
       VERDICTS+=("PASS: 2 mock /metrics OK (lines=${GAUGE_LINES}, HELP/TYPE present)")
     else
-      VERDICTS+=("FAIL: 2 mock /metrics shape (lines=${GAUGE_LINES} expected>=3, help=${HAS_HELP}, type=${HAS_TYPE})")
+      VERDICTS+=("FAIL: 2 mock /metrics shape (lines=${GAUGE_LINES} expected>=14, help=${HAS_HELP}, type=${HAS_TYPE})")
     fi
   fi
 fi

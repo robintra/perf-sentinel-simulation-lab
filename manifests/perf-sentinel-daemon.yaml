@@ -105,6 +105,55 @@ data:
     exe_contains = "bin/java"
     cmdline_contains = "notification-service.jar"
 
+    # Multistack services (one entry per stack added during the lab
+    # expansion). Each entry uses an `exe_contains` substring matching
+    # the runtime path the service's container baked, and a
+    # `cmdline_contains` matching the service slug so identical
+    # runtimes stay disambiguated. See docs/MULTISTACK.md.
+    [green.scaphandre.process_map."quarkus-svc"]
+    exe_contains = "bin/java"
+    cmdline_contains = "quarkus-svc"
+
+    [green.scaphandre.process_map."mutiny-svc"]
+    exe_contains = "bin/java"
+    cmdline_contains = "mutiny-svc"
+
+    [green.scaphandre.process_map."helidon-se-svc"]
+    exe_contains = "bin/java"
+    cmdline_contains = "helidon-se-svc"
+
+    [green.scaphandre.process_map."helidon-mp-svc"]
+    exe_contains = "bin/java"
+    cmdline_contains = "helidon-mp-svc"
+
+    [green.scaphandre.process_map."dotnet-svc"]
+    exe_contains = "share/dotnet"
+    cmdline_contains = "dotnet-svc"
+
+    [green.scaphandre.process_map."diesel-svc"]
+    exe_contains = "/usr/local/bin/diesel-svc-bin"
+    cmdline_contains = "diesel-svc"
+
+    [green.scaphandre.process_map."seaorm-svc"]
+    exe_contains = "/usr/local/bin/seaorm-svc-bin"
+    cmdline_contains = "seaorm-svc"
+
+    [green.scaphandre.process_map."nest-svc"]
+    exe_contains = "bin/node"
+    cmdline_contains = "nest-svc"
+
+    [green.scaphandre.process_map."django-svc"]
+    exe_contains = "bin/python"
+    cmdline_contains = "django-svc"
+
+    [green.scaphandre.process_map."fastapi-svc"]
+    exe_contains = "bin/python"
+    cmdline_contains = "fastapi-svc"
+
+    [green.scaphandre.process_map."go-svc"]
+    exe_contains = "/usr/local/bin/go-svc-bin"
+    cmdline_contains = "go-svc"
+
     [green.kepler]
     # Kepler eBPF exporter scrape path. The real exporter needs
     # bare-metal perf counters which the lab cannot provide, so a
