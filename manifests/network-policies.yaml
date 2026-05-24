@@ -514,31 +514,10 @@ spec:
       ports:
         - protocol: TCP
           port: 28282
----
-# 4.D.octies-ter ingress on the real Kepler exporter limited to the
-# daemon. The kepler namespace currently has no deny-by-default, so
-# this rule is hygiene for the day zero-trust extends to it.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: kepler-exporter-allow-daemon
-  namespace: kepler
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: kepler-exporter
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: observability
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: perf-sentinel-daemon
-      ports:
-        - protocol: TCP
-          port: 28282
+# Symmetric ingress on the kepler-exporter pod ships with the opt-in
+# harness in manifests/kepler-exporter.yaml so the `kepler` namespace
+# exists when the policy is created — applying it from this file would
+# fail `make up-cni` on a default lab.
 ---
 # 4.D.nonies daemon egress to the Redfish mock for the
 # `[green.redfish]` scrape path. Multi-chassis fan-out, single mock

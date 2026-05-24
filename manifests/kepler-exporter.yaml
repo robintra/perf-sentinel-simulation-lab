@@ -203,3 +203,34 @@ spec:
         - name: config
           configMap:
             name: kepler
+---
+# Symmetric ingress on the exporter pod, locked down to the
+# perf-sentinel daemon in observability. Co-located with the
+# Namespace it targets so applying the harness creates both at once;
+# manifests/network-policies.yaml only carries the observability-side
+# egress (namespaceSelector tolerates the kepler namespace being
+# absent on default labs).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kepler-exporter-allow-daemon
+  namespace: kepler
+  labels:
+    app.kubernetes.io/name: kepler-exporter
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kepler-exporter
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 28282
