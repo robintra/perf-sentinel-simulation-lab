@@ -1,0 +1,29 @@
+image:
+  repository: helidon-se-svc
+  tag: s2
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8085
+
+database:
+  url: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=helidon_se
+  username: helidon_se_user
+  password: lab_helidon_se
+
+otel:
+  serviceName: helidon-se-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: "http://localhost:8085"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 800m
+    memory: 768Mi
