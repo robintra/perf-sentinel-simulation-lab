@@ -21,18 +21,18 @@ query parameter, and JSON response shape. Behaviour is stack-specific but
 must produce the corresponding finding type when scraped by perf-sentinel
 through the cluster OTel Collector.
 
-| Method | Path | Query param (default) | Anti-pattern produced |
-|---|---|---|---|
-| POST | `/api/fault/n-plus-one-sql` | `items=15` | `n_plus_one_sql` |
-| POST | `/api/fault/n-plus-one-http` | `recipients=10` | `n_plus_one_http` |
-| POST | `/api/fault/redundant-sql` | `repeats=10` | `redundant_sql` |
-| POST | `/api/fault/redundant-http` | `repeats=10` | `redundant_http` |
-| POST | `/api/fault/slow-sql` | `delayMs=600&repeats=6` | `slow_sql` |
-| POST | `/api/fault/slow-http` | `delayMs=600&repeats=6` | `slow_http` |
-| POST | `/api/fault/fanout` | `width=40` | `excessive_fanout` |
-| POST | `/api/fault/chatty` | `calls=30` | `chatty_service` |
-| POST | `/api/fault/serialized` | `steps=6` | `serialized_calls` |
-| POST | `/api/fault/pool-saturation` | `concurrency=20` | `pool_saturation` |
+| Method | Path                         | Query param (default)   | Anti-pattern produced |
+|--------|------------------------------|-------------------------|-----------------------|
+| POST   | `/api/fault/n-plus-one-sql`  | `items=15`              | `n_plus_one_sql`      |
+| POST   | `/api/fault/n-plus-one-http` | `recipients=10`         | `n_plus_one_http`     |
+| POST   | `/api/fault/redundant-sql`   | `repeats=10`            | `redundant_sql`       |
+| POST   | `/api/fault/redundant-http`  | `repeats=10`            | `redundant_http`      |
+| POST   | `/api/fault/slow-sql`        | `delayMs=600&repeats=6` | `slow_sql`            |
+| POST   | `/api/fault/slow-http`       | `delayMs=600&repeats=6` | `slow_http`           |
+| POST   | `/api/fault/fanout`          | `width=40`              | `excessive_fanout`    |
+| POST   | `/api/fault/chatty`          | `calls=30`              | `chatty_service`      |
+| POST   | `/api/fault/serialized`      | `steps=6`               | `serialized_calls`    |
+| POST   | `/api/fault/pool-saturation` | `concurrency=20`        | `pool_saturation`     |
 
 All endpoints return HTTP 200 with the JSON shape below.
 
@@ -97,11 +97,11 @@ own fault endpoints) can call to exercise HTTP-side anti-patterns without
 depending on cross-service infrastructure. Method is `GET`, content type is
 `application/json`.
 
-| Path | Query params | Purpose |
-|---|---|---|
-| `/api/external/mock` | `delayMs={d}&seq={i}&op={n}` | Light parameterized endpoint, used by `n-plus-one-http`, `chatty`, `fanout`, `slow-http`. Server sleeps `delayMs` milliseconds before returning a small JSON. |
-| `/api/dispatch/{channel}` | `delayMs={d}` | Six channels (`email`, `sms`, `push`, `webhook`, `slack`, `teams`), each with the same delay-then-respond behaviour. Used by `serialized`. |
-| `/api/payments/history` | `customerId={id}&limit={n}` | Returns up to `limit` payment rows for a customer from this service's schema. Used by `redundant-http`. |
+| Path                      | Query params                 | Purpose                                                                                                                                                       |
+|---------------------------|------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `/api/external/mock`      | `delayMs={d}&seq={i}&op={n}` | Light parameterized endpoint, used by `n-plus-one-http`, `chatty`, `fanout`, `slow-http`. Server sleeps `delayMs` milliseconds before returning a small JSON. |
+| `/api/dispatch/{channel}` | `delayMs={d}`                | Six channels (`email`, `sms`, `push`, `webhook`, `slack`, `teams`), each with the same delay-then-respond behaviour. Used by `serialized`.                    |
+| `/api/payments/history`   | `customerId={id}&limit={n}`  | Returns up to `limit` payment rows for a customer from this service's schema. Used by `redundant-http`.                                                       |
 
 These keep each service self-sufficient: a stack's HTTP-side fault endpoints
 call back into its own business surface, so the fault works even if no other
@@ -126,22 +126,22 @@ The lab namespace `shop` hosts all services. New stacks land on ports 8083
 through 8093 (Java baseline keeps 8080-8082). Each service owns its own
 Postgres schema in the shared `lab` database.
 
-| Service | Port | Schema | Stack |
-|---|---|---|---|
-| order-service | 8080 | orders | Spring Boot 4.0.6 + JPA (existing baseline) |
-| payment-service | 8081 | payments | idem |
-| notification-service | 8082 | notifications | idem |
-| quarkus-svc | 8083 | quarkus | Quarkus 3.33.1.1 LTS + Panache |
-| mutiny-svc | 8084 | mutiny | Quarkus 3.33.1.1 LTS + reactive PG client |
-| helidon-se-svc | 8085 | helidon_se | Helidon SE 4.4.0 |
-| helidon-mp-svc | 8086 | helidon_mp | Helidon MP 4.4.0 + JPA |
-| dotnet-svc | 8087 | dotnet | .NET 10 + EF Core 10 |
-| diesel-svc | 8088 | diesel | Rust 1.95 + Diesel 2.3 |
-| seaorm-svc | 8089 | seaorm | Rust 1.95 + SeaORM 2.0 |
-| nest-svc | 8090 | nest | NestJS 11 + Prisma 7.8 |
-| django-svc | 8091 | django | Django 5.2 LTS + psycopg 3 |
-| fastapi-svc | 8092 | fastapi | FastAPI 0.136 + SQLAlchemy 2 async |
-| go-svc | 8093 | go | Go 1.26 + pgx v5 |
+| Service              | Port | Schema        | Stack                                       |
+|----------------------|------|---------------|---------------------------------------------|
+| order-service        | 8080 | orders        | Spring Boot 4.0.6 + JPA (existing baseline) |
+| payment-service      | 8081 | payments      | idem                                        |
+| notification-service | 8082 | notifications | idem                                        |
+| quarkus-svc          | 8083 | quarkus       | Quarkus 3.33.1.1 LTS + Panache              |
+| mutiny-svc           | 8084 | mutiny        | Quarkus 3.33.1.1 LTS + reactive PG client   |
+| helidon-se-svc       | 8085 | helidon_se    | Helidon SE 4.4.0                            |
+| helidon-mp-svc       | 8086 | helidon_mp    | Helidon MP 4.4.0 + JPA                      |
+| dotnet-svc           | 8087 | dotnet        | .NET 10 + EF Core 10                        |
+| diesel-svc           | 8088 | diesel        | Rust 1.95 + Diesel 2.3                      |
+| seaorm-svc           | 8089 | seaorm        | Rust 1.95 + SeaORM 2.0                      |
+| nest-svc             | 8090 | nest          | NestJS 11 + Prisma 7.8                      |
+| django-svc           | 8091 | django        | Django 5.2 LTS + psycopg 3                  |
+| fastapi-svc          | 8092 | fastapi       | FastAPI 0.136 + SQLAlchemy 2 async          |
+| go-svc               | 8093 | go            | Go 1.26 + pgx v5                            |
 
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
