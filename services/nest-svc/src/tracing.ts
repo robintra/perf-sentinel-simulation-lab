@@ -7,13 +7,27 @@
 // strict classifier consumes.
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-node';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import { PgInstrumentation } from '@opentelemetry/instrumentation-pg';
 import { PrismaInstrumentation } from '@prisma/instrumentation';
 
+// Prisma's query engine defers span emission by a few seconds. The
+// default BatchSpanProcessor scheduledDelayMillis (5000 ms) stacks
+// on top of that, pushing total latency past the lab's 15 s
+// validation flush window. Lowering to 1000 ms keeps the spans
+// arriving within the window without measurable overhead (the batch
+// still amortises per-span export cost).
+const exporter = new OTLPTraceExporter();
 const sdk = new NodeSDK({
-  traceExporter: new OTLPTraceExporter(),
+  spanProcessors: [new BatchSpanProcessor(exporter, { scheduledDelayMillis: 1000 })],
   instrumentations: [
     new HttpInstrumentation(),
+    // PgInstrumentation instruments raw `pg` Pool queries (used by
+    // the pool-saturation endpoint which bypasses Prisma to get true
+    // concurrent connections). Without this, the pg Pool queries are
+    // invisible to the daemon's pool_saturation detector.
+    new PgInstrumentation(),
     new PrismaInstrumentation(),
   ],
 });
