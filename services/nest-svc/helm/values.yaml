@@ -1,0 +1,29 @@
+image:
+  repository: nest-svc
+  tag: s1
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8090
+
+database:
+  url: "postgresql://nest_user:lab_nest@postgres.db.svc.cluster.local:5432/lab?schema=nest"
+  username: nest_user
+  password: lab_nest
+
+otel:
+  serviceName: nest-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 800m
+    memory: 512Mi
