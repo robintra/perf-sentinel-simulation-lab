@@ -13,6 +13,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -62,7 +63,18 @@ public final class FaultRoutes implements HttpService {
     private final DataSource dataSource;
     private final HttpClient httpClient;
     private final String selfBaseUrl;
-    private final Executor executor = Executors.newCachedThreadPool();
+    // Cached pool for fanout / pool-saturation concurrency. Threads
+    // are marked daemon and given a recognisable name so a SIGTERM
+    // does not need to wait for them to drain (otherwise the JVM
+    // refuses to exit until the 60 s keep-alive lapses, which
+    // collides with the deployment's terminationGracePeriodSeconds
+    // and ends in a SIGKILL).
+    private final Executor executor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r);
+        t.setDaemon(true);
+        t.setName("helidon-se-fault-" + t.threadId());
+        return t;
+    });
 
     public FaultRoutes(DataSource dataSource, HttpClient httpClient, String selfBaseUrl) {
         this.dataSource = dataSource;
@@ -104,9 +116,20 @@ public final class FaultRoutes implements HttpService {
         return status == 200 ? 1 : 0;
     }
 
+    // Per-request timeout cap. The HttpClient builder's connectTimeout
+    // only covers the TCP handshake; without an HttpRequest-level
+    // timeout, a self-loop call that hangs after connect (Hikari pool
+    // starved upstream, k6 saturating Loom, …) blocks the WebServer
+    // handler thread indefinitely. 15s is loose enough for slow-http
+    // (delayMs=600 × 6 = 3.6 s) and slow-sql piggybacks but tight
+    // enough to surface a stuck call as a 5xx within the k6 iteration
+    // window instead of pinning the pod.
+    private static final Duration SELF_CALL_TIMEOUT = Duration.ofSeconds(15);
+
     private int sendGet(String path) {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(selfBaseUrl + path))
+                .timeout(SELF_CALL_TIMEOUT)
                 .GET()
                 .build();
         try {
