@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DotnetSvc</RootNamespace>
+    <AssemblyName>dotnet-svc</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- EF Core 10 + Npgsql provider. The OTel agent for EF Core picks
+         up DbContext command spans via DiagnosticSource → ActivitySource. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.8" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
+
+    <!-- OpenTelemetry .NET SDK. The EF Core instrumentation is still
+         pre-release (1.x-beta) — no stable is published, but it is the
+         de-facto package used in production .NET 10 services. Its
+         ActivitySource is `OpenTelemetry.Instrumentation.EntityFrameworkCore`,
+         which the perf-sentinel strict classifier needs as the ORM
+         marker (equivalent of Java's `io.opentelemetry.hibernate-6.0`).
+         If the upstream allow-list does not yet recognise this scope,
+         dotnet-svc will reproduce lab Gap #20 (n+1_sql reclassified to
+         redundant_sql). -->
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.15.1-beta.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+  </ItemGroup>
+
+</Project>
