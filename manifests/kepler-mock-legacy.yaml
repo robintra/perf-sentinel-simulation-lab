@@ -1,41 +1,45 @@
 ---
-# Kepler mock for the lab. The real Kepler exporter (CNCF eBPF + perf
-# counters) only emits non-zero readings on bare-metal Linux with
-# perf_event_paranoid permissive enough to allow per-process counters,
-# neither of which is available on the lab nodes. This Python stdlib
-# mock stands in for a real Kepler DaemonSet and lets the daemon
-# exercise its `[green.kepler]` Prometheus scrape path. The mock
-# exposes only `kepler_container_cpu_joules_total`, the single metric
-# perf-sentinel consumes in `metric_kind = "container"` mode
-# (cf upstream parser.rs).
+# Kepler mock variant exposing the PRE-v0.10 legacy metric name
+# (`kepler_container_joules_total`, without the `_cpu_` infix). Kept
+# as a negative fixture for the daemon's zero-sample safety net
+# introduced in v0.7.5 (cf `crates/sentinel-core/src/score/kepler/scraper.rs`,
+# `ZERO_SAMPLE_WARN_THRESHOLD = 3`): when the lab daemon, configured
+# for the v0.10+ name `kepler_container_cpu_joules_total`, scrapes
+# this legacy mock, it observes 200 OK but matches zero samples and
+# logs the actionable warn-once at T+15s (3 ticks × 5s).
+#
+# Not deployed by default. Opt-in for the scenario that asserts the
+# warn fires correctly when a cluster runs a pre-v0.10 Kepler
+# exporter. Deploy alongside (not replacing) the canonical
+# `kepler-mock.yaml`: this variant uses its own Service/Deployment
+# names (`kepler-mock-legacy`) so the two can coexist, and a
+# scenario that wants to exercise the safety net repoints the
+# daemon's `[green.kepler].endpoint` ConfigMap to
+# `kepler-mock-legacy.observability.svc.cluster.local:9102`.
+#
+# Apply with:  kubectl apply -f manifests/kepler-mock-legacy.yaml
+# Remove with: kubectl delete -f manifests/kepler-mock-legacy.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kepler-mock-script
+  name: kepler-mock-legacy-script
   namespace: observability
   labels:
-    app.kubernetes.io/name: kepler-mock
+    app.kubernetes.io/name: kepler-mock-legacy
     app.kubernetes.io/part-of: perf-sentinel-lab
     app.kubernetes.io/version: "1.0.0"
 data:
   app.py: |
-    """Minimal Kepler mock exposing /metrics in Prometheus format.
+    """Pre-v0.10 Kepler mock, legacy metric name only.
 
-    Cumulative joule counters per container_name, advanced by a
-    background thread on a wall-clock cadence independent of the HTTP
-    scrape rate. The real Kepler exporter updates its counters from
-    eBPF samples regardless of who scrapes them; matching that
-    semantic means a second scraper (e.g. a Prometheus ServiceMonitor
-    layered on top of the daemon's direct scrape) cannot inflate the
-    visible rate.
-
-    Only the `metric_kind = "container"` variant
-    (`kepler_container_cpu_joules_total`) is exposed. This is the
-    Kepler v0.10+ canonical name with the `_cpu_` infix. The pre-v0.10
-    name `kepler_container_joules_total` lives in `kepler-mock-legacy.yaml`
-    as a negative fixture for the daemon's zero-sample safety net.
-    `process_package` and `process_dram` are not implemented; configure
-    the daemon accordingly.
+    Same counter semantics as `kepler-mock.yaml` (cumulative joules
+    per container_name, advanced by a background thread on a wall-
+    clock cadence independent of HTTP scrape rate). Differs only by
+    the metric name emitted: `kepler_container_joules_total`, without
+    the `_cpu_` infix that Kepler v0.10 introduced. A daemon
+    configured for the v0.10+ name will scrape this mock 200 OK and
+    match zero samples, triggering the zero-sample warn-once after
+    `ZERO_SAMPLE_WARN_THRESHOLD = 3` consecutive empty ticks.
     """
     import sys
     import threading
@@ -45,7 +49,6 @@ data:
     TICK_INTERVAL_SEC = 5
 
     CONTAINERS = [
-        # (container_name as exposed by Kepler, joules added per tick)
         ("order-svc", 12.0),
         ("payment-svc", 18.0),
         ("notification-svc", 7.0),
@@ -72,12 +75,12 @@ data:
     def render_metrics():
         snapshot = snapshot_counters()
         lines = [
-            "# HELP kepler_container_cpu_joules_total Cumulative joules per container - mocked",
-            "# TYPE kepler_container_cpu_joules_total counter",
+            "# HELP kepler_container_joules_total Cumulative joules per container - mocked (legacy pre-v0.10 name)",
+            "# TYPE kepler_container_joules_total counter",
         ]
         for name, _ in CONTAINERS:
             lines.append(
-                f'kepler_container_cpu_joules_total{{container_name="{name}"}} {snapshot[name]:.1f}'
+                f'kepler_container_joules_total{{container_name="{name}"}} {snapshot[name]:.1f}'
             )
         return "\n".join(lines) + "\n"
 
@@ -113,16 +116,16 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kepler-mock
+  name: kepler-mock-legacy
   namespace: observability
   labels:
-    app.kubernetes.io/name: kepler-mock
+    app.kubernetes.io/name: kepler-mock-legacy
     app.kubernetes.io/part-of: perf-sentinel-lab
     app.kubernetes.io/version: "1.0.0"
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: kepler-mock
+    app.kubernetes.io/name: kepler-mock-legacy
   ports:
     - name: http
       port: 9102
@@ -132,21 +135,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kepler-mock
+  name: kepler-mock-legacy
   namespace: observability
   labels:
-    app.kubernetes.io/name: kepler-mock
+    app.kubernetes.io/name: kepler-mock-legacy
     app.kubernetes.io/part-of: perf-sentinel-lab
     app.kubernetes.io/version: "1.0.0"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: kepler-mock
+      app.kubernetes.io/name: kepler-mock-legacy
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: kepler-mock
+        app.kubernetes.io/name: kepler-mock-legacy
         app.kubernetes.io/part-of: perf-sentinel-lab
         app.kubernetes.io/version: "1.0.0"
     spec:
@@ -200,7 +203,7 @@ spec:
       volumes:
         - name: script
           configMap:
-            name: kepler-mock-script
+            name: kepler-mock-legacy-script
             items:
               - key: app.py
                 path: app.py

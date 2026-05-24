@@ -10,6 +10,11 @@
 #        schemas v0.7.6 dispatches on within REDFISH_WAIT_SEC:
 #        chassis-1 on /Power (legacy_power) and chassis-2 on
 #        /EnvironmentMetrics (environment_metrics).
+#   7.C  the daemon log scoped to the scenario window contains zero
+#        "Kepler endpoint replied HTTP 200 but no samples matched"
+#        warns. Direct evidence that the mock's metric name matches
+#        the daemon parser expectation (Kepler v0.10+
+#        `kepler_container_cpu_joules_total`).
 #
 # Why mock-side and not daemon-report-side: precedence selection in
 # the daemon's report depends on which sources are reachable AND on
@@ -123,6 +128,23 @@ else
   fi
 fi
 
+step "7.C: kepler happy path (no zero-sample warn over scenario window)"
+# 18s covers ZERO_SAMPLE_WARN_THRESHOLD = 3 ticks at 5s + a 3s margin
+# against the daemon's tokio scheduler jitter. The kubectl --since
+# window starts now (after 7.A and 7.B have given the scrapers time
+# to settle), so the assertion measures steady-state kepler health
+# rather than startup transients.
+KEPLER_WARN_WINDOW_SEC="${KEPLER_WARN_WINDOW_SEC:-18}"
+sleep "${KEPLER_WARN_WINDOW_SEC}"
+KEPLER_WARN_HITS=$(kubectl -n "${NS}" logs deploy/perf-sentinel-daemon \
+                     --since="${KEPLER_WARN_WINDOW_SEC}s" 2>/dev/null \
+                   | awk '/Kepler endpoint replied HTTP 200 but no samples matched/ {c++} END {print c+0}')
+if [ "${KEPLER_WARN_HITS}" -eq 0 ]; then
+  VERDICTS+=("PASS: 7.C zero zero-sample warns over ${KEPLER_WARN_WINDOW_SEC}s window (kepler mock metric name matches daemon parser)")
+else
+  VERDICTS+=("FAIL: 7.C ${KEPLER_WARN_HITS} zero-sample warns over ${KEPLER_WARN_WINDOW_SEC}s window (kepler mock metric name drifted from daemon parser expectation)")
+fi
+
 step "Aggregate verdicts"
 verdict="PASS"
 for v in "${VERDICTS[@]}"; do
@@ -137,7 +159,7 @@ step "Write report"
   echo "# measured-energy-chain"
   echo
   echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "Sub-tests: 2 (kepler-mock integration, redfish-mock integration)"
+  echo "Sub-tests: 3 (kepler-mock integration, redfish-mock integration, kepler happy path)"
   echo
   echo "## Sub-test verdicts"
   echo

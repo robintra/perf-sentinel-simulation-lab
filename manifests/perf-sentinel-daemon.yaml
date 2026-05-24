@@ -82,19 +82,17 @@ data:
     scrape_interval_secs = 5
 
     # Per-service typed ProcessMatcher (v0.7.6 form, validated with
-    # #[serde(deny_unknown_fields)]). `exe_contains` matches the
-    # runtime path Scaphandre emits via /proc/<pid>/exe:
-    #   - "bin/java" matches /usr/lib/jvm/java-25-openjdk-amd64/bin/java,
-    #     the path baked into gcr.io/distroless/java25:nonroot, which
-    #     is what the lab's Java services run on (see
-    #     services/shared-dockerfile/Dockerfile). Stable across OpenJDK
-    #     point releases since the binary is always under .../bin/java.
-    #   - "share/dotnet" matches /usr/share/dotnet/dotnet, the path
-    #     the Microsoft apt package and tar layout install on across
-    #     .NET 8, 9 and 10. Discriminates against the Java entries.
-    # `cmdline_contains` discriminates between services that share a
-    # runtime; the jar/dll filename is the stable substring the real
-    # Scaphandre keeps when concatenating argv without separators.
+    # #[serde(deny_unknown_fields)]). One entry per service actually
+    # running in the lab (order, payment, notification), all three on
+    # gcr.io/distroless/java25:nonroot — see
+    # services/shared-dockerfile/Dockerfile. `exe_contains` is the
+    # stable substring of the OpenJDK runtime path that Scaphandre
+    # reads from /proc/<pid>/exe (/usr/lib/jvm/java-25-openjdk-amd64/bin/java
+    # under distroless, /usr/lib/jvm/.../bin/java on any OpenJDK
+    # install). `cmdline_contains` discriminates between the three
+    # services that share the runtime; the jar filename is the
+    # stable substring the real Scaphandre keeps when concatenating
+    # argv without separators.
     [green.scaphandre.process_map."order-service"]
     exe_contains = "bin/java"
     cmdline_contains = "order-service.jar"
@@ -103,26 +101,20 @@ data:
     exe_contains = "bin/java"
     cmdline_contains = "payment-service.jar"
 
-    [green.scaphandre.process_map."catalog-service"]
+    [green.scaphandre.process_map."notification-service"]
     exe_contains = "bin/java"
-    cmdline_contains = "catalog-service.jar"
-
-    [green.scaphandre.process_map."inventory-service"]
-    exe_contains = "share/dotnet"
-    cmdline_contains = "inventory-service.dll"
-
-    [green.scaphandre.process_map."auth-service"]
-    exe_contains = "share/dotnet"
-    cmdline_contains = "auth-service.dll"
+    cmdline_contains = "notification-service.jar"
 
     [green.kepler]
     # Kepler eBPF exporter scrape path. The real exporter needs
     # bare-metal perf counters which the lab cannot provide, so a
     # Python stdlib mock at manifests/kepler-mock.yaml serves the
-    # `kepler_container_joules_total` counter perf-sentinel consumes
-    # in container mode. Scaphandre wins precedence when both are
-    # active. Comment this block out to fall through to Kepler if
-    # Scaphandre is unreachable.
+    # `kepler_container_cpu_joules_total` counter perf-sentinel
+    # consumes in container mode (Kepler v0.10+ name with the
+    # `_cpu_` infix; pre-v0.10 mocks are archived in
+    # manifests/kepler-mock-legacy.yaml). Scaphandre wins precedence
+    # when both are active. Comment this block out to fall through
+    # to Kepler if Scaphandre is unreachable.
     endpoint = "http://kepler-mock.observability.svc.cluster.local:9102/metrics"
     scrape_interval_secs = 5
     metric_kind = "container"
