@@ -227,9 +227,11 @@ spec:
 # 4.C.intra shop intra-namespace traffic. The k6 load jobs spawned
 # by validate-findings.sh do not carry the `perf-sentinel-lab`
 # label and would otherwise be denied. Allow any pod in shop to
-# reach the 3 lab service ports, plus service-to-service HTTP
+# reach the lab service port range, plus service-to-service HTTP
 # calls (order calls notification, etc.) for the n+1-http and
-# chatty scenarios.
+# chatty scenarios. Range 8080-8093 covers the 3 Java baseline
+# services (8080-8082) and the 11 multistack services (8083-8093),
+# see docs/MULTISTACK.md for the per-service mapping.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -248,15 +250,13 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-        - protocol: TCP
-          port: 8081
-        - protocol: TCP
-          port: 8082
+          endPort: 8093
 ---
 # 4.C.bis-egress allow shop pods (including k6 jobs without lab
-# label) to reach the 3 services intra-namespace. This is broader
+# label) to reach the lab services intra-namespace. This is broader
 # than the `app.kubernetes.io/part-of` selector because k6 pods
-# are ephemeral and not labeled.
+# are ephemeral and not labeled. Range 8080-8093 mirrors the
+# ingress rule above.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -273,10 +273,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-        - protocol: TCP
-          port: 8081
-        - protocol: TCP
-          port: 8082
+          endPort: 8093
 ---
 # 4.C.bis ingress on Postgres limited to the lab's shop pods.
 apiVersion: networking.k8s.io/v1
