@@ -69,17 +69,18 @@ spec:
               value: "none"
             - name: OTEL_METRICS_EXPORTER
               value: "none"
-            # Disable the OTel JDBC statement sanitizer. By default,
-            # quarkus-opentelemetry replaces SQL literals with `?` so
-            # `WHERE order_id = 1`, `WHERE order_id = 2`, ... all
-            # collapse to `WHERE order_id = ?`. That turns the
-            # n_plus_one_sql fault into a redundant_sql signal (15
-            # occurrences of a single template instead of 15 distinct
-            # templates). The lab daemon's `sanitizer_aware_classification`
-            # is "strict", so we need the raw literals to reach it. Lab
-            # only — never disable the sanitizer in production.
-            - name: OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED
-              value: "false"
+            # OTel SQL statement sanitizer kept at its production
+            # default (enabled). The lab daemon's
+            # `sanitizer_aware_classification = "strict"` reclassifies
+            # the sanitized SQL spans into n_plus_one_sql when both
+            # signals are present: an ORM scope marker
+            # (org.hibernate.*) AND timing variance CV > 0.5.
+            # Hibernate ORM emits the scope marker through
+            # quarkus-opentelemetry's auto-instrumentation, so the
+            # detector picks up the n+1 pattern despite the literal
+            # collapse to `?`. Disabling the sanitizer was tempting
+            # for a fast green run but bypasses the real production
+            # wiring perf-sentinel is designed for.
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           securityContext:
