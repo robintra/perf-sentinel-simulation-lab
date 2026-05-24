@@ -36,7 +36,10 @@ spec:
               containerPort: {{ .Values.service.port }}
               protocol: TCP
           env:
-            - name: QUARKUS_HTTP_PORT
+            # HTTP_PORT (not QUARKUS_HTTP_PORT — this is not Quarkus) is
+            # read by Main.envOrInt to override the YAML default, so
+            # values.service.port is the single source of truth.
+            - name: HTTP_PORT
               value: {{ .Values.service.port | quote }}
             - name: DB_URL
               value: {{ .Values.database.url | quote }}
@@ -50,8 +53,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Chart.Name }}-db
                   key: password
+            # selfBaseUrl defaults from service.port so a chart-level
+            # override of the port stays consistent with the self-loop
+            # target. An explicit values.selfBaseUrl still wins.
             - name: SELF_BASE_URL
-              value: {{ .Values.selfBaseUrl | quote }}
+              value: {{ .Values.selfBaseUrl | default (printf "http://localhost:%d" (int .Values.service.port)) | quote }}
             - name: OTEL_SERVICE_NAME
               value: {{ .Values.otel.serviceName | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

@@ -18,7 +18,10 @@ otel:
   cloudRegion: eu-west-3
   cloudProvider: aws
 
-selfBaseUrl: "http://localhost:8085"
+# selfBaseUrl: empty means "derive from service.port at render time"
+# (http://localhost:<service.port>). Override explicitly to send the
+# self-loop through a service mesh or a different host.
+selfBaseUrl: ""
 
 resources:
   requests:

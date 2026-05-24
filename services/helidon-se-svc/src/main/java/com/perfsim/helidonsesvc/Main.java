@@ -53,20 +53,55 @@ public final class Main {
         FaultRoutes faultRoutes = new FaultRoutes(dataSource, httpClient, selfBaseUrl);
         BusinessRoutes businessRoutes = new BusinessRoutes(dataSource);
 
+        // Helidon Config does not expand ${VAR} on YAML sources, so
+        // env-var overrides are resolved in code (same pattern as
+        // DataSources.fromConfig). HTTP_PORT / HTTP_HOST let the helm
+        // chart retarget the listener via deployment env without
+        // touching application.yaml.
+        int httpPort = envOrInt("HTTP_PORT", config.get("server.port").asInt().orElse(8085));
+        String httpHost = envOr("HTTP_HOST", config.get("server.host").asString().orElse("0.0.0.0"));
+
         WebServer.builder()
-                .config(config.get("server"))
+                .port(httpPort)
+                .host(httpHost)
                 .mediaContext(mc -> mc.addMediaSupport(JsonpSupport.create()))
                 .routing(routing -> routing
                         // Lightweight liveness/readiness, wired by the
                         // deployment's probes. Sufficient for the lab —
                         // Helidon SE has an ObserveFeature module for
                         // richer health checks, kept out of this minimal
-                        // service to limit dependencies.
-                        .get("/health/live", (req, res) -> res.send("{\"status\":\"UP\"}"))
-                        .get("/health/ready", (req, res) -> res.send("{\"status\":\"UP\"}"))
+                        // service to limit dependencies. application/json
+                        // content-type matches the multistack convention
+                        // (helidon-mp/quarkus/mutiny all respond JSON).
+                        .get("/health/live", Main::healthHandler)
+                        .get("/health/ready", Main::healthHandler)
                         .register("/api/fault", faultRoutes)
                         .register("/api", businessRoutes))
                 .build()
                 .start();
+    }
+
+    private static void healthHandler(
+            io.helidon.webserver.http.ServerRequest req,
+            io.helidon.webserver.http.ServerResponse res) {
+        res.headers().contentType(io.helidon.http.HttpMediaType.create("application/json"));
+        res.send("{\"status\":\"UP\"}");
+    }
+
+    private static String envOr(String envKey, String fallback) {
+        String v = System.getenv(envKey);
+        return (v == null || v.isBlank()) ? fallback : v;
+    }
+
+    private static int envOrInt(String envKey, int fallback) {
+        String v = System.getenv(envKey);
+        if (v == null || v.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("invalid integer for env " + envKey + ": " + v, e);
+        }
     }
 }
