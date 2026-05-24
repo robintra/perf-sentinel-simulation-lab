@@ -34,6 +34,11 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
+// Flush pending spans on SIGTERM but do NOT call process.exit —
+// NestJS enableShutdownHooks handles the lifecycle (onModuleDestroy
+// on PgPoolService + PrismaService) and drains in-flight requests
+// before exiting. Calling process.exit here would race with NestJS
+// and leak connections.
 process.on('SIGTERM', () => {
-  sdk.shutdown().finally(() => process.exit(0));
+  sdk.shutdown().catch(() => {});
 });

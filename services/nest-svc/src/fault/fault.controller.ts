@@ -1,4 +1,4 @@
-import { Controller, Post, Query, Inject } from '@nestjs/common';
+import { Controller, Post, Query } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { PrismaService } from '../prisma/prisma.service';
 import { PgPoolService } from '../prisma/pg-pool.service';
@@ -102,7 +102,7 @@ export class FaultController {
       }
     });
     const results = await Promise.all(tasks);
-    const completed = results.reduce((a, b) => a + b, 0);
+    const completed = results.reduce<number>((a, b) => a + b, 0);
     return envelope('pool_saturation', start, {
       concurrency: n, tasks_launched: n, tasks_completed: completed,
     });

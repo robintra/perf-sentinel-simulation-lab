@@ -13,6 +13,7 @@ async function bootstrap() {
     res.json({ status: 'UP' });
   });
 
+  app.enableShutdownHooks();
   await app.listen(port, '0.0.0.0');
   console.log(`nest-svc listening on :${port}`);
 }
