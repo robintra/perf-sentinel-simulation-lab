@@ -137,7 +137,7 @@ Postgres schema in the shared `lab` database.
 | helidon-mp-svc       | 8086 | helidon_mp    | Helidon MP 4.4.0 + JPA                      |
 | dotnet-svc           | 8087 | dotnet        | .NET 10 + EF Core 10                        |
 | diesel-svc           | 8088 | diesel        | Rust 1.95 + Diesel 2.3                      |
-| seaorm-svc           | 8089 | seaorm        | Rust 1.95 + SeaORM 2.0                      |
+| seaorm-svc           | 8089 | seaorm        | Rust 1.95 + SeaORM 1.1                      |
 | nest-svc             | 8090 | nest          | NestJS 11 + Prisma 7.8                      |
 | django-svc           | 8091 | django        | Django 5.2 LTS + psycopg 3                  |
 | fastapi-svc          | 8092 | fastapi       | FastAPI 0.136 + SQLAlchemy 2 async          |
@@ -145,6 +145,45 @@ Postgres schema in the shared `lab` database.
 
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
+
+### Pinned versions (verified 2026-05-24)
+
+Strategy: **LTS wherever the project offers one**, otherwise latest
+stable. Re-verify before each Dockerfile bump.
+
+| Component       | Pinned version               | LTS?                                                                  | Notes                                                           |
+|-----------------|------------------------------|-----------------------------------------------------------------------|-----------------------------------------------------------------|
+| Quarkus         | **3.33.1.1** (2026-05-04)    | Yes — Quarkus 3.33 LTS line, ~12-month support, EOL ~2027-03          | Latest non-LTS 3.35.4 not chosen on purpose.                    |
+| Mutiny          | **3.2.0** (2026-04-28)       | No LTS                                                                | Bundled in Quarkus BOM.                                         |
+| Helidon SE      | **4.4.0** (2026-03-17)       | Yes — Java Verified Portfolio LTS, next Tip is Helidon 27 (Sept 2026) | See Helidon notes section below.                                |
+| Helidon MP      | **4.4.0** (MicroProfile 6.1) | Yes — same JVP LTS                                                    | idem                                                            |
+| .NET runtime    | **10.0.8** (2026-05-12)      | Yes — .NET 10.0 LTS, EOL 2028-11-14                                   | C# 14 ships with .NET 10.                                       |
+| EF Core         | **10.0.8** (2026-05-12)      | Yes — ships in lockstep with .NET 10 LTS                              | + Npgsql.EntityFrameworkCore.PostgreSQL 10.0.1                  |
+| Rust            | **1.95.0** (2026-04-16)      | No LTS (6-week cadence)                                               | 1.96 not yet shipped at 2026-05-24.                             |
+| Diesel          | **2.3.9** (2026-04-30)       | No LTS                                                                | + `diesel-async 0.7` optional.                                  |
+| SeaORM          | **1.1.20** (2026-03-31)      | No LTS                                                                | 2.0 line still in RC at 2026-05-24, do not use yet.             |
+| NestJS          | **11.1.23** (2026-05-21)     | No LTS                                                                | v12 ESM-only milestone targeted Q3 2026.                        |
+| Node.js runtime | **24 "Krypton" Active LTS**  | Yes — Active LTS, EOL ~2028-04                                        | Node 22 is Maintenance LTS only.                                |
+| Prisma          | **7.8.0** (2026-04-22)       | No LTS                                                                | Prisma 7 GA was 2025-11-19.                                     |
+| Django          | **5.2.14 LTS** (2026-05-05)  | Yes — security support through ~April 2028                            | 6.0.5 latest non-LTS not chosen. Next LTS is 6.2 (~April 2027). |
+| FastAPI         | **0.136.3** (2026-05-23)     | No LTS                                                                | Pydantic ≥ 2.13 required.                                       |
+| Go              | **1.26.3** (2026-05-07)      | No LTS (6-month cadence, N and N-1)                                   | + `pgx v5.7.5`.                                                 |
+
+Verification sources (re-fetched per stack at delivery time):
+
+- Quarkus: https://github.com/quarkusio/quarkus/releases + https://quarkus.io/blog/tag/release/
+- Mutiny: https://github.com/smallrye/smallrye-mutiny/releases
+- Helidon: https://github.com/helidon-io/helidon/releases + Medium release post
+- .NET / EF Core: https://github.com/dotnet/runtime/releases + https://github.com/dotnet/efcore/releases
+- Rust: https://blog.rust-lang.org/category/releases/
+- Diesel: https://github.com/diesel-rs/diesel/releases
+- SeaORM: https://github.com/SeaQL/sea-orm/releases
+- NestJS: https://github.com/nestjs/nest/releases
+- Node.js: https://nodejs.org/en/about/previous-releases
+- Prisma: https://github.com/prisma/prisma/releases
+- Django: https://www.djangoproject.com/download/
+- FastAPI: https://github.com/fastapi/fastapi/releases
+- Go: https://go.dev/doc/devel/release
 
 ## Postgres conventions
 
