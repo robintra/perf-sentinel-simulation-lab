@@ -5,6 +5,8 @@ import io.helidon.webserver.http.HttpService;
 import io.helidon.webserver.http.ServerRequest;
 import io.helidon.webserver.http.ServerResponse;
 import jakarta.json.Json;
+import jakarta.json.JsonArray;
+import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -68,11 +70,16 @@ public final class BusinessRoutes implements HttpService {
         res.send(body);
     }
 
+    // Matches helidon-mp-svc / quarkus-svc / mutiny-svc which all
+    // return List<Object[]> via JAX-RS, serialising to a JSON array
+    // of positional arrays [id, order_id, customer_id, amount_cents,
+    // status]. Returning array-of-objects here would silently diverge
+    // the multistack contract for any cross-stack consumer.
     private void paymentsHistory(ServerRequest req, ServerResponse res) {
         long customerId = req.query().first("customerId").asLong().orElse(1L);
         int limit = req.query().first("limit").asInt().orElse(10);
         int safeLimit = Math.clamp(limit, 1, 100);
-        List<JsonObject> rows = new ArrayList<>();
+        List<JsonArray> rows = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
              PreparedStatement ps = conn.prepareStatement(
                      "SELECT id, order_id, customer_id, amount_cents, status "
@@ -82,20 +89,23 @@ public final class BusinessRoutes implements HttpService {
             ps.setInt(2, safeLimit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    rows.add(Json.createObjectBuilder()
-                            .add("id", rs.getLong("id"))
-                            .add("order_id", rs.getLong("order_id"))
-                            .add("customer_id", rs.getLong("customer_id"))
-                            .add("amount_cents", rs.getLong("amount_cents"))
-                            .add("status", rs.getString("status"))
+                    rows.add(Json.createArrayBuilder()
+                            .add(rs.getLong("id"))
+                            .add(rs.getLong("order_id"))
+                            .add(rs.getLong("customer_id"))
+                            .add(rs.getLong("amount_cents"))
+                            .add(rs.getString("status"))
                             .build());
                 }
             }
         } catch (Exception e) {
-            res.status(500).send("payments query failed: " + e.getMessage());
+            // Do not echo e.getMessage() — Postgres errors include the
+            // role name and auth state, which would leak through to
+            // the k6 logs and perf-sentinel artefacts.
+            res.status(500).send("payments query failed");
             return;
         }
-        var arr = Json.createArrayBuilder();
+        JsonArrayBuilder arr = Json.createArrayBuilder();
         rows.forEach(arr::add);
         res.send(arr.build());
     }
