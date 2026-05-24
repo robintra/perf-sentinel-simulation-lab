@@ -13,7 +13,6 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
@@ -243,9 +242,4 @@ public class FaultResource {
                         }));
     }
 
-    // Helper kept for symmetry with quarkus-svc when callers want a list.
-    @SuppressWarnings("unused")
-    private static int sum(List<Integer> xs) {
-        return xs.stream().mapToInt(Integer::intValue).sum();
-    }
 }

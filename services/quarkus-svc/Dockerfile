@@ -17,9 +17,15 @@
 # ---- otel agent download ----
 FROM alpine:3.23 AS otel-agent
 ARG OTEL_AGENT_VERSION=2.27.0
+# SHA-256 of the v2.27.0 javaagent.jar, captured 2026-05-24. Fails the
+# build if the upstream asset changes — supply-chain hygiene that the
+# Spring Boot baseline `services/shared-dockerfile/Dockerfile` should
+# also adopt (cf review notes).
+ARG OTEL_AGENT_SHA256=bd01fea1304e8c8803fff827a0bdda02b2266742a85c62548053c6761474bb5b
 RUN apk add --no-cache wget \
  && wget -q -O /opentelemetry-javaagent.jar \
-    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
+    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar" \
+ && echo "${OTEL_AGENT_SHA256}  /opentelemetry-javaagent.jar" | sha256sum -c -
 
 # ---- builder ----
 FROM eclipse-temurin:25-jdk-alpine AS builder
