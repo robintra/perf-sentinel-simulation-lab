@@ -80,7 +80,7 @@ public class BusinessResource {
             @QueryParam("customerId") @DefaultValue("1") long customerId,
             @QueryParam("limit") @DefaultValue("10") int limit) {
         // Cap the limit so a malicious caller cannot exhaust the pool.
-        int safeLimit = Math.min(Math.max(limit, 1), 100);
+        int safeLimit = Math.clamp(limit, 1, 100);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery(
                         "SELECT id, order_id, customer_id, amount_cents, status "

@@ -71,7 +71,7 @@ public class BusinessResource {
     public Uni<List<Map<String, Object>>> paymentsHistory(
             @QueryParam("customerId") @DefaultValue("1") long customerId,
             @QueryParam("limit") @DefaultValue("10") int limit) {
-        int safeLimit = Math.min(Math.max(limit, 1), 100);
+        int safeLimit = Math.clamp(limit, 1, 100);
         return pgPool.preparedQuery(
                         "SELECT id, order_id, customer_id, amount_cents, status "
                                 + "FROM mutiny.payments WHERE customer_id = $1 "
