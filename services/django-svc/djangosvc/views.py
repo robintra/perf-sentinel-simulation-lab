@@ -1,14 +1,15 @@
-import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
+import psycopg
 import requests as http_requests
 from django.db import connection
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
+from opentelemetry import context as otel_context
 
 SERVICE = "django-svc"
 CHANNELS = {"email", "sms", "push", "webhook", "slack", "teams"}
@@ -136,16 +137,39 @@ def slow_sql(request):
     })
 
 
+# Build a psycopg DSN from the same env vars Django uses, for the
+# pool-saturation endpoint which needs independent connections (Django
+# reuses one connection per thread, masking saturation from OTel).
+def _pg_dsn():
+    return (
+        f"host={os.environ.get('DB_HOST', 'localhost')} "
+        f"port={os.environ.get('DB_PORT', '5432')} "
+        f"dbname={os.environ.get('DB_NAME', 'lab')} "
+        f"user={os.environ.get('DB_USER', 'django_user')} "
+        f"password={os.environ.get('DB_PASSWORD', 'lab_django')} "
+        f"options='-csearch_path=django,public'"
+    )
+
+
 @csrf_exempt
 @require_POST
 def pool_saturation(request):
     concurrency = int(request.GET.get("concurrency", "20") or "20")
     start = time.monotonic()
+    dsn = _pg_dsn()
+    parent_ctx = otel_context.get_current()
 
     def _worker():
-        with connection.cursor() as cur:
-            cur.execute("SELECT pg_sleep(0.4)")
-        return 1
+        token = otel_context.attach(parent_ctx)
+        try:
+            with psycopg.connect(dsn, autocommit=True) as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT pg_sleep(0.4)")
+            return 1
+        except Exception:
+            return 0
+        finally:
+            otel_context.detach(token)
 
     futures = [_executor.submit(_worker) for _ in range(concurrency)]
     completed = sum(f.result(timeout=30) for f in as_completed(futures))
@@ -197,8 +221,21 @@ def slow_http(request):
 def fanout(request):
     width = int(request.GET.get("width", "40") or "40")
     start = time.monotonic()
+    # Capture the current OTel context (holds the SERVER span) so
+    # worker threads can attach it — without this, the CLIENT spans
+    # from _get() are orphans and the daemon cannot correlate the N
+    # children with the parent request.
+    parent_ctx = otel_context.get_current()
+
+    def _get_with_ctx(path):
+        token = otel_context.attach(parent_ctx)
+        try:
+            return _get(path)
+        finally:
+            otel_context.detach(token)
+
     futures = [
-        _executor.submit(_get, f"/api/external/mock?delayMs=10&seq={i}&op=0")
+        _executor.submit(_get_with_ctx, f"/api/external/mock?delayMs=10&seq={i}&op=0")
         for i in range(width)
     ]
     ok = sum(f.result(timeout=30) for f in as_completed(futures))
