@@ -106,7 +106,7 @@ async fn async_main(provider: SdkTracerProvider, tracer: opentelemetry_sdk::trac
     let port: u16 = env::var("HTTP_PORT").ok()
         .and_then(|v| v.parse().ok()).unwrap_or(8089);
     let db_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://seaorm_user:lab_seaorm@postgres.db.svc.cluster.local:5432/lab".into());
+        .unwrap_or_else(|_| "postgres://seaorm_user:lab_seaorm@postgres.db.svc.cluster.local:5432/lab?options=-csearch_path%3Dseaorm%2Cpublic".into());
     let self_base = env::var("SELF_BASE_URL")
         .unwrap_or_else(|_| format!("http://localhost:{}", port));
 
@@ -117,10 +117,11 @@ async fn async_main(provider: SdkTracerProvider, tracer: opentelemetry_sdk::trac
         .with(OpenTelemetryLayer::new(tracer))
         .init();
 
-    // DB
+    // DB — search_path is set via the ?options= URL param (both in
+    // helm values and the fallback URL above), so every sqlx pool
+    // connection inherits it at the protocol level. No per-connection
+    // SET needed.
     let db = Database::connect(&db_url).await.expect("sea-orm connect");
-    db.execute(Statement::from_string(DbBackend::Postgres,
-        "SET search_path TO seaorm, public")).await.ok();
     bootstrap_schema(&db).await;
 
     // HTTP client
@@ -162,6 +163,11 @@ async fn async_main(provider: SdkTracerProvider, tracer: opentelemetry_sdk::trac
 // === schema bootstrap ======================================================
 
 async fn bootstrap_schema(db: &DatabaseConnection) {
+    // Advisory lock serialises concurrent replicas (same pattern as
+    // django-svc / fastapi-svc).
+    db.execute(Statement::from_string(DbBackend::Postgres,
+        "SELECT pg_advisory_lock(808991)")).await.ok();
+
     for ddl in [
         "CREATE TABLE IF NOT EXISTS seaorm.orders (id BIGSERIAL PRIMARY KEY, customer VARCHAR(255) NOT NULL, status VARCHAR(32) NOT NULL DEFAULT 'PENDING', total_cents BIGINT NOT NULL DEFAULT 0, created_at TIMESTAMPTZ NOT NULL DEFAULT now())",
         "CREATE TABLE IF NOT EXISTS seaorm.order_items (id BIGSERIAL PRIMARY KEY, order_id BIGINT NOT NULL REFERENCES seaorm.orders(id) ON DELETE CASCADE, sku VARCHAR(64) NOT NULL, quantity INTEGER NOT NULL, price_cents BIGINT NOT NULL)",
@@ -170,17 +176,30 @@ async fn bootstrap_schema(db: &DatabaseConnection) {
         "CREATE INDEX IF NOT EXISTS idx_seaorm_pay_cid ON seaorm.payments(customer_id)",
     ] { db.execute(Statement::from_string(DbBackend::Postgres, ddl)).await.ok(); }
 
-    let exists = db.query_one(Statement::from_string(DbBackend::Postgres,
-        "SELECT EXISTS(SELECT 1 FROM seaorm.orders LIMIT 1) AS exists"))
-        .await.ok().flatten()
-        .and_then(|r| r.try_get::<bool>("", "exists").ok())
-        .unwrap_or(false);
-    if exists { return; }
-    for seed in [
-        "INSERT INTO seaorm.orders (customer, status, total_cents) SELECT 'customer-' || g, 'PENDING', (g * 1000)::bigint FROM generate_series(1, 100) AS g",
-        "INSERT INTO seaorm.order_items (order_id, sku, quantity, price_cents) SELECT o.id, 'SKU-' || (o.id * 10 + g), (1 + (g % 5)), (100 + g * 50)::bigint FROM seaorm.orders o CROSS JOIN generate_series(1, 5) AS g WHERE o.id <= 100",
-        "INSERT INTO seaorm.payments (order_id, customer_id, amount_cents, status) SELECT ((g-1) % 100)+1, ((g-1) % 50)+1, (g * 100)::bigint, 'AUTHORIZED' FROM generate_series(1, 200) AS g",
-    ] { db.execute(Statement::from_string(DbBackend::Postgres, seed)).await.ok(); }
+    // Proper error propagation — don't swallow connection errors as
+    // "not exists" which would cause duplicate seed inserts.
+    let exists = match db.query_one(Statement::from_string(DbBackend::Postgres,
+        "SELECT EXISTS(SELECT 1 FROM seaorm.orders LIMIT 1) AS exists")).await {
+        Ok(Some(row)) => row.try_get::<bool>("", "exists").unwrap_or(false),
+        Ok(None) => false,
+        Err(e) => {
+            tracing::warn!("schema probe failed, skipping seed: {e}");
+            db.execute(Statement::from_string(DbBackend::Postgres,
+                "SELECT pg_advisory_unlock(808991)")).await.ok();
+            return;
+        }
+    };
+
+    if !exists {
+        for seed in [
+            "INSERT INTO seaorm.orders (customer, status, total_cents) SELECT 'customer-' || g, 'PENDING', (g * 1000)::bigint FROM generate_series(1, 100) AS g",
+            "INSERT INTO seaorm.order_items (order_id, sku, quantity, price_cents) SELECT o.id, 'SKU-' || (o.id * 10 + g), (1 + (g % 5)), (100 + g * 50)::bigint FROM seaorm.orders o CROSS JOIN generate_series(1, 5) AS g WHERE o.id <= 100",
+            "INSERT INTO seaorm.payments (order_id, customer_id, amount_cents, status) SELECT ((g-1) % 100)+1, ((g-1) % 50)+1, (g * 100)::bigint, 'AUTHORIZED' FROM generate_series(1, 200) AS g",
+        ] { db.execute(Statement::from_string(DbBackend::Postgres, seed)).await.ok(); }
+    }
+
+    db.execute(Statement::from_string(DbBackend::Postgres,
+        "SELECT pg_advisory_unlock(808991)")).await.ok();
 }
 
 // === helpers ================================================================
