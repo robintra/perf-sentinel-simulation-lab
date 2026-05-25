@@ -1,6 +1,11 @@
 """fastapi-svc — FastAPI + SQLAlchemy async + asyncpg multistack member.
 OTel instrumentation: fastapi (SERVER spans), sqlalchemy (SQL spans),
-httpx (CLIENT spans), asyncpg (low-level SQL). Port 8092."""
+httpx (CLIENT spans), asyncpg (low-level SQL). Port 8092.
+
+All mutable state (engine, httpx client, asyncpg pool, OTel provider)
+is created inside the lifespan context manager so each uvicorn worker
+(--workers 2, os.fork on Linux) gets its own instances. Module-level
+code is limited to config reads and pure imports."""
 
 import asyncio
 import os
@@ -8,10 +13,11 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+import asyncpg
 import httpx
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from opentelemetry import context as otel_context, trace
+from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -24,106 +30,114 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-# === config ================================================================
+# === config (immutable, safe before fork) ==================================
 
 SERVICE = "fastapi-svc"
 DB_DSN = os.environ.get(
     "DATABASE_URL",
     "postgresql+asyncpg://fastapi_user:lab_fastapi@postgres.db.svc.cluster.local:5432/lab",
 )
+RAW_DSN = os.environ.get(
+    "RAW_DATABASE_URL",
+    "postgresql://fastapi_user:lab_fastapi@postgres.db.svc.cluster.local:5432/lab",
+).replace("postgresql+asyncpg://", "postgresql://")
 SELF_BASE = os.environ.get("SELF_BASE_URL", "http://localhost:8092")
 CHANNELS = ["email", "sms", "push", "webhook", "slack", "teams"]
 CHANNELS_SET = set(CHANNELS)
+_ADVISORY_LOCK_ID = 809291
 
-# === OTel ==================================================================
+# === per-worker state (set in lifespan, after fork) ========================
 
-resource = Resource.create({"service.name": os.environ.get("OTEL_SERVICE_NAME", SERVICE)})
-provider = TracerProvider(resource=resource)
-provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(), schedule_delay_millis=1000))
-trace.set_tracer_provider(provider)
-
-AsyncPGInstrumentor().instrument()
-HTTPXClientInstrumentor().instrument()
-
-# === DB ====================================================================
-
-engine = create_async_engine(DB_DSN, pool_size=10, max_overflow=0,
-                             connect_args={"timeout": 10})
-SQLAlchemyInstrumentor().instrument(engine=engine.sync_engine)
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-
-# === raw asyncpg pool (pool-saturation) ====================================
-
-_raw_dsn = os.environ.get(
-    "RAW_DATABASE_URL",
-    "postgresql://fastapi_user:lab_fastapi@postgres.db.svc.cluster.local:5432/lab"
-).replace("postgresql+asyncpg://", "postgresql://")
-
-import asyncpg  # noqa: E402
-
-_raw_pool = None
+engine = None
+async_session = None
+raw_pool = None
+http_client = None
+otel_provider = None
 
 
-async def get_raw_pool():
-    global _raw_pool
-    if _raw_pool is None:
-        _raw_pool = await asyncpg.create_pool(
-            _raw_dsn, min_size=2, max_size=10,
-            server_settings={"search_path": "fastapi,public"},
-        )
-    return _raw_pool
+def _init_otel():
+    resource = Resource.create({"service.name": os.environ.get("OTEL_SERVICE_NAME", SERVICE)})
+    provider = TracerProvider(resource=resource)
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(), schedule_delay_millis=1000))
+    trace.set_tracer_provider(provider)
+    AsyncPGInstrumentor().instrument()
+    HTTPXClientInstrumentor().instrument()
+    return provider
 
 
-# === schema bootstrap ======================================================
-
-async def ensure_schema():
-    async with engine.begin() as conn:
-        await conn.execute(text("SET search_path TO fastapi, public"))
-        for ddl in [
-            """CREATE TABLE IF NOT EXISTS fastapi.orders (
-                id BIGSERIAL PRIMARY KEY, customer VARCHAR(255) NOT NULL,
-                status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
-                total_cents BIGINT NOT NULL DEFAULT 0,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now())""",
-            """CREATE TABLE IF NOT EXISTS fastapi.order_items (
-                id BIGSERIAL PRIMARY KEY,
-                order_id BIGINT NOT NULL REFERENCES fastapi.orders(id) ON DELETE CASCADE,
-                sku VARCHAR(64) NOT NULL, quantity INTEGER NOT NULL,
-                price_cents BIGINT NOT NULL)""",
-            """CREATE TABLE IF NOT EXISTS fastapi.payments (
-                id BIGSERIAL PRIMARY KEY, order_id BIGINT NOT NULL,
-                customer_id BIGINT NOT NULL, amount_cents BIGINT NOT NULL DEFAULT 0,
-                status VARCHAR(32) NOT NULL DEFAULT 'AUTHORIZED',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT now())""",
-            "CREATE INDEX IF NOT EXISTS idx_fastapi_oi_oid ON fastapi.order_items(order_id)",
-            "CREATE INDEX IF NOT EXISTS idx_fastapi_pay_cid ON fastapi.payments(customer_id)",
-        ]:
-            await conn.execute(text(ddl))
-
-        row = await conn.execute(text("SELECT EXISTS(SELECT 1 FROM fastapi.orders LIMIT 1)"))
-        if row.scalar():
-            return
-
-        await conn.execute(text("""INSERT INTO fastapi.orders (customer, status, total_cents)
-            SELECT 'customer-' || g, 'PENDING', (g * 1000)::bigint
-            FROM generate_series(1, 100) AS g"""))
-        await conn.execute(text("""INSERT INTO fastapi.order_items (order_id, sku, quantity, price_cents)
-            SELECT o.id, 'SKU-' || (o.id * 10 + g), (1 + (g % 5)), (100 + g * 50)::bigint
-            FROM fastapi.orders o CROSS JOIN generate_series(1, 5) AS g WHERE o.id <= 100"""))
-        await conn.execute(text("""INSERT INTO fastapi.payments (order_id, customer_id, amount_cents, status)
-            SELECT ((g-1) % 100)+1, ((g-1) % 50)+1, (g * 100)::bigint, 'AUTHORIZED'
-            FROM generate_series(1, 200) AS g"""))
+async def _init_db():
+    eng = create_async_engine(DB_DSN, pool_size=10, max_overflow=0,
+                              connect_args={"timeout": 10})
+    SQLAlchemyInstrumentor().instrument(engine=eng.sync_engine)
+    session_factory = sessionmaker(eng, class_=AsyncSession, expire_on_commit=False)
+    return eng, session_factory
 
 
-# === app ===================================================================
+async def _init_raw_pool():
+    return await asyncpg.create_pool(
+        RAW_DSN, min_size=2, max_size=10,
+        server_settings={"search_path": "fastapi,public"},
+    )
+
+
+async def _ensure_schema(eng):
+    """Advisory-locked schema bootstrap (same pattern as django-svc)."""
+    async with eng.begin() as conn:
+        await conn.execute(text("SELECT pg_advisory_lock(:id)"), {"id": _ADVISORY_LOCK_ID})
+        try:
+            await conn.execute(text("SET search_path TO fastapi, public"))
+            for ddl in [
+                """CREATE TABLE IF NOT EXISTS fastapi.orders (
+                    id BIGSERIAL PRIMARY KEY, customer VARCHAR(255) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                    total_cents BIGINT NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now())""",
+                """CREATE TABLE IF NOT EXISTS fastapi.order_items (
+                    id BIGSERIAL PRIMARY KEY,
+                    order_id BIGINT NOT NULL REFERENCES fastapi.orders(id) ON DELETE CASCADE,
+                    sku VARCHAR(64) NOT NULL, quantity INTEGER NOT NULL,
+                    price_cents BIGINT NOT NULL)""",
+                """CREATE TABLE IF NOT EXISTS fastapi.payments (
+                    id BIGSERIAL PRIMARY KEY, order_id BIGINT NOT NULL,
+                    customer_id BIGINT NOT NULL, amount_cents BIGINT NOT NULL DEFAULT 0,
+                    status VARCHAR(32) NOT NULL DEFAULT 'AUTHORIZED',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT now())""",
+                "CREATE INDEX IF NOT EXISTS idx_fastapi_oi_oid ON fastapi.order_items(order_id)",
+                "CREATE INDEX IF NOT EXISTS idx_fastapi_pay_cid ON fastapi.payments(customer_id)",
+            ]:
+                await conn.execute(text(ddl))
+
+            row = await conn.execute(text("SELECT EXISTS(SELECT 1 FROM fastapi.orders LIMIT 1)"))
+            if row.scalar():
+                return
+
+            await conn.execute(text("""INSERT INTO fastapi.orders (customer, status, total_cents)
+                SELECT 'customer-' || g, 'PENDING', (g * 1000)::bigint
+                FROM generate_series(1, 100) AS g"""))
+            await conn.execute(text("""INSERT INTO fastapi.order_items (order_id, sku, quantity, price_cents)
+                SELECT o.id, 'SKU-' || (o.id * 10 + g), (1 + (g % 5)), (100 + g * 50)::bigint
+                FROM fastapi.orders o CROSS JOIN generate_series(1, 5) AS g WHERE o.id <= 100"""))
+            await conn.execute(text("""INSERT INTO fastapi.payments (order_id, customer_id, amount_cents, status)
+                SELECT ((g-1) % 100)+1, ((g-1) % 50)+1, (g * 100)::bigint, 'AUTHORIZED'
+                FROM generate_series(1, 200) AS g"""))
+        finally:
+            await conn.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": _ADVISORY_LOCK_ID})
+
+
+# === lifespan (runs per-worker, after fork) ================================
 
 @asynccontextmanager
 async def lifespan(_app):
+    global engine, async_session, raw_pool, http_client, otel_provider
     import logging
     log = logging.getLogger("fastapi-svc")
+
+    otel_provider = _init_otel()
+    engine, async_session = await _init_db()
+
     for attempt in range(5):
         try:
-            await ensure_schema()
+            await _ensure_schema(engine)
             break
         except Exception as e:
             if attempt < 4:
@@ -131,17 +145,21 @@ async def lifespan(_app):
                 await asyncio.sleep(3)
             else:
                 log.warning("schema bootstrap failed after 5 attempts: %s", e)
+
+    raw_pool = await _init_raw_pool()
+    http_client = httpx.AsyncClient(base_url=SELF_BASE, timeout=15.0)
+
     yield
+
+    await http_client.aclose()
     await engine.dispose()
-    pool = _raw_pool
-    if pool:
-        await pool.close()
-    provider.shutdown()
+    if raw_pool:
+        await raw_pool.close()
+    otel_provider.shutdown()
+
 
 app = FastAPI(lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app)
-
-_http = httpx.AsyncClient(base_url=SELF_BASE, timeout=15.0)
 
 
 def _envelope(anti_pattern, start, details):
@@ -157,10 +175,17 @@ def _envelope(anti_pattern, start, details):
 # === health ================================================================
 
 @app.get("/health/live")
+async def health_live():
+    return {"status": "UP"}
+
+
 @app.get("/health/ready")
-async def health():
-    async with engine.connect() as conn:
-        await conn.execute(text("SELECT 1"))
+async def health_ready():
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        return JSONResponse({"status": "DOWN"}, status_code=503)
     return {"status": "UP"}
 
 
@@ -248,10 +273,9 @@ async def slow_sql(delayMs: int = 600, repeats: int = 6):
 @app.post("/api/fault/pool-saturation")
 async def pool_saturation(concurrency: int = 20):
     start = time.monotonic()
-    pool = await get_raw_pool()
 
     async def _worker():
-        async with pool.acquire() as conn:
+        async with raw_pool.acquire() as conn:
             await conn.execute("SELECT pg_sleep(0.4)")
         return 1
 
@@ -267,7 +291,7 @@ async def pool_saturation(concurrency: int = 20):
 
 async def _get(path):
     try:
-        r = await _http.get(path)
+        r = await http_client.get(path)
         return 1 if r.status_code == 200 else 0
     except Exception:
         return 0

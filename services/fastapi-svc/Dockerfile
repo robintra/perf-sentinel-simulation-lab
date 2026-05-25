@@ -15,6 +15,9 @@ EXPOSE 8092
 USER 65532:65532
 
 ENV PYTHONDONTWRITEBYTECODE=1
-CMD uvicorn app.main:app \
+# exec so uvicorn is PID 1 and receives SIGTERM directly from
+# Kubernetes (shell form without exec leaves /bin/sh as PID 1 which
+# does not forward signals → lifespan shutdown never runs).
+CMD exec uvicorn app.main:app \
     --host 0.0.0.0 --port ${HTTP_PORT:-8092} \
     --workers 2 --timeout-keep-alive 120
