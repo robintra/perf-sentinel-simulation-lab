@@ -62,8 +62,35 @@ fn db_count(conn: &mut PgConnection, sql: &str) -> i64 {
 
 // === main ==================================================================
 
-#[tokio::main]
-async fn main() {
+// OTel provider initialized BEFORE tokio runtime starts so the
+// reqwest-blocking-client used by the batch exporter's dedicated
+// OS thread doesn't panic with "cannot start a runtime from within
+// a runtime" (opentelemetry-rust#2400).
+fn init_otel() -> SdkTracerProvider {
+    let exporter = SpanExporter::builder().with_http().build()
+        .expect("otlp http exporter");
+    let resource = opentelemetry_sdk::Resource::builder()
+        .with_service_name(env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| SERVICE.into()))
+        .build();
+    SdkTracerProvider::builder()
+        .with_resource(resource)
+        .with_batch_exporter(exporter)
+        .build()
+}
+
+fn main() {
+    let provider = init_otel();
+    let tracer = provider.tracer(SERVICE);
+    global::set_tracer_provider(provider.clone());
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async_main(provider, tracer));
+}
+
+async fn async_main(provider: SdkTracerProvider, tracer: opentelemetry_sdk::trace::Tracer) {
     let port: u16 = env::var("HTTP_PORT").ok()
         .and_then(|v| v.parse().ok()).unwrap_or(8088);
     let db_url = env::var("DATABASE_URL")
@@ -71,22 +98,6 @@ async fn main() {
     let self_base = env::var("SELF_BASE_URL")
         .unwrap_or_else(|_| format!("http://localhost:{}", port));
 
-    // OTel — HTTP OTLP with async reqwest client + batch processor.
-    // The rt-tokio feature on opentelemetry_sdk spawns the batch
-    // export task on the tokio runtime.
-    let exporter = SpanExporter::builder().with_http().build()
-        .expect("otlp exporter");
-    // Batch exporter. Known issue: opentelemetry_sdk 0.32
-    // with_batch_exporter does not flush spans to the collector
-    // (the background task doesn't spawn despite rt-tokio feature).
-    // The tracing→OTel bridge works (verified via stdout exporter)
-    // — spans have correct http.route, db.statement, etc. attributes.
-    // Pending upstream fix in opentelemetry-rust.
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
-        .build();
-    let tracer = provider.tracer(SERVICE);
-    global::set_tracer_provider(provider.clone());
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| "info,tower_http=debug,otel=debug".into()))
