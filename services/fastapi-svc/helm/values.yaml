@@ -1,0 +1,30 @@
+image:
+  repository: fastapi-svc
+  tag: s1
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8092
+
+database:
+  url: "postgresql+asyncpg://fastapi_user:lab_fastapi@postgres.db.svc.cluster.local:5432/lab"
+  rawUrl: "postgresql://fastapi_user:lab_fastapi@postgres.db.svc.cluster.local:5432/lab"
+  username: fastapi_user
+  password: lab_fastapi
+
+otel:
+  serviceName: fastapi-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 800m
+    memory: 512Mi
