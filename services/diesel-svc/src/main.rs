@@ -253,7 +253,9 @@ async fn payments_history(State(s): State<AppState>, Query(p): Query<PaymentsPar
     let pool = s.pool.clone();
     let limit = p.limit.clamp(1, 100);
     let cid = p.customer_id;
+    let parent = tracing::Span::current();
     let rows = tokio::task::spawn_blocking(move || {
+        let _g = parent.entered();
         let conn = &mut pool.get().expect("conn");
         diesel::sql_query("SET search_path TO diesel, public").execute(conn).ok();
         let sql = "SELECT id, order_id, customer_id, amount_cents, status FROM payments WHERE customer_id = $1 ORDER BY id LIMIT $2";
@@ -272,7 +274,9 @@ async fn n_plus_one_sql(State(s): State<AppState>, Query(p): Query<ItemsParams>)
     let start = Instant::now();
     let pool = s.pool.clone();
     let items = p.items;
+    let parent = tracing::Span::current();
     let total = tokio::task::spawn_blocking(move || {
+        let _g = parent.entered();
         let conn = &mut pool.get().expect("conn");
         diesel::sql_query("SET search_path TO diesel, public").execute(conn).ok();
         let mut total = 0i64;
@@ -289,7 +293,9 @@ async fn redundant_sql(State(s): State<AppState>, Query(p): Query<RepeatsParams>
     let start = Instant::now();
     let pool = s.pool.clone();
     let repeats = p.repeats;
+    let parent = tracing::Span::current();
     let total = tokio::task::spawn_blocking(move || {
+        let _g = parent.entered();
         let conn = &mut pool.get().expect("conn");
         diesel::sql_query("SET search_path TO diesel, public").execute(conn).ok();
         let mut total = 0i64;
@@ -305,7 +311,9 @@ async fn slow_sql(State(s): State<AppState>, Query(p): Query<SlowParams>) -> Jso
     let start = Instant::now();
     let pool = s.pool.clone();
     let (delay_ms, repeats) = (p.delay_ms, p.repeats);
+    let parent = tracing::Span::current();
     let executed = tokio::task::spawn_blocking(move || {
+        let _g = parent.entered();
         let conn = &mut pool.get().expect("conn");
         let seconds = delay_ms as f64 / 1000.0;
         let mut executed = 0;
@@ -322,9 +330,12 @@ async fn pool_saturation(State(s): State<AppState>, Query(p): Query<ConcurrencyP
     let start = Instant::now();
     let n = p.concurrency;
     let mut handles = Vec::with_capacity(n);
+    let parent = tracing::Span::current();
     for _ in 0..n {
         let pool = s.pool.clone();
+        let p = parent.clone();
         handles.push(tokio::task::spawn_blocking(move || {
+            let _g = p.entered();
             let conn = &mut pool.get().ok()?;
             db_exec(conn, "SELECT pg_sleep(0.4)").ok()?;
             Some(1i32)
