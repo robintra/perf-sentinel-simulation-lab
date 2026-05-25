@@ -13,11 +13,11 @@ use diesel::prelude::*;
 use diesel::r2d2::{self, ConnectionManager, Pool};
 use opentelemetry::trace::TracerProvider;
 use opentelemetry_otlp::SpanExporter;
-use opentelemetry_sdk::{runtime::Tokio, trace::SdkTracerProvider};
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{env, net::SocketAddr, sync::Arc, time::Instant};
+use std::{env, net::SocketAddr, time::Instant};
 use tower_http::trace::TraceLayer;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -51,7 +51,7 @@ async fn main() {
     let exporter = SpanExporter::builder().with_http().build()
         .expect("otlp exporter");
     let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter, Tokio)
+        .with_batch_exporter(exporter)
         .build();
     let tracer = provider.tracer(SERVICE);
     tracing_subscriber::registry()
@@ -313,7 +313,8 @@ struct CallsParams { #[serde(default = "default_thirty")] calls: i32 }
 fn default_thirty() -> i32 { 30 }
 
 #[derive(Deserialize)]
-struct StepsParams { #[serde(default = "default_six")] steps: usize }
+struct StepsParams { #[serde(default = "default_six_usize")] steps: usize }
+fn default_six_usize() -> usize { 6 }
 
 async fn n_plus_one_sql(State(s): State<AppState>, Query(p): Query<ItemsParams>) -> Json<Value> {
     let start = Instant::now();
