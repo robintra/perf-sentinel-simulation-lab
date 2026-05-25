@@ -1,0 +1,26 @@
+[package]
+name = "seaorm-svc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+sea-orm = { version = "1.1", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+reqwest-middleware = "0.5"
+reqwest-tracing = { version = "0.7", features = ["opentelemetry_0_32"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+axum-tracing-opentelemetry = "0.38"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-opentelemetry = "0.33"
+opentelemetry = "0.32"
+opentelemetry_sdk = "0.32"
+opentelemetry-otlp = { version = "0.32", features = ["http-proto", "reqwest-blocking-client"] }
+
+[profile.release]
+strip = true
+lto = true

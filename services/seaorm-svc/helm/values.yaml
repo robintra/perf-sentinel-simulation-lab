@@ -1,0 +1,24 @@
+image:
+  repository: seaorm-svc
+  tag: s1
+  pullPolicy: IfNotPresent
+service:
+  port: 8089
+database:
+  url: "postgres://seaorm_user:lab_seaorm@postgres.db.svc.cluster.local:5432/lab?options=-csearch_path%3Dseaorm%2Cpublic"
+  username: seaorm_user
+  password: lab_seaorm
+otel:
+  serviceName: seaorm-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+selfBaseUrl: ""
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
