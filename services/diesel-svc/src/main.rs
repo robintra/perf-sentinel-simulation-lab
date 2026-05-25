@@ -47,16 +47,19 @@ async fn main() {
     let self_base = env::var("SELF_BASE_URL")
         .unwrap_or_else(|_| format!("http://localhost:{}", port));
 
-    // OTel
+    // OTel — use simple (synchronous) exporter because the batch
+    // exporter in opentelemetry_sdk 0.32 needs an async runtime context
+    // that may not be available at TracerProvider build time.
     let exporter = SpanExporter::builder().with_http().build()
         .expect("otlp exporter");
     let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
+        .with_simple_exporter(exporter)
         .build();
     let tracer = provider.tracer(SERVICE);
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::try_from_default_env()
             .unwrap_or_else(|_| "info,tower_http=debug".into()))
+        .with(tracing_subscriber::fmt::layer().compact())
         .with(OpenTelemetryLayer::new(tracer))
         .init();
 
