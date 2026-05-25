@@ -207,7 +207,15 @@ fn envelope(anti_pattern: &str, start: Instant, details: Value) -> Json<Value> {
 }
 
 async fn do_get(http: &ClientWithMiddleware, base: &str, path: &str) -> i32 {
-    match http.get(format!("{}{}", base, path)).send().await {
+    use tracing::Instrument;
+    let url = format!("{}{}", base, path);
+    let span = tracing::info_span!("http.request",
+        otel.kind = "CLIENT",
+        http.request.method = "GET",
+        url.full = %url,
+    );
+    let result = http.get(&url).send().instrument(span).await;
+    match result {
         Ok(r) if r.status().is_success() => 1,
         _ => 0,
     }
@@ -367,12 +375,17 @@ async fn slow_http(State(s): State<AppState>, Query(p): Query<SlowParams>) -> Js
     envelope("slow_http", start, json!({"delayMs": p.delay_ms, "repeats": p.repeats, "calls_made": p.repeats, "calls_ok": ok, "delay_ms": p.delay_ms}))
 }
 async fn fanout(State(s): State<AppState>, Query(p): Query<WidthParams>) -> Json<Value> {
+    use tracing::Instrument;
     let start = Instant::now();
+    let parent = tracing::Span::current();
     let mut handles = Vec::with_capacity(p.width);
     for i in 0..p.width {
         let http = s.http.clone();
         let base = s.self_base.clone();
-        handles.push(tokio::spawn(async move { do_get(&http, &base, &format!("/api/external/mock?delayMs=10&seq={}&op=0", i)).await }));
+        handles.push(tokio::spawn(
+            async move { do_get(&http, &base, &format!("/api/external/mock?delayMs=10&seq={}&op=0", i)).await }
+                .instrument(parent.clone())
+        ));
     }
     let mut ok = 0;
     for h in handles { if let Ok(v) = h.await { ok += v; } }
