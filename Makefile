@@ -11,7 +11,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .PHONY: help up down reset recover validate smoke status logs grafana inspect psql ps clean-images \
         seed-services teardown-services inject-all validate-findings \
-        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc seed-helidon-se-svc seed-dotnet-svc seed-go-svc seed-nest-svc seed-django-svc seed-fastapi-svc \
+        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc seed-helidon-se-svc seed-dotnet-svc seed-go-svc seed-nest-svc seed-django-svc seed-fastapi-svc seed-diesel-svc \
         seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services \
         up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel \
         up-cni reset-cni install-cni apply-network-policies remove-network-policies \
@@ -177,6 +177,9 @@ seed-django-svc: ## Build + import + helm install the Django 5.2 LTS multistack 
 
 seed-fastapi-svc: ## Build + import + helm install the FastAPI + SQLAlchemy async multistack member
 	./scripts/seed-fastapi-svc.sh
+
+seed-diesel-svc: ## Build + import + helm install the Rust + Diesel 2.x multistack member
+	./scripts/seed-diesel-svc.sh
 
 inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)
 	./scripts/inject-all.sh

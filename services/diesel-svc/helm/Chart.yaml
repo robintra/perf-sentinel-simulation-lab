@@ -1,0 +1,6 @@
+apiVersion: v2
+name: diesel-svc
+description: Rust + Diesel 2.x sync multistack member for perf-sentinel-simulation-lab
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

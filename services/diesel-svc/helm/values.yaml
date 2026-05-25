@@ -1,0 +1,29 @@
+image:
+  repository: diesel-svc
+  tag: s1
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8088
+
+database:
+  url: "postgres://diesel_user:lab_diesel@postgres.db.svc.cluster.local:5432/lab?options=-csearch_path%3Ddiesel%2Cpublic"
+  username: diesel_user
+  password: lab_diesel
+
+otel:
+  serviceName: diesel-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
