@@ -467,6 +467,11 @@ jobs:
           kubectl get nodes
           kubectl get pods -A
 
+      - name: Create multistack Postgres schemas and roles
+        run: |
+          kubectl apply -f manifests/postgres-multistack-schemas.yaml
+          kubectl -n db wait --for=condition=Complete job/postgres-multistack-schemas --timeout=120s
+
       - name: Seed multistack services (build + import + deploy all 11)
         run: |
           for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm; do
@@ -496,12 +501,12 @@ jobs:
           for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm; do
             echo "::group::${stack}-svc"
             if ./scripts/run-multistack-scenario.sh "${stack}"; then
-              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" | grep -oP '\d+ PASS' | grep -oP '^\d+')
+              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ PASS' | grep -oE '^[0-9]+' || echo "0")
               PASS=$((PASS + ${score:-0}))
               RESULTS="${RESULTS}${stack}-svc: ${score:-?}/10 PASS\n"
             else
-              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oP '\d+ PASS' | grep -oP '^\d+' || echo "0")
-              total=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oP '\d+ anti-patterns' | grep -oP '^\d+' || echo "10")
+              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ PASS' | grep -oE '^[0-9]+' || echo "0")
+              total=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ anti-patterns' | grep -oE '^[0-9]+' || echo "10")
               fails=$((${total:-10} - ${score:-0}))
               FAIL=$((FAIL + fails))
               PASS=$((PASS + ${score:-0}))
@@ -512,7 +517,7 @@ jobs:
           echo "========================================="
           echo "MULTISTACK VALIDATION SUMMARY"
           echo "========================================="
-          printf "${RESULTS}"
+          printf '%b' "${RESULTS}"
           TOTAL=$((PASS + FAIL))
           echo "Total: ${PASS}/${TOTAL} (threshold: 100/110)"
           if [ "${PASS}" -lt 100 ]; then
@@ -541,7 +546,7 @@ jobs:
           if-no-files-found: warn
 
   notify-on-failure:
-    needs: [validate, validate-multistack]
+    needs: [validate, validate-multistack, validate-scenarios]
     if: failure()
     runs-on: ubuntu-latest
     permissions:
