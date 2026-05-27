@@ -399,8 +399,149 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-  notify-on-failure:
+  validate-multistack:
     needs: validate
+    if: success()
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+
+    env:
+      PERF_SENTINEL_VERSION: >-
+        ${{ github.event.client_payload.version
+            || github.event.inputs.perf_sentinel_version
+            || 'latest' }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install k3d
+        env:
+          K3D_TAG: v5.8.3
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if curl -fsSL "https://raw.githubusercontent.com/k3d-io/k3d/${K3D_TAG}/install.sh" \
+                | TAG="${K3D_TAG}" bash; then
+              break
+            fi
+            echo "k3d install attempt ${attempt} failed, retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          k3d version
+
+      - name: Install helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
+        with:
+          version: 'v3.18.4'
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
+
+      - name: Add helm repos
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
+
+      - name: Patch perf-sentinel image to validated version
+        run: |
+          sed -i -E "s|ghcr.io/robintra/perf-sentinel(@sha256:[a-f0-9]+\|:[0-9.]+)|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
+            manifests/perf-sentinel-daemon.yaml
+
+      - name: Provision Electricity Maps token
+        env:
+          EM_TOKEN: ${{ secrets.ELECTRICITY_MAPS_TOKEN }}
+        run: |
+          if [ -z "${EM_TOKEN}" ]; then
+            echo "::error::ELECTRICITY_MAPS_TOKEN repo secret is empty."
+            exit 1
+          fi
+          printf '%s' "${EM_TOKEN}" > .electricity-maps-token
+          chmod 600 .electricity-maps-token
+
+      - name: make up-cni (k3d + Cilium + observability + daemon)
+        run: |
+          make up-cni
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: Seed multistack services (build + import + deploy all 11)
+        run: |
+          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm; do
+            echo "::group::seed-${stack}-svc"
+            make "seed-${stack}-svc"
+            echo "::endgroup::"
+          done
+          kubectl get pods -n shop
+
+      - name: Bring port-forward up
+        run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
+          ./scripts/port-forward.sh start
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
+              echo "daemon reachable after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Validate multistack (11 stacks x 10 anti-patterns)
+        run: |
+          PASS=0; FAIL=0; RESULTS=""
+          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm; do
+            echo "::group::${stack}-svc"
+            if ./scripts/run-multistack-scenario.sh "${stack}"; then
+              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" | grep -oP '\d+ PASS' | grep -oP '^\d+')
+              PASS=$((PASS + ${score:-0}))
+              RESULTS="${RESULTS}${stack}-svc: ${score:-?}/10 PASS\n"
+            else
+              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oP '\d+ PASS' | grep -oP '^\d+' || echo "0")
+              total=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oP '\d+ anti-patterns' | grep -oP '^\d+' || echo "10")
+              fails=$((${total:-10} - ${score:-0}))
+              FAIL=$((FAIL + fails))
+              PASS=$((PASS + ${score:-0}))
+              RESULTS="${RESULTS}${stack}-svc: ${score:-?}/10 (${fails} FAIL)\n"
+            fi
+            echo "::endgroup::"
+          done
+          echo "========================================="
+          echo "MULTISTACK VALIDATION SUMMARY"
+          echo "========================================="
+          printf "${RESULTS}"
+          TOTAL=$((PASS + FAIL))
+          echo "Total: ${PASS}/${TOTAL} (threshold: 100/110)"
+          if [ "${PASS}" -lt 100 ]; then
+            echo "::error::multistack validation below threshold: ${PASS}/${TOTAL} < 100/110"
+            exit 1
+          fi
+
+      - name: Show daemon logs (debug)
+        if: always()
+        run: |
+          kubectl -n observability logs deploy/perf-sentinel-daemon --tail=200 || true
+
+      - name: Show pod overview (debug)
+        if: always()
+        run: kubectl get pods -A || true
+
+      - name: Upload multistack reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: multistack-reports-${{ env.PERF_SENTINEL_VERSION }}-${{ github.run_id }}
+          path: |
+            tmp/validation-report-*-svc.md
+            tmp/import-*.log
+          retention-days: 14
+          if-no-files-found: warn
+
+  notify-on-failure:
+    needs: [validate, validate-multistack]
     if: failure()
     runs-on: ubuntu-latest
     permissions:

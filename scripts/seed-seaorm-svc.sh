@@ -3,7 +3,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${REPO_ROOT}"
 CLUSTER_NAME="perf-sentinel-lab"
-SVC="seaorm-svc"; TAG="s1"; IMAGE="${SVC}:${TAG}"
+SVC="seaorm-svc"; TAG="s2"; IMAGE="${SVC}:${TAG}"
 . "${REPO_ROOT}/scripts/k3d-image.sh"
 color_blue()   { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green()  { printf "\033[32m%s\033[0m\n" "$*"; }
