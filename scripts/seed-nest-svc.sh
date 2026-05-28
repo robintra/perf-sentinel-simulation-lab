@@ -10,7 +10,7 @@ cd "${REPO_ROOT}"
 
 CLUSTER_NAME="perf-sentinel-lab"
 SVC="nest-svc"
-TAG="s1"
+TAG="s2"
 IMAGE="${SVC}:${TAG}"
 
 # shellcheck source=./k3d-image.sh
