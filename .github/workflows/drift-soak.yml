@@ -1,0 +1,182 @@
+name: weekly drift soak
+
+# Long-running memory/FD drift soak against the daemon image currently pinned
+# in manifests/perf-sentinel-daemon.yaml. Kept in a dedicated weekly workflow,
+# separate from the daily validate-on-release run, because a 5h job does not
+# belong in the per-release validation path.
+#
+# Runner budget: a GitHub-hosted job is hard-capped at 6h (360 min) on every
+# plan. A 5h soak plus ~15 min bootstrap fits; timeout-minutes 350 leaves a
+# guard margin and produces a clean timeout before the hard kill. For a longer
+# soak (e.g. 24h) a self-hosted runner is required (5-day job cap).
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_hours:
+        description: 'Drift soak duration in hours (must stay under ~5.5h on hosted runners)'
+        required: false
+        default: '5'
+        type: string
+  schedule:
+    # Weekly, Sunday 03:00 UTC. Offset from the daily 02:00 release-validation
+    # cron so the two never share a runner window.
+    - cron: '0 3 * * 0'
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  # Single source for the soak length: both jobs inherit it. Defaults to 5h
+  # on the weekly schedule (where github.event.inputs is absent).
+  DURATION_HOURS: ${{ github.event.inputs.duration_hours || '5' }}
+
+concurrency:
+  # Do not cancel an in-flight soak: a manual dispatch queues behind the
+  # weekly run instead of throwing away hours of sampling.
+  group: drift-soak
+  cancel-in-progress: false
+
+jobs:
+  drift-soak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Install k3d
+        env:
+          K3D_TAG: v5.8.3
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if curl -fsSL "https://raw.githubusercontent.com/k3d-io/k3d/${K3D_TAG}/install.sh" \
+                | TAG="${K3D_TAG}" bash; then
+              break
+            fi
+            echo "k3d install attempt ${attempt} failed, retrying in $((attempt * 10))s"
+            sleep $((attempt * 10))
+          done
+          k3d version
+
+      - name: Install helm
+        uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
+        with:
+          version: 'v3.18.4'
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d  # v5.1.0
+
+      - name: Add helm repos
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
+
+      - name: make up-cni (k3d + Cilium + observability + daemon)
+        # Runs against the manifest's pinned daemon image. No seed-services and
+        # no electricity-maps token: the scenario drives synthetic OTLP load via
+        # telemetrygen straight at the daemon, and up-cni does not consume the
+        # token (the daemon's electricity-maps secret is optional).
+        run: |
+          make up-cni
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: Bring port-forward up
+        run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
+          ./scripts/port-forward.sh start
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
+              echo "daemon reachable after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: long-running-drift soak
+        # SAMPLE_INTERVAL=900 (15 min) gives 20 samples over 5h. TRAFFIC_MULTIPLIER=1
+        # is the sustained-realistic-load profile (same as the LONG_RUN preset),
+        # not a stress spike. DRIFT_PCT_LIMIT defaults to 10% and gates RSS growth.
+        run: DURATION_HOURS="${DURATION_HOURS}" SAMPLE_INTERVAL=900 TRAFFIC_MULTIPLIER=1 make verify-long-running-drift
+
+      - name: Show daemon logs (debug)
+        if: always()
+        run: kubectl -n observability logs deploy/perf-sentinel-daemon --tail=200 || true
+
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: drift-soak-report-${{ github.run_id }}
+          path: |
+            /tmp/scenario-long-running-drift-report.md
+            /tmp/long-running-drift/*
+          retention-days: 30
+          if-no-files-found: warn
+
+  notify-on-failure:
+    needs: drift-soak
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Open or update drift regression issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const hours = process.env.DURATION_HOURS || '5';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = 'weekly drift soak failed';
+            const body = [
+              `The weekly ${hours}h drift soak failed.`,
+              ``,
+              `**Trigger**: ${context.eventName}`,
+              `**Run**: ${runUrl}`,
+              ``,
+              `Likely causes:`,
+              `- Daemon RSS drift above DRIFT_PCT_LIMIT (memory leak under sustained OTLP load)`,
+              `- File-descriptor leak (fds_delta gate)`,
+              `- Bootstrap or runner timeout (job hit timeout-minutes before the soak finished)`,
+              ``,
+              `The per-sample RSS/FD series is in the long-running-drift report artifact on the run.`,
+            ].join('\n');
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'automation,regression',
+              state: 'open',
+            });
+            const dup = existing.data.find(i => i.title === title);
+
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: dup.number,
+                body: `Re-occurrence: ${runUrl}`,
+              });
+              console.log(`Commented on existing issue #${dup.number}`);
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['automation', 'regression'],
+                assignees: ['robintra'],
+              });
+              console.log(`Created new issue: ${title}`);
+            }
