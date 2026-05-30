@@ -102,10 +102,20 @@ jobs:
           done
 
       - name: long-running-drift soak
-        # SAMPLE_INTERVAL=900 (15 min) gives 20 samples over 5h. TRAFFIC_MULTIPLIER=1
-        # is the sustained-realistic-load profile (same as the LONG_RUN preset),
-        # not a stress spike. DRIFT_PCT_LIMIT defaults to 10% and gates RSS growth.
-        run: DURATION_HOURS="${DURATION_HOURS}" SAMPLE_INTERVAL=900 TRAFFIC_MULTIPLIER=1 make verify-long-running-drift
+        # Derive the sample interval so any duration targets ~20 samples: the
+        # 5h weekly run lands on 900s (15 min, 20 samples), while a short manual
+        # smoke scales down instead of sitting through fixed 900s sleeps (a
+        # 0.1h dispatch was 45 min at a hardcoded 900s). Capped at 900s so long
+        # soaks keep 15-min spacing, floored at 30s so smokes stay quick.
+        # TRAFFIC_MULTIPLIER=1 is the sustained-realistic-load profile (same as
+        # the LONG_RUN preset), not a stress spike. DRIFT_PCT_LIMIT defaults to
+        # 10% and gates RSS growth.
+        run: |
+          DRIFT_SEC=$(python3 -c "print(int(float('${DURATION_HOURS}') * 3600))")
+          SAMPLE_INTERVAL=$(python3 -c "print(min(900, max(30, ${DRIFT_SEC} // 20)))")
+          echo "duration=${DURATION_HOURS}h drift_sec=${DRIFT_SEC} sample_interval=${SAMPLE_INTERVAL}s"
+          DURATION_HOURS="${DURATION_HOURS}" SAMPLE_INTERVAL="${SAMPLE_INTERVAL}" TRAFFIC_MULTIPLIER=1 \
+            make verify-long-running-drift
 
       - name: Show daemon logs (debug)
         if: always()
