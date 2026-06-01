@@ -1,0 +1,95 @@
+name: pr checks (lightweight, no cluster)
+
+# Fast gate for pull requests (notably Renovate base-image / chart bumps).
+# The full lab validation (validate-on-release.yml) only runs on main via
+# schedule / dispatch, so PRs would otherwise merge with no signal at all.
+# This builds only the service images whose directory changed and lints the
+# Helm charts — no k3d cluster, no observability stack, no seeding.
+
+on:
+  pull_request:
+    paths:
+      - 'services/**'
+      - 'manifests/**'
+      - 'helm/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      services: ${{ steps.changed.outputs.services }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Select service dirs changed in this PR
+        id: changed
+        run: |
+          set -euo pipefail
+          # Diff against the PR base commit (a SHA, reachable thanks to
+          # fetch-depth: 0). The remote-tracking ref origin/<branch> is NOT
+          # reliable here: actions/checkout configures a single-ref refspec,
+          # so `git fetch origin <branch>` would not create origin/<branch>,
+          # and the diff would silently fall back to building everything.
+          base="${{ github.event.pull_request.base.sha }}"
+          if ! changed="$(git diff --name-only "${base}" HEAD 2>/dev/null)"; then
+            changed=""  # base unreachable -> fall back to building everything
+          fi
+          sel=()
+          for d in services/*-svc; do
+            [ -f "${d}/Dockerfile" ] || continue
+            svc="$(basename "${d}")"
+            # build the service if its own dir changed, or if detection failed
+            if [ -z "${changed}" ] || printf '%s\n' "${changed}" | grep -q "^${d}/"; then
+              sel+=("${svc}")
+            fi
+          done
+          json="$(printf '%s\n' "${sel[@]}" | jq -R . | jq -cs 'map(select(length > 0))')"
+          echo "services=${json}" >> "${GITHUB_OUTPUT}"
+          echo "Selected services: ${json}"
+
+  build:
+    needs: detect
+    if: needs.detect.outputs.services != '[]' && needs.detect.outputs.services != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.detect.outputs.services) }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Build ${{ matrix.service }} image (no push, no cluster)
+        run: |
+          docker build \
+            -f "services/${{ matrix.service }}/Dockerfile" \
+            -t "ci-${{ matrix.service }}:pr" \
+            "services/${{ matrix.service }}"
+
+  helm-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: azure/setup-helm@dda3372f752e03dde6b3237bc9431cdc2f7a02a2  # v5.0.0
+        with:
+          version: 'v3.18.4'
+      - name: helm lint service charts
+        run: |
+          set -euo pipefail
+          rc=0
+          for chart in services/*/helm; do
+            [ -f "${chart}/Chart.yaml" ] || continue
+            echo "::group::helm lint ${chart}"
+            helm lint "${chart}" || rc=1
+            echo "::endgroup::"
+          done
+          exit "${rc}"
