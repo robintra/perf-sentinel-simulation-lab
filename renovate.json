@@ -74,18 +74,10 @@
       "enabled": false
     },
     {
-      "description": "No major bumps on kubernetes-managed workload images (lab is version-sensitive)",
+      "description": "No major bumps on kubernetes-managed workload images, incl. grafana/tempo v3. Lab is version-sensitive (the Tempo manifest is hand-written for v2); held here and bumped manually when adapted.",
       "matchManagers": ["kubernetes"],
       "matchUpdateTypes": ["major"],
       "enabled": false
-    },
-    {
-      "description": "Hold grafana/tempo major (v3): surface as isolated, non-automerged review PR (overrides the kubernetes no-major rule above)",
-      "matchPackageNames": ["grafana/tempo"],
-      "matchUpdateTypes": ["major"],
-      "enabled": true,
-      "automerge": false,
-      "addLabels": ["major-review"]
     },
     {
       "description": "Hold helm/helm major (v4): isolated, non-automerged, labeled",
