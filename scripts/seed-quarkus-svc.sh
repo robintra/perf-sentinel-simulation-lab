@@ -59,6 +59,7 @@ for attempt in 1 2; do
     > "${import_log}" 2>&1 || true
   if diag="$(verify_k3d_image_on_all_nodes "${CLUSTER_NAME}" "${IMAGE}")"; then
     ok "${IMAGE} imported on all nodes"
+    reclaim_local_docker_image "${IMAGE}"
     break
   fi
   if [ "${attempt}" -eq 1 ]; then

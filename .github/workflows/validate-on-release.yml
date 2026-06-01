@@ -461,6 +461,19 @@ jobs:
           printf '%s' "${EM_TOKEN}" > .electricity-maps-token
           chmod 600 .electricity-maps-token
 
+      - name: Free up runner disk space (multistack builds 11 images)
+        run: |
+          echo "disk before:"; df -h / | tail -1
+          # Service images build inside Docker, so the runner's preinstalled
+          # language SDKs are dead weight. Reclaiming them before the cluster
+          # and the 11 image builds avoids the node disk-pressure eviction storm
+          # that aborted seeding (postgres + grafana evicted, go-svc left Pending).
+          # Keep /opt/hostedtoolcache (helm + kubectl live there); only drop CodeQL.
+          sudo rm -rf /usr/share/dotnet /usr/share/swift /usr/local/lib/android \
+            /opt/ghc /usr/local/share/boost /opt/hostedtoolcache/CodeQL || true
+          docker image prune -af >/dev/null 2>&1 || true
+          echo "disk after:"; df -h / | tail -1
+
       - name: make up-cni (k3d + Cilium + observability + daemon)
         run: |
           make up-cni
@@ -532,7 +545,13 @@ jobs:
 
       - name: Show pod overview (debug)
         if: always()
-        run: kubectl get pods -A || true
+        run: |
+          kubectl get pods -A || true
+          echo "=== node pressure conditions (disk/memory eviction?) ==="
+          kubectl describe nodes | grep -E 'MemoryPressure|DiskPressure|PIDPressure|ephemeral-storage|Allocated resources' || true
+          echo "=== evicted / failed pod reasons ==="
+          kubectl get pods -A -o json 2>/dev/null | jq -r '.items[] | select(.status.phase=="Failed" or .status.reason=="Evicted") | "\(.metadata.namespace)/\(.metadata.name): \(.status.reason // .status.phase) — \(.status.message // "")"' | sort | uniq -c | sort -rn || true
+          echo "=== runner disk ==="; df -h / | tail -1
 
       - name: Upload multistack reports
         if: always()

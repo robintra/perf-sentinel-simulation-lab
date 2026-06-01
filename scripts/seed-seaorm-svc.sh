@@ -26,7 +26,7 @@ import_log="${REPO_ROOT}/tmp/import-${SVC}.log"
 for attempt in 1 2; do
   k3d image import "${IMAGE}" -c "${CLUSTER_NAME}" > "${import_log}" 2>&1 || true
   if diag="$(verify_k3d_image_on_all_nodes "${CLUSTER_NAME}" "${IMAGE}")"; then
-    ok "${IMAGE} imported on all nodes"; break
+    ok "${IMAGE} imported on all nodes"; reclaim_local_docker_image "${IMAGE}"; break
   fi
   if [ "${attempt}" -eq 1 ]; then
     color_yellow "    retry in 2s"; sleep 2

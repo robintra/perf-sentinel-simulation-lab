@@ -40,3 +40,18 @@ verify_k3d_image_on_all_nodes() {
   fi
   return 0
 }
+
+# reclaim_local_docker_image <image>
+#
+# Drops the host Docker copy of <image> once it has been imported into
+# the k3d node containerd. Pods pull from containerd, so the Docker-side
+# image is dead weight afterwards. Removing it keeps the single CI node
+# from hitting disk-pressure eviction while seeding all 11 multistack
+# services in sequence (the cumulative build + `k3d image import` layers
+# triggered a node-wide eviction storm in validate-multistack). The build
+# layer cache is left intact. Best-effort: never fails the caller.
+reclaim_local_docker_image() {
+  local image="$1"
+  [ -n "${image}" ] || return 0
+  docker image rm "${image}" >/dev/null 2>&1 || true
+}
