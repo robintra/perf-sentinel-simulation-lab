@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Cilium 1.19.3 on a freshly created k3d cluster (Flannel
+# Install Cilium 1.19.4 on a freshly created k3d cluster (Flannel
 # disabled in cluster/k3d-config.yaml). Calico is documented as a
 # manual fallback in case Cilium does not stabilize on Docker Desktop
 # arm64. The active CNI name is written to cluster/.cni-active so
@@ -19,7 +19,7 @@ cd "${REPO_ROOT}"
 
 CNI="${1:-cilium}"
 CNI_MARKER="${REPO_ROOT}/cluster/.cni-active"
-CILIUM_VERSION="1.19.3"
+CILIUM_VERSION="1.19.4"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }

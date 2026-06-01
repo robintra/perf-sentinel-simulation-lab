@@ -20,9 +20,9 @@ PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/p
   printf "\033[31m    error: failed to extract perf-sentinel image from manifests/perf-sentinel-daemon.yaml\033[0m\n" >&2
   exit 1
 }
-KPS_CHART_VERSION="84.4.0"
+KPS_CHART_VERSION="86.1.0"
 TEMPO_IMAGE_VERSION="2.10.5"
-OTEL_CHART_VERSION="0.153.0"
+OTEL_CHART_VERSION="0.158.0"
 
 # shellcheck source=./wait-for-ready.sh
 . "${REPO_ROOT}/scripts/wait-for-ready.sh"

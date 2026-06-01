@@ -1,9 +1,9 @@
 # Helm values for open-telemetry/opentelemetry-collector (contrib image).
 #
-# Pinned chart version: 0.153.0 (collector contrib 0.151.0).
+# Pinned chart version: 0.158.0 (collector contrib 0.153.0).
 # Install: helm upgrade --install otel-collector \
 #   open-telemetry/opentelemetry-collector \
-#   -n observability --version 0.153.0 \
+#   -n observability --version 0.158.0 \
 #   -f helm/values/otel-collector.yaml
 
 mode: daemonset

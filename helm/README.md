@@ -6,8 +6,8 @@ script and repeated in a comment at the top of each file.
 
 | File | Chart | Pinned version | Role |
 | --- | --- | --- | --- |
-| `kube-prometheus-stack.yaml` | `prometheus-community/kube-prometheus-stack` | 84.4.0 | Prometheus + Grafana + operator, no Alertmanager nor Thanos. |
-| `otel-collector.yaml` | `open-telemetry/opentelemetry-collector` | 0.153.0 | DaemonSet contrib Collector, exports to Tempo and the daemon. |
+| `kube-prometheus-stack.yaml` | `prometheus-community/kube-prometheus-stack` | 86.1.0 | Prometheus + Grafana + operator, no Alertmanager nor Thanos. |
+| `otel-collector.yaml` | `open-telemetry/opentelemetry-collector` | 0.158.0 | DaemonSet contrib Collector, exports to Tempo and the daemon. |
 | `perf-sentinel-daemon.yaml` | (reserved) | n/a | Placeholder. The daemon ships via `manifests/perf-sentinel-daemon.yaml`. |
 
 Tempo and the perf-sentinel daemon are deployed via direct manifests
