@@ -86,14 +86,17 @@ for i in $(seq 1 "${TOTAL_SAMPLES}"); do
   # the prometheus client process collector. On older daemons (or builds
   # where the collector is cfg-gated off) these are absent, fall back to
   # `kubectl top pod` for RSS in MiB granularity and leave FDs at 0.
-  RSS=$(echo "${METRICS}" | awk '/^process_resident_memory_bytes / {print int($2); exit}')
-  FDS=$(echo "${METRICS}" | awk '/^process_open_fds / {print int($2); exit}')
+  # Feed METRICS via a here-string, not `echo ... | awk`: awk's early `exit`
+  # closes the pipe, and once /metrics grows past the ~64 KB pipe buffer the
+  # echo builtin takes a SIGPIPE that, under `set -o pipefail`, aborts the run.
+  RSS=$(awk '/^process_resident_memory_bytes / {print int($2); exit}' <<<"${METRICS}")
+  FDS=$(awk '/^process_open_fds / {print int($2); exit}' <<<"${METRICS}")
   if [ -z "${RSS}" ]; then
     RSS_MIB=$(kubectl top pod -n observability -l app.kubernetes.io/name=perf-sentinel-daemon --no-headers 2>/dev/null | awk '{gsub("Mi","",$3); print int($3); exit}')
     RSS=$(( ${RSS_MIB:-0} * 1024 * 1024 ))
   fi
   FDS="${FDS:-0}"
-  ACTIVE=$(echo "${METRICS}" | awk '/^perf_sentinel_active_traces / {print int($2); exit}')
+  ACTIVE=$(awk '/^perf_sentinel_active_traces / {print int($2); exit}' <<<"${METRICS}")
   echo -e "${TS}\t${RSS:-0}\t${FDS}\t${ACTIVE:-0}" >> "${SAMPLES_FILE}"
   echo "    sample ${i}/${TOTAL_SAMPLES}: $(tail -1 "${SAMPLES_FILE}")"
   if [ "${i}" -lt "${TOTAL_SAMPLES}" ]; then
