@@ -1,43 +1,109 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":semanticCommits",
-    ":maintainLockFilesWeekly"
-  ],
-  "labels": ["dependencies"],
+  "extends": ["config:recommended", ":semanticCommits", ":maintainLockFilesWeekly"],
+  "timezone": "Europe/Paris",
   "schedule": ["before 6am on monday"],
-  "kubernetes": {
-    "fileMatch": ["manifests/.+\\.yaml$"]
-  },
-  "helm-values": {
-    "fileMatch": ["helm/values/.+\\.yaml$"]
-  },
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "dependencyDashboard": true,
+  "kubernetes": { "fileMatch": ["manifests/.+\\.yaml$"] },
+  "helm-values": { "fileMatch": ["helm/values/.+\\.yaml$"] },
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Track pinned chart and image versions in bootstrap.sh",
+      "description": "kube-prometheus-stack Helm chart version in bootstrap.sh",
       "fileMatch": ["^scripts/bootstrap\\.sh$"],
-      "matchStrings": [
-        "PERF_SENTINEL_VERSION=\"(?<currentValue>.*?)\"",
-        "KPS_CHART_VERSION=\"(?<currentValue>.*?)\"",
-        "TEMPO_IMAGE_VERSION=\"(?<currentValue>.*?)\"",
-        "OTEL_CHART_VERSION=\"(?<currentValue>.*?)\""
-      ],
-      "datasourceTemplate": "docker"
+      "matchStrings": ["KPS_CHART_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "kube-prometheus-stack",
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://prometheus-community.github.io/helm-charts"
+    },
+    {
+      "customType": "regex",
+      "description": "opentelemetry-collector Helm chart version in bootstrap.sh",
+      "fileMatch": ["^scripts/bootstrap\\.sh$"],
+      "matchStrings": ["OTEL_CHART_VERSION=\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "opentelemetry-collector",
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    },
+    {
+      "customType": "regex",
+      "description": "Cilium Helm chart version in install-cni.sh and hubble-ui.sh",
+      "fileMatch": ["^scripts/install-cni\\.sh$", "^scripts/hubble-ui\\.sh$"],
+      "matchStrings": ["CILIUM_VERSION=\"(?<currentValue>[^\"]+)\"", "--version (?<currentValue>1\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "cilium",
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://helm.cilium.io"
+    },
+    {
+      "customType": "regex",
+      "description": "Calico tigera-operator Helm chart version in install-cni.sh",
+      "fileMatch": ["^scripts/install-cni\\.sh$"],
+      "matchStrings": ["--version (?<currentValue>v3\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "tigera-operator",
+      "datasourceTemplate": "helm",
+      "registryUrlTemplate": "https://docs.tigera.io/calico/charts"
+    },
+    {
+      "customType": "regex",
+      "description": "k3d release tag in GitHub workflows",
+      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+      "matchStrings": ["K3D_TAG:\\s*(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "k3d-io/k3d",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "description": "helm CLI version passed to azure/setup-helm in GitHub workflows",
+      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+      "matchStrings": ["version:\\s*'(?<currentValue>v\\d+\\.\\d+\\.\\d+)'"],
+      "depNameTemplate": "helm/helm",
+      "datasourceTemplate": "github-releases"
     }
   ],
   "packageRules": [
     {
-      "description": "Group all Helm chart updates",
-      "matchManagers": ["helm-values", "helmv3"],
-      "groupName": "helm charts"
+      "description": "Out of scope: custom-service application dependency managers",
+      "matchManagers": ["npm", "nuget", "gradle", "maven", "gomod", "pip_requirements", "poetry"],
+      "enabled": false
     },
     {
-      "description": "Pause major bumps on workload images, lab is version-sensitive",
+      "description": "perf-sentinel is the product under test; never propose updates for it",
+      "matchPackageNames": ["ghcr.io/robintra/perf-sentinel"],
+      "enabled": false
+    },
+    {
+      "description": "No major bumps on kubernetes-managed workload images (lab is version-sensitive)",
       "matchManagers": ["kubernetes"],
       "matchUpdateTypes": ["major"],
       "enabled": false
+    },
+    {
+      "description": "Hold grafana/tempo major (v3): isolated, non-automerged, labeled",
+      "matchPackageNames": ["grafana/tempo"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major-review"]
+    },
+    {
+      "description": "Hold helm/helm major (v4): isolated, non-automerged, labeled",
+      "matchPackageNames": ["helm/helm"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["major-review"]
+    },
+    {
+      "description": "Observability charts group (non-major only)",
+      "matchPackageNames": ["kube-prometheus-stack", "opentelemetry-collector", "grafana/tempo"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "observability charts"
+    },
+    {
+      "description": "Cluster tooling group (non-major only)",
+      "matchPackageNames": ["k3d-io/k3d", "helm/helm", "cilium", "tigera-operator"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "cluster tooling"
     }
   ]
 }

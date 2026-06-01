@@ -1,9 +1,9 @@
 # Helm values for prometheus-community/kube-prometheus-stack.
 #
-# Pinned chart version: 84.4.0 (operator app version v0.90.1).
+# Pinned chart version: 86.1.0 (operator app version v0.91.0).
 # Install: helm upgrade --install kube-prometheus-stack \
 #   prometheus-community/kube-prometheus-stack \
-#   -n observability --version 84.4.0 \
+#   -n observability --version 86.1.0 \
 #   -f helm/values/kube-prometheus-stack.yaml
 
 # Lab footprint trimming: no alerting, no Thanos, no admission webhooks.
@@ -34,8 +34,8 @@ nodeExporter:
 grafana:
   enabled: true
   image:
+    # renovate: datasource=docker depName=grafana/grafana
     tag: "13.0.1"
-    sha: "0f86bada30d65ef9d0183b90c1e2682ac92d53d95da8bed322b984ea78a4a73a"
   # Lab credentials. Do not reuse anywhere else.
   adminUser: admin
   adminPassword: admin

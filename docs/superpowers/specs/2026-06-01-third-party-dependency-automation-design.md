@@ -28,16 +28,16 @@ Dependency hygiene in the lab is half-wired and inconsistent:
 
 ## Part A — Immediate manual bumps ("en attendant")
 
-| Component | File(s) | From | To | Type |
-|---|---|---|---|---|
-| Cilium (chart+app) | `scripts/install-cni.sh` (`CILIUM_VERSION`), `scripts/hubble-ui.sh` (`--version`) | 1.19.3 | 1.19.4 | patch |
-| kube-prometheus-stack | `scripts/bootstrap.sh` (`KPS_CHART_VERSION`) | 84.4.0 | 86.1.0 | 2 minors |
-| opentelemetry-collector | `scripts/bootstrap.sh` (`OTEL_CHART_VERSION`) | 0.153.0 | 0.158.0 | minor |
-| grafana/tempo | — | 2.10.5 | (hold v3.0.0) | major — held |
-| helm (`setup-helm`) | — | v3.18.4 | (hold v4.2.0) | major — held |
-| k3d | — | v5.8.3 | — | already latest |
-| calico (tigera-operator) | — | v3.32.0 | — | already latest |
-| kubectl | — | `latest` (floating) | — | n/a |
+| Component                | File(s)                                                                           | From                | To            | Type           |
+|--------------------------|-----------------------------------------------------------------------------------|---------------------|---------------|----------------|
+| Cilium (chart+app)       | `scripts/install-cni.sh` (`CILIUM_VERSION`), `scripts/hubble-ui.sh` (`--version`) | 1.19.3              | 1.19.4        | patch          |
+| kube-prometheus-stack    | `scripts/bootstrap.sh` (`KPS_CHART_VERSION`)                                      | 84.4.0              | 86.1.0        | 2 minors       |
+| opentelemetry-collector  | `scripts/bootstrap.sh` (`OTEL_CHART_VERSION`)                                     | 0.153.0             | 0.158.0       | minor          |
+| grafana/tempo            | —                                                                                 | 2.10.5              | (hold v3.0.0) | major — held   |
+| helm (`setup-helm`)      | —                                                                                 | v3.18.4             | (hold v4.2.0) | major — held   |
+| k3d                      | —                                                                                 | v5.8.3              | —             | already latest |
+| calico (tigera-operator) | —                                                                                 | v3.32.0             | —             | already latest |
+| kubectl                  | —                                                                                 | `latest` (floating) | —             | n/a            |
 
 Cilium is bumped in **both** files (kills the duplicate-drift). KPS 84→86 may carry values/CRD changes; the fresh-install lab run is the validation gate (`helm upgrade --install --wait` fails loudly if values are incompatible).
 
