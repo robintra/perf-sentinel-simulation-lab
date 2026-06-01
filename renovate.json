@@ -6,13 +6,13 @@
   "labels": ["dependencies"],
   "commitMessagePrefix": "chore(deps):",
   "dependencyDashboard": true,
-  "kubernetes": { "fileMatch": ["manifests/.+\\.yaml$"] },
-  "helm-values": { "fileMatch": ["helm/values/.+\\.yaml$"] },
+  "kubernetes": { "managerFilePatterns": ["/manifests/.+\\.yaml$/"] },
+  "helm-values": { "managerFilePatterns": ["/helm/values/.+\\.yaml$/"] },
   "customManagers": [
     {
       "customType": "regex",
       "description": "kube-prometheus-stack Helm chart version in bootstrap.sh",
-      "fileMatch": ["^scripts/bootstrap\\.sh$"],
+      "managerFilePatterns": ["/^scripts/bootstrap\\.sh$/"],
       "matchStrings": ["KPS_CHART_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "kube-prometheus-stack",
       "datasourceTemplate": "helm",
@@ -21,7 +21,7 @@
     {
       "customType": "regex",
       "description": "opentelemetry-collector Helm chart version in bootstrap.sh",
-      "fileMatch": ["^scripts/bootstrap\\.sh$"],
+      "managerFilePatterns": ["/^scripts/bootstrap\\.sh$/"],
       "matchStrings": ["OTEL_CHART_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "opentelemetry-collector",
       "datasourceTemplate": "helm",
@@ -30,7 +30,7 @@
     {
       "customType": "regex",
       "description": "Cilium Helm chart version in install-cni.sh and hubble-ui.sh",
-      "fileMatch": ["^scripts/install-cni\\.sh$", "^scripts/hubble-ui\\.sh$"],
+      "managerFilePatterns": ["/^scripts/install-cni\\.sh$/", "/^scripts/hubble-ui\\.sh$/"],
       "matchStrings": ["CILIUM_VERSION=\"(?<currentValue>[^\"]+)\"", "--version (?<currentValue>1\\.\\d+\\.\\d+)"],
       "depNameTemplate": "cilium",
       "datasourceTemplate": "helm",
@@ -39,7 +39,7 @@
     {
       "customType": "regex",
       "description": "Calico tigera-operator Helm chart version in install-cni.sh",
-      "fileMatch": ["^scripts/install-cni\\.sh$"],
+      "managerFilePatterns": ["/^scripts/install-cni\\.sh$/"],
       "matchStrings": ["--version (?<currentValue>v3\\.\\d+\\.\\d+)"],
       "depNameTemplate": "tigera-operator",
       "datasourceTemplate": "helm",
@@ -48,7 +48,7 @@
     {
       "customType": "regex",
       "description": "k3d release tag in GitHub workflows",
-      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
       "matchStrings": ["K3D_TAG:\\s*(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
       "depNameTemplate": "k3d-io/k3d",
       "datasourceTemplate": "github-releases"
@@ -56,7 +56,7 @@
     {
       "customType": "regex",
       "description": "helm CLI version passed to azure/setup-helm in GitHub workflows",
-      "fileMatch": ["^\\.github/workflows/[^/]+\\.ya?ml$"],
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
       "matchStrings": ["version:\\s*'(?<currentValue>v\\d+\\.\\d+\\.\\d+)'"],
       "depNameTemplate": "helm/helm",
       "datasourceTemplate": "github-releases"
@@ -65,7 +65,7 @@
   "packageRules": [
     {
       "description": "Out of scope: custom-service application dependency managers",
-      "matchManagers": ["npm", "nuget", "gradle", "maven", "gomod", "pip_requirements", "poetry"],
+      "matchManagers": ["npm", "nuget", "gradle", "maven", "maven-wrapper", "cargo", "gomod", "pip_requirements", "poetry"],
       "enabled": false
     },
     {
@@ -80,9 +80,10 @@
       "enabled": false
     },
     {
-      "description": "Hold grafana/tempo major (v3): isolated, non-automerged, labeled",
+      "description": "Hold grafana/tempo major (v3): surface as isolated, non-automerged review PR (overrides the kubernetes no-major rule above)",
       "matchPackageNames": ["grafana/tempo"],
       "matchUpdateTypes": ["major"],
+      "enabled": true,
       "automerge": false,
       "addLabels": ["major-review"]
     },
