@@ -50,7 +50,7 @@ jobs:
 
       - name: Install k3d
         env:
-          K3D_TAG: v5.8.3
+          K3D_TAG: v5.9.0
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
