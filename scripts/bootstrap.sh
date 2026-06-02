@@ -21,7 +21,7 @@ PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/p
   exit 1
 }
 KPS_CHART_VERSION="86.1.0"
-TEMPO_IMAGE_VERSION="2.10.5"
+TEMPO_IMAGE_VERSION="3.0.0"
 OTEL_CHART_VERSION="0.158.0"
 
 # shellcheck source=./wait-for-ready.sh

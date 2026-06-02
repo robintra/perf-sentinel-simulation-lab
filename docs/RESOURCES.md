@@ -126,19 +126,19 @@ S3 will add GitLab CE self-hosted via Helm. Estimate:
 
 Allocate at least 12 GiB to Docker Desktop when chaining S1 + S2 + S3.
 
-## Pinned versions (snapshot 2026-05-01)
+## Pinned versions (snapshot 2026-06-02)
 
 | Component | Version | Source |
 | --- | --- | --- |
 | k3d | 5.x (5.8.3 verifie 2026-05-01) | brew install k3d |
 | Kubernetes (k3s) | v1.35.4-k3s1 | pinned in cluster/k3d-config.yaml |
-| Cilium | 1.19.3 | helm repo cilium |
+| Cilium | 1.19.4 | helm repo cilium |
 | PostgreSQL | 18.3-alpine | docker.io/library/postgres |
-| Tempo (binary) | 2.10.5 | image grafana/tempo:2.10.5, direct manifest |
-| kube-prometheus-stack | 84.4.0 | helm repo prometheus-community |
+| Tempo (binary) | 3.0.0 | image grafana/tempo:3.0.0, direct manifest |
+| kube-prometheus-stack | 86.1.0 | helm repo prometheus-community |
 | Grafana | 13.0.1 | explicit image override |
-| opentelemetry-collector (chart) | 0.153.0 | helm repo open-telemetry |
-| OTel Collector contrib (image) | 0.151.0 | bundled |
+| opentelemetry-collector (chart) | 0.158.0 | helm repo open-telemetry |
+| OTel Collector contrib (image) | 0.153.0 | bundled |
 | OTel Java agent | 2.27.0 | services/shared-dockerfile/Dockerfile |
 | Spring Boot starter parent | 4.0.6 | services/pom.xml (latest GA) |
 | eclipse-temurin (Java build) | 25-jdk-alpine | docker.io/library/eclipse-temurin |

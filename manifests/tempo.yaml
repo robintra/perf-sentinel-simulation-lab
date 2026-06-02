@@ -23,17 +23,10 @@ data:
             http:
               endpoint: 0.0.0.0:4318
 
-    ingester:
-      trace_idle_period: 10s
-      max_block_duration: 5m
-      lifecycler:
-        ring:
-          replication_factor: 1
-
-    compactor:
-      compaction:
-        block_retention: 24h
-
+    # Tempo 3.0 removed the classic `ingester` and `compactor` modules
+    # (replaced by the block-builder / live-store write path). Monolithic
+    # `-target=all` runs them with built-in defaults, so no explicit config
+    # is needed here; verified with `tempo -config.verify` + a local boot.
     storage:
       trace:
         backend: local
@@ -86,7 +79,7 @@ metadata:
   labels:
     app.kubernetes.io/name: tempo
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "2.10.5"
+    app.kubernetes.io/version: "3.0.0"
 spec:
   serviceName: tempo
   replicas: 1
@@ -98,7 +91,7 @@ spec:
       labels:
         app.kubernetes.io/name: tempo
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "2.10.5"
+        app.kubernetes.io/version: "3.0.0"
     spec:
       # UID 10001 matches the upstream grafana/tempo image's tempo user.
       securityContext:
@@ -110,7 +103,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: tempo
-          image: grafana/tempo@sha256:ee21727732c7a7199cb71c3eee9153bbf23f9b0b87619f0555a0cf21a67f1a33  # 2.10.5
+          image: grafana/tempo@sha256:78439f7f7cf3c97122846c13a832e060c6c7ef67dcc814dccf0a5f3f78393a93  # 3.0.0
           imagePullPolicy: IfNotPresent
           args:
             - -config.file=/etc/tempo/tempo.yaml

@@ -27,7 +27,7 @@ helm search repo open-telemetry/opentelemetry-collector --versions | head
 For Tempo, check the new image tags:
 
 ```bash
-docker run --rm grafana/tempo:2.10.5 -version
+docker run --rm grafana/tempo:3.0.0 -version
 # or look at https://github.com/grafana/tempo/releases
 ```
 

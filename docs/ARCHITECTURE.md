@@ -82,7 +82,7 @@ chart, or kube-prometheus-stack splits), revisit this split.
 
 ### Tempo single-binary (direct manifest)
 
-Tempo 2.10.5 is deployed via `manifests/tempo.yaml` in single-binary
+Tempo 3.0.0 is deployed via `manifests/tempo.yaml` in single-binary
 mode (`-target=all`). No Helm chart: both official Grafana charts
 (`grafana/tempo` and `grafana/tempo-distributed`) are flagged
 `deprecated: true` and Grafana points to the Tempo Operator, which
