@@ -74,6 +74,9 @@ docker image inspect "${IMAGE}" >/dev/null 2>&1 \
 cp "${FIXTURES_DIR}/reports-thr5.ndjson"  "${TMP_DIR}/reports-thr5.ndjson"
 cp "${FIXTURES_DIR}/reports-thr50.ndjson" "${TMP_DIR}/reports-thr50.ndjson"
 cp "${FIXTURES_DIR}/org-config.toml"      "${TMP_DIR}/org-config.toml"
+# Drop any output from a previous run so a stale file can never satisfy a
+# later sub-test's `[ -f ... ]` guard if this run's disclose fails to write.
+rm -f "${TMP_DIR}"/out-*.json
 ok "fixtures + image OK (${IMAGE})"
 
 # disclose is offline (no daemon contact); run as the host user so outputs are
@@ -118,6 +121,7 @@ fi
 
 # === Sub-test 2: flat-field aliasing of the canonical tier ===
 step "2. flat avoidable fields alias canonical_waste"
+note=""
 if [ -f "${TMP_DIR}/out-thr5.json" ] \
    && note="$(python3 - "${TMP_DIR}/out-thr5.json" <<'PY'
 import json, sys
@@ -147,11 +151,15 @@ if in_image disclose --intent official --confidentiality public "${PERIOD_ARGS[@
      --org-config /workdir/org-config.toml >/dev/null 2>&1; then
   vh="$(in_image verify-hash --report /workdir/out-official.json --no-identity-check --format json 2>/dev/null || true)"
   ch_ok="$(printf '%s' "${vh}" | python3 -c "import sys,json; print(json.load(sys.stdin)['verifications']['content_hash']['status'])" 2>/dev/null || echo unknown)"
-  # tamper: mutate a field on the host, verify-hash must report content_hash fail
-  python3 - "${TMP_DIR}/out-official.json" "${TMP_DIR}/out-official-tampered.json" <<'PY'
+  # tamper: mutate a field on the host, verify-hash must report content_hash fail.
+  # Mutate canonical_waste.carbon_kgco2eq (sub-test 1 already proves it exists),
+  # so a schema rename cannot KeyError here; `|| true` keeps a tamper-write
+  # failure from aborting the whole script under `set -e` (it degrades to a
+  # FAIL verdict instead, via the ch_tampered check below).
+  python3 - "${TMP_DIR}/out-official.json" "${TMP_DIR}/out-official-tampered.json" <<'PY' || true
 import json, sys
 r = json.load(open(sys.argv[1]))
-r["aggregate"]["total_energy_kwh"] += 1.0
+r["aggregate"]["canonical_waste"]["carbon_kgco2eq"] += 1.0
 json.dump(r, open(sys.argv[2], "w"), indent=2)
 PY
   vh_t="$(in_image verify-hash --report /workdir/out-official-tampered.json --no-identity-check --format json 2>/dev/null || true)"
@@ -169,6 +177,7 @@ record "3. official + verify-hash" "${t3}" "${t3note}"
 
 # === Sub-test 4: anti-gaming invariant (over thr50) ===
 step "4. anti-gaming: canonical pinned at 2 while operational(50) under-reports"
+note=""
 if in_image disclose --intent internal --confidentiality internal "${PERIOD_ARGS[@]}" \
      --input /workdir/reports-thr50.ndjson --output /workdir/out-thr50.json \
      --org-config /workdir/org-config.toml >/dev/null 2>&1 \

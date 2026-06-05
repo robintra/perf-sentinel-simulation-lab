@@ -194,6 +194,13 @@ jobs:
       - name: B1 verify-output-formats-coverage (depends on ci-shift-left)
         run: make verify-output-formats-coverage
 
+      - name: B1 verify-disclose (two-tier waste schema v1.1, CLI-only)
+        # disclose is offline (no daemon/cluster contact). Pinned to 0.8.2 —
+        # the version that introduced the two-tier feature and whose embedded
+        # CCF vintage matches the fixture org-config — so it stays a stable
+        # contract lock regardless of which release triggered this workflow.
+        run: PERF_SENTINEL_VERSION=0.8.2 make verify-disclose
+
       - name: B1 templates (LOCAL ONLY, surface as notices)
         # Notices instead of warnings: these 3 scenarios are
         # intentionally local-only (GitLab CE RAM, jenkinsfile-runner
