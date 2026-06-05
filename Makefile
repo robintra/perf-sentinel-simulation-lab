@@ -19,7 +19,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-hybrid-daemon-batch verify-batch-tempo-scrape verify-daemon-otlp-direct \
         verify-multiformat-input verify-calibrate-mode verify-sidecar-pattern \
         verify-correlation-finding verify-pg-stat verify-grafana-dashboard \
-        verify-ci-shift-left verify-output-formats-coverage \
+        verify-ci-shift-left verify-output-formats-coverage verify-disclose \
         verify-template-gitlab-ci verify-template-jenkinsfile verify-template-github-actions \
         verify-multi-agent-load verify-long-running-drift \
         verify-failure-mode-daemon-restart verify-failure-mode-backend-down \
@@ -105,6 +105,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/record-validation.sh
 	@bash -n release-gate/check-lab-validation.sh
 	@bash -n scenarios/intent-validator/verify.sh
+	@bash -n scenarios/disclose/verify.sh
 	@bash -n scenarios/hybrid-daemon-batch/verify.sh
 	@bash -n scenarios/batch-tempo-scrape/verify.sh
 	@bash -n scenarios/daemon-otlp-direct/verify.sh
@@ -341,6 +342,9 @@ verify-verify-hash-roundtrip: ## verify-hash CLI contract (exit codes 1/3/4 + id
 verify-intent-validator: ## disclose-time validators (75% gate + org-config required fields)
 	./scenarios/intent-validator/verify.sh
 
+verify-disclose: ## periodic disclosure two-tier waste (schema v1.1, verify-hash round-trip, anti-gaming)
+	./scenarios/disclose/verify.sh
+
 verify-template-gitlab-ci: ## Validate upstream gitlab-ci.yml template via GitLab CE in-cluster
 	./scenarios/template-gitlab-ci/verify.sh
 
@@ -379,7 +383,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 25 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 26 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -393,7 +397,7 @@ verify-all-scenarios: ## Run all 25 scenarios sequentially (see docs/SCENARIOS.m
 	@# - resilience scenarios run last: they restart the daemon, scale
 	@#   shared backends to 0, and apply temporary NetworkPolicies.
 	@#   Running them after the rest avoids polluting earlier scenarios.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

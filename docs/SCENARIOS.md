@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 25 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The sixteen others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios, the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose and verify-hash CLI. The release gate runs all 25. The latest recorded PASS is v0.8.2 in `release-gate/lab-validations.txt`.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 26 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The seventeen others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios, the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste schema v1.1) and verify-hash CLI. The release gate runs all 25. The latest recorded PASS is v0.8.2 in `release-gate/lab-validations.txt`.
 
 ## Run
 
