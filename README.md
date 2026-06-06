@@ -1,24 +1,34 @@
 # perf-sentinel simulation lab
 
 Local Kubernetes cluster preconfigured to validate perf-sentinel
-against instrumented Java services. The lab ships an observability
-stack, three Java 25 + Spring Boot 4 services that intentionally
-exhibit performance anti-patterns, and a k6 driven validation
-pipeline that asserts perf-sentinel correctly classifies each
-pattern.
+against instrumented services across many language stacks. The lab
+ships an observability stack, fourteen services that intentionally
+exhibit performance anti-patterns (three core Java 25 + Spring Boot 4
+services plus eleven multistack services), and a k6 driven validation
+pipeline that asserts perf-sentinel classifies each pattern correctly.
+It also acts as the pre-tag release gate for perf-sentinel: the latest
+recorded PASS is v0.8.2.
 
 ## What it is for
 
 The project is an external consumer of perf-sentinel. It deploys a
-local k3d cluster with OpenTelemetry Collector, Tempo, Prometheus,
-Grafana, perf-sentinel daemon, PostgreSQL, plus three application
-services in the `shop` namespace (`order-service`, `payment-service`,
-`notification-service`) that produce the ten canonical anti-pattern
-classes on demand via `/api/fault/*` endpoints.
+local k3d cluster (Cilium CNI, zero-trust NetworkPolicy) with
+OpenTelemetry Collector, Tempo, Prometheus, Grafana, perf-sentinel
+daemon, PostgreSQL, plus the three core Java services in the `shop`
+namespace (`order-service`, `payment-service`, `notification-service`)
+that produce the ten canonical anti-pattern classes on demand via
+`/api/fault/*` endpoints. A multistack expansion adds eleven more
+services that reproduce the same anti-patterns across the JVM
+(Quarkus, Quarkus + Mutiny, Helidon MP, Helidon SE), .NET, Go, NestJS,
+Django, FastAPI, and Rust (Diesel, SeaORM). See
+[docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md).
 
 `make seed-services && make validate-findings` runs the ten k6
-scenarios in sequence and reports how many anti-patterns
-perf-sentinel detected on the expected service.
+scenarios on the core Java services and reports how many anti-patterns
+perf-sentinel detected on the expected service. `make verify-all-scenarios`
+runs the full suite of 26 deployment, CI, resilience, measured-energy,
+and disclosure scenarios, documented in
+[docs/SCENARIOS.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md).
 
 ## Prerequisites
 
@@ -41,15 +51,17 @@ make up
 open http://localhost:3000   # Grafana, admin / admin
 ```
 
-`make up` takes about 5 to 8 minutes on the first run. Subsequent
-runs are faster thanks to Docker and Helm cache.
+`make up` installs Cilium and then bootstraps the stack, about 8 to
+10 minutes on the first run. Subsequent runs are faster thanks to the
+Docker and Helm caches. After a `k3d cluster start` on an existing
+cluster, run `make recover` to bounce Cilium and any not-Ready pods.
 
 ## Architecture
 
 High-level view:
 
 ```
-  Java services (S2)  ─┐
+  App services (shop) ─┐
                        │ OTLP gRPC/HTTP
                        ▼
                   OTel Collector (DaemonSet)
@@ -79,38 +91,48 @@ or `make down`.
 Namespaces:
 
 - `observability`: Tempo, Prometheus, Grafana, OTel Collector,
-  perf-sentinel daemon.
-- `db`: PostgreSQL 18.3 with schemas `orders`, `payments`,
-  `notifications`.
-- `shop`: empty in S1, reserved for the Java services in S2.
-- `ci`: empty in S1, reserved for GitLab/Forgejo in S3/S4.
+  perf-sentinel daemon, and the Scaphandre, Kepler, and Redfish energy
+  mocks.
+- `db`: PostgreSQL 18.3 with the core schemas `orders`, `payments`,
+  `notifications`, plus one schema per multistack service.
+- `shop`: the application services (the 3 core Java services, and the
+  multistack services once seeded).
+- `ci`: reserved for in-cluster CI experiments.
+- `gitlab-ce`: GitLab CE, deployed on demand by `make up-gitlab` to
+  validate the perf-sentinel GitLab CI template.
 
 ## Make targets
 
 ```bash
-make up           # full bootstrap
+make up           # full bootstrap (installs Cilium, then the stack)
 make down         # tear down the cluster
 make reset        # down then up
-make validate     # offline syntactic validation (manifests + helm + dashboards)
+make recover      # bounce Cilium + not-Ready pods after a cluster start
+make validate     # offline validation (manifests, helm, dashboards, scripts)
 make status       # pod status and daemon endpoint health (curl)
 make logs         # tail observability namespace logs
 make grafana      # open Grafana in the browser
 make psql         # open a psql shell against the lab database
 make inspect      # launch the perf-sentinel TUI (host binary required)
-make ps           # docker ps for k3d containers
-make clean-images # docker image prune
-make help         # list targets
+make help         # list every target
 
 # Service deployment (depends on `make up` first)
-make seed-services       # build, import, helm install the 3 Java services
-make teardown-services   # helm uninstall the 3 services
-make inject-all          # alias of validate-findings
-make validate-findings   # run 10 k6 scenarios, assert findings, write tmp/validation-report.md
+make seed-services                         # the 3 core Java services
+make seed-quarkus-svc ... seed-seaorm-svc  # the 11 multistack services (see make help)
+make validate-findings                     # 10 k6 scenarios on the core services, assert findings
 
-# GreenOps integration (optional, requires an Electricity Maps token)
-make seed-electricity-maps        # provision the token Secret
-make verify-electricity-maps      # confirm the integration is live
-make capture-greenops-screenshot  # render a PNG of the report banner
+# Scenario suite
+make verify-all-scenarios   # run all 26 scenarios (see docs/SCENARIOS.md)
+make verify-disclose        # periodic disclosure two-tier waste (schema v1.1)
+# plus one verify-<name> target per scenario, listed by make help
+
+# GreenOps and measured energy (optional)
+make seed-electricity-maps / verify-electricity-maps
+make seed-scaphandre-mock / seed-kepler-mock / seed-redfish-mock
+make verify-measured-energy-chain
+
+# GitLab CI template validation (optional, ~10 min)
+make up-gitlab / seed-gitlab-project / verify-gitlab-perf-sentinel / down-gitlab
 ```
 
 ## Verifications after `make up`
@@ -125,7 +147,7 @@ open http://localhost:3000
 # 3. perf-sentinel daemon responding
 curl -s http://localhost:14318/api/status | python3 -m json.tool
 
-# 4. No findings yet (expected in S1, no traffic)
+# 4. No findings yet (none until traffic is injected)
 curl -s http://localhost:14318/api/findings | python3 -m json.tool
 
 # 5. Tempo ready
@@ -181,7 +203,7 @@ To change these values, edit `manifests/perf-sentinel-daemon.yaml`,
 re-apply with `kubectl apply -f`, then
 `kubectl rollout restart deployment/perf-sentinel-daemon -n observability`.
 
-## Java services and anti-patterns
+## Core services and anti-patterns
 
 Three Spring Boot 4 services live in the `shop` namespace. Each
 exposes one `/api/fault/<pattern>` endpoint per anti-pattern it owns,
@@ -193,10 +215,13 @@ plus actuator health and prometheus endpoints.
 | payment-service      | 8081 | payments        | redundant_sql, slow_http                                            |
 | notification-service | 8082 | notifications   | n_plus_one_http, excessive_fanout, chatty_service, serialized_calls |
 
-Together they cover the ten canonical detection classes of
-perf-sentinel 0.5.6. `make validate-findings` exercises all ten
-through k6 Jobs running in-cluster and asserts that each scenario
-produces at least one matching finding on the expected service.
+Together they cover the ten canonical detection classes.
+`make validate-findings` exercises all ten through k6 Jobs running
+in-cluster and asserts that each scenario produces at least one
+matching finding on the expected service. The eleven multistack
+services reproduce the same ten patterns in other language stacks.
+Drive one with `scripts/run-multistack-scenario.sh <stack>`, and see
+[docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md).
 
 ## GreenOps integration
 
@@ -206,19 +231,36 @@ the configured scoring policy in the report dashboard. Optional, the
 lab works fine on the bundled `annual` source when no token is
 provisioned.
 
+Beyond the proxy and Electricity Maps paths, the daemon ingests
+measured energy from Scaphandre (RAPL), Kepler (eBPF), and Redfish
+(BMC) exporters. The lab ships Python stdlib mocks for all three, so
+those scrape paths run without bare-metal counters. perf-sentinel
+0.8.2 also adds periodic disclosure with two-tier avoidable-waste
+reporting (schema v1.1). The `disclose` scenario locks that contract.
+
 Setup, sandbox vs trial differences, configuration knobs, and visual
 proof: [docs/GREENOPS.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/GREENOPS.md).
 
-## Roadmap
+## Status
 
-- **S1 (shipped)**: k3d cluster + observability + Postgres + daemon.
-- **S2 (shipped)**: 3 Java 25 + Spring Boot 4 services with
-  `/api/fault/*` endpoints. 10 k6 scenarios. validate-findings
-  pipeline.
-- **S3 (TBD)**: GitLab CE self-hosted via Helm to validate the
-  perf-sentinel GitLab CI template.
-- **S4 (optional)**: Forgejo + Forgejo Actions for the GitHub Actions
-  template.
+All planned milestones have shipped:
+
+- k3d cluster (Cilium CNI, zero-trust NetworkPolicy), observability
+  stack, PostgreSQL, and the perf-sentinel daemon.
+- 3 core Java 25 + Spring Boot 4 services with `/api/fault/*`
+  endpoints, 10 k6 scenarios, and the validate-findings pipeline.
+- A multistack expansion: 11 more services across the JVM, .NET, Go,
+  NestJS, Django, FastAPI, and Rust
+  ([docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md)).
+- Measured-energy backends (Scaphandre, Kepler, Redfish) and GreenOps
+  carbon scoring
+  ([docs/GREENOPS.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/GREENOPS.md)).
+- GitLab CE for the GitLab CI template
+  ([docs/GITLAB-CI.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/GITLAB-CI.md)),
+  plus Jenkins and GitHub Actions template scenarios.
+- A release gate: the lab is the pre-tag validation for perf-sentinel,
+  latest recorded PASS v0.8.2
+  ([docs/RELEASE-GATE.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/RELEASE-GATE.md)).
 
 ## Troubleshooting
 
@@ -227,7 +269,7 @@ dashboard, etc.) and fixes: [docs/TROUBLESHOOTING.md](https://github.com/robintr
 
 ## Resources
 
-RAM/CPU estimate per component and per sprint:
+RAM/CPU estimate per component:
 [docs/RESOURCES.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/RESOURCES.md).
 
 ## License
