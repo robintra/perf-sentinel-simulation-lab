@@ -28,6 +28,27 @@ step() { color_blue "==> $*"; }
 ok()   { color_green "    ok: $*"; }
 die()  { color_red   "    error: $*"; exit 1; }
 
+# k3d returns from `cluster create` as soon as the containers start, but the
+# k3s API server keeps booting for a few more seconds and answers 503 "the
+# server is currently unable to handle the request" in that window. With
+# Flannel disabled there is no CNI yet, but the API server comes up
+# independently of pod networking, so we can gate on it before any helm call.
+# helm's preflight reachability check otherwise hits the 503 window and aborts
+# (observed on run 27070024796, 2026-06-06: "cluster reachability check
+# failed: kubernetes cluster unreachable", 4s after cluster create).
+step "Waiting for the Kubernetes API server to be reachable"
+api_attempts=30
+for attempt in $(seq 1 "${api_attempts}"); do
+  if kubectl get --raw='/healthz' >/dev/null 2>&1; then
+    ok "API server reachable"
+    break
+  fi
+  if [ "${attempt}" -eq "${api_attempts}" ]; then
+    die "API server not reachable after ${api_attempts} attempts (~60s)"
+  fi
+  sleep 2
+done
+
 case "${CNI}" in
   cilium)
     step "Installing Cilium ${CILIUM_VERSION} via Helm"
