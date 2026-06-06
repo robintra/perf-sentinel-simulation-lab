@@ -13,7 +13,8 @@
 # disclosure_waste + green_summary, temporal_coverage is derived from the ts
 # dates by the aggregator):
 #   - reports-dense.ndjson   one window per UTC day, 30 days  -> coverage 1.0
-#   - reports-sparse.ndjson  3 windows (days 0/14/29)         -> coverage 0.1, gap 14
+#   - reports-sparse.ndjson  3 windows (2026-05-08/05-22/06-06) -> coverage 0.1,
+#                            largest_gap 14 (missing days in the 05-22..06-06 span)
 #
 # 5 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
 # (defaults to 0.8.3, the version that introduced v1.2):
@@ -209,7 +210,9 @@ record "4. verify-hash round-trip" "${t4}" "${t4note}"
 
 # === Sub-test 5: v1.2 validator reject (requests_measured > total_requests_in_period) ===
 step "5. official rejects requests_measured > total_requests_in_period (v1.2 rule)"
-sed 's#^\[scope_manifest\]#[scope_manifest]\ntotal_requests_in_period = 1#' \
+# Insert the key right after the [scope_manifest] header. awk (not `sed s/\n/`)
+# because `\n` in a sed replacement is GNU-only, not portable to BSD sed.
+awk '1; /^\[scope_manifest\]$/ { print "total_requests_in_period = 1" }' \
   "${TMP_DIR}/org-config.toml" > "${TMP_DIR}/org-config-badrequests.toml"
 rm -f "${TMP_DIR}/out-c5.json"
 out5="$(in_image disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \
