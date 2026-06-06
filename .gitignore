@@ -38,6 +38,9 @@ services/**/*.iml
 *.swo
 *~
 
+# Brainstorming / design specs stay local, not committed.
+docs/superpowers/
+
 # Visual proof artifacts produced by make capture-greenops-screenshot
 # (PNG, HTML, Chrome logs) stay untracked. `artifacts/fixtures/` is the
 # exception: it carries the GitLab CI template test project fixtures
