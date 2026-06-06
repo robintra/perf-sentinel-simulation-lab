@@ -201,6 +201,12 @@ jobs:
         # contract lock regardless of which release triggered this workflow.
         run: PERF_SENTINEL_VERSION=0.8.2 make verify-disclose
 
+      - name: B1 verify-disclose-temporal (disclosure v1.2 continuity, CLI-only)
+        # Same offline contract-lock pattern as verify-disclose. Pinned to 0.8.3,
+        # the version that introduced schema v1.2 (temporal_coverage,
+        # coverage_basis) and whose CCF vintage matches the fixture org-config.
+        run: PERF_SENTINEL_VERSION=0.8.3 make verify-disclose-temporal
+
       - name: B1 templates (LOCAL ONLY, surface as notices)
         # Notices instead of warnings: these 3 scenarios are
         # intentionally local-only (GitLab CE RAM, jenkinsfile-runner
