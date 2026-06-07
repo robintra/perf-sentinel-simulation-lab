@@ -1216,12 +1216,12 @@ ConfigMap holds `trace_ttl_ms = 30000` so the trace stays in-flight, then runs
 two controls reading the same per-window NDJSON archive: a **positive** control
 (graceful `SIGTERM` via `scale --replicas=0`) where the in-flight finding is
 flushed, and a **negative** control (ungraceful `SIGKILL` of the daemon PID via
-`docker exec <node> kill -9`) where it is lost. Needs the image under test
-imported (`SIGTERM_DRAIN_IMAGE`, default `perf-sentinel:0.8.5-lab`); on a 0.8.4
+`docker exec <node> kill -9`) where it is lost. Tests the image under test
+(`SIGTERM_DRAIN_IMAGE`, default `ghcr.io/robintra/perf-sentinel:0.8.5`); on a 0.8.4
 daemon the positive control FAILs by design, which is the counter-check.
 
 ```bash
-SIGTERM_DRAIN_IMAGE=perf-sentinel:0.8.5-lab make verify-daemon-sigterm-drain
+make verify-daemon-sigterm-drain   # default: ghcr.io/robintra/perf-sentinel:0.8.5
 ```
 
 ### failure-mode-backend-down

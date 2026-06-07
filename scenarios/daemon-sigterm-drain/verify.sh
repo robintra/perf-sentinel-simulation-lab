@@ -49,9 +49,10 @@ FIX_DIR="$(cd "$(dirname "$0")" && pwd)/fixtures"
 mkdir -p "${TMP_DIR}"
 
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
-# Image under test. Default: the locally-built 0.8.5 image (see scripts/k3d-image.sh
-# and the README). Override with a 0.8.4 image for the counter-check.
-SIGTERM_DRAIN_IMAGE="${SIGTERM_DRAIN_IMAGE:-perf-sentinel:0.8.5-lab}"
+# Image under test. Default: the published 0.8.5 image. Override with a 0.8.4
+# image for the counter-check, or a local build (perf-sentinel:0.8.5-lab) before
+# the official digest is published.
+SIGTERM_DRAIN_IMAGE="${SIGTERM_DRAIN_IMAGE:-ghcr.io/robintra/perf-sentinel:0.8.5}"
 ARCHIVE_PATH="/var/lib/perf-sentinel/${SCENARIO}-archive.ndjson"
 INJECT_IMAGE="${INJECT_IMAGE:-curlimages/curl:8.11.1}"
 PVC_UTIL_IMAGE="${PVC_UTIL_IMAGE:-busybox:1.37}"

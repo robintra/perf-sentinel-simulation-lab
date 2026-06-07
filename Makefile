@@ -405,10 +405,10 @@ verify-all-scenarios: ## Run all 28 scenarios sequentially (see docs/SCENARIOS.m
 	@# - resilience scenarios run last: they restart the daemon, scale
 	@#   shared backends to 0, and apply temporary NetworkPolicies.
 	@#   Running them after the rest avoids polluting earlier scenarios.
-	@# - daemon-sigterm-drain swaps the daemon image to a 0.8.5+ build and
-	@#   restores the committed image on cleanup; it needs the image under
-	@#   test (SIGTERM_DRAIN_IMAGE, default perf-sentinel:0.8.5-lab) imported
-	@#   into k3d, otherwise it FAILs the positive control by design.
+	@# - daemon-sigterm-drain swaps the daemon image to the image under test
+	@#   (SIGTERM_DRAIN_IMAGE, default ghcr.io/robintra/perf-sentinel:0.8.5) and
+	@#   restores the committed image on cleanup; on a pre-0.8.5 image it FAILs
+	@#   the positive control by design.
 	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
