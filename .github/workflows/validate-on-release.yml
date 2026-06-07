@@ -207,6 +207,25 @@ jobs:
         # coverage_basis) and whose CCF vintage matches the fixture org-config.
         run: PERF_SENTINEL_VERSION=0.8.3 make verify-disclose-temporal
 
+      - name: B1 verify-daemon-sigterm-drain (0.8.5 graceful drain-on-SIGTERM)
+        # Proves the v0.8.5 contract: a graceful SIGTERM (scale-down) drains the
+        # in-flight streaming window through detection (positive control), while an
+        # ungraceful SIGKILL loses it (negative control). The scenario raises
+        # trace_ttl_ms via a scoped ConfigMap and points the daemon at the image
+        # under test, restoring the committed daemon on cleanup. The drain landed
+        # in 0.8.5, so on an earlier daemon the positive control FAILs by design.
+        # SIGKILL uses `docker exec <node> kill -9` against the k3d node containerd.
+        run: |
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
+          sleep 2
+          ./scripts/port-forward.sh start
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:14318/api/status >/dev/null 2>&1 && break
+            sleep 1
+          done
+          SIGTERM_DRAIN_IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}" make verify-daemon-sigterm-drain
+
       - name: B1 templates (LOCAL ONLY, surface as notices)
         # Notices instead of warnings: these 3 scenarios are
         # intentionally local-only (GitLab CE RAM, jenkinsfile-runner

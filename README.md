@@ -122,7 +122,7 @@ make seed-quarkus-svc ... seed-seaorm-svc  # the 11 multistack services (see mak
 make validate-findings                     # 10 k6 scenarios on the core services, assert findings
 
 # Scenario suite
-make verify-all-scenarios   # run all 27 scenarios (see docs/SCENARIOS.md)
+make verify-all-scenarios   # run all 28 scenarios (see docs/SCENARIOS.md)
 make verify-disclose        # periodic disclosure two-tier waste (schema v1.1)
 # plus one verify-<name> target per scenario, listed by make help
 

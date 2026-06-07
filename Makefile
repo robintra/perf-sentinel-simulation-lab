@@ -24,7 +24,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-multi-agent-load verify-long-running-drift \
         verify-failure-mode-daemon-restart verify-failure-mode-backend-down \
         verify-failure-mode-network-partition verify-cold-start-edge-cases \
-        verify-daemon-ack-workflow \
+        verify-daemon-sigterm-drain verify-daemon-ack-workflow \
         seed-scaphandre-mock verify-scaphandre-mock-validation \
         seed-kepler-mock seed-redfish-mock verify-measured-energy-chain \
         seed-kepler-exporter \
@@ -122,6 +122,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/failure-mode-backend-down/verify.sh
 	@bash -n scenarios/failure-mode-network-partition/verify.sh
 	@bash -n scenarios/cold-start-edge-cases/verify.sh
+	@bash -n scenarios/daemon-sigterm-drain/verify.sh
 	@bash -n scenarios/daemon-ack-workflow/verify.sh
 	@bash -n scenarios/scaphandre-mock-validation/verify.sh
 	@bash -n scenarios/measured-energy-chain/verify.sh
@@ -367,6 +368,9 @@ verify-long-running-drift: ## drift accelere 2h (LONG_RUN=1 for 24h leak hunting
 verify-failure-mode-daemon-restart: ## kubectl rollout restart while traffic flows
 	./scenarios/failure-mode-daemon-restart/verify.sh
 
+verify-daemon-sigterm-drain: ## 0.8.5 graceful SIGTERM drains the in-flight window (needs SIGTERM_DRAIN_IMAGE)
+	./scenarios/daemon-sigterm-drain/verify.sh
+
 verify-failure-mode-backend-down: ## OTel collector / Tempo / Postgres scaled to 0 in turn
 	./scenarios/failure-mode-backend-down/verify.sh
 
@@ -387,7 +391,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 27 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 28 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -401,7 +405,11 @@ verify-all-scenarios: ## Run all 27 scenarios sequentially (see docs/SCENARIOS.m
 	@# - resilience scenarios run last: they restart the daemon, scale
 	@#   shared backends to 0, and apply temporary NetworkPolicies.
 	@#   Running them after the rest avoids polluting earlier scenarios.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
+	@# - daemon-sigterm-drain swaps the daemon image to a 0.8.5+ build and
+	@#   restores the committed image on cleanup; it needs the image under
+	@#   test (SIGTERM_DRAIN_IMAGE, default perf-sentinel:0.8.5-lab) imported
+	@#   into k3d, otherwise it FAILs the positive control by design.
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

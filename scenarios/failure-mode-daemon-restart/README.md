@@ -5,6 +5,14 @@ OTLP traffic is in flight: spans during the restart window may be lost
 gracefully, but the daemon must come back, accept new traffic, and not
 panic.
 
+> **0.8.5 update.** A graceful `SIGTERM` (rolling update, scale-down, node
+> drain) now **drains** the in-flight streaming window through detection, so
+> the "may be lost (graceful drop)" wording below applies specifically to an
+> ungraceful `SIGKILL` / over-grace-period kill. The drain itself is proven by
+> [`daemon-sigterm-drain`](../daemon-sigterm-drain/); this scenario keeps its
+> narrower contract (recovery, no panic, ingestion resumes) which holds on
+> every version.
+
 ## Use case
 
 Daemon redeploys are routine (image bump, config change, node drain).

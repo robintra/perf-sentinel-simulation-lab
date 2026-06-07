@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 27 scenarios live under `scenarios/<name>/` and each one ships a
+The 28 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 27 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The eighteen others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios, the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 27. The latest recorded PASS is v0.8.3 in `release-gate/lab-validations.txt`.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 28 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The nineteen others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 28. The latest recorded PASS is v0.8.3 in `release-gate/lab-validations.txt`.
 
 ## Run
 
@@ -1113,7 +1113,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 27 scenarios, in an order
+`make verify-all-scenarios` includes all 28 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1203,6 +1203,23 @@ FATAL line shows up in the daemon logs since the rollout.
 
 ```bash
 make verify-failure-mode-daemon-restart
+```
+
+### daemon-sigterm-drain
+
+Proves the v0.8.5 graceful-drain-on-`SIGTERM` contract that
+`failure-mode-daemon-restart` predates. Injects a real N+1 (six SQL spans,
+one template, distinct ids) via an in-cluster OTLP/protobuf Job while a scoped
+ConfigMap holds `trace_ttl_ms = 30000` so the trace stays in-flight, then runs
+two controls reading the same per-window NDJSON archive: a **positive** control
+(graceful `SIGTERM` via `scale --replicas=0`) where the in-flight finding is
+flushed, and a **negative** control (ungraceful `SIGKILL` of the daemon PID via
+`docker exec <node> kill -9`) where it is lost. Needs the image under test
+imported (`SIGTERM_DRAIN_IMAGE`, default `perf-sentinel:0.8.5-lab`); on a 0.8.4
+daemon the positive control FAILs by design, which is the counter-check.
+
+```bash
+SIGTERM_DRAIN_IMAGE=perf-sentinel:0.8.5-lab make verify-daemon-sigterm-drain
 ```
 
 ### failure-mode-backend-down
@@ -1396,6 +1413,7 @@ operating perf-sentinel in a production setup, not just for the lab.
 | multi-agent-load               | concurrent OTLP producers via Job parallelism                      | yes (50-200 producers)                 | yes (10 producers, smoke)                 |
 | long-running-drift             | RSS / FD / active_traces drift over hours                          | yes (2h default, 24h with LONG_RUN=1)  | yes (5 min smoke harness)                 |
 | failure-mode-daemon-restart    | rollout during traffic                                             | yes                                    | yes                                       |
+| daemon-sigterm-drain           | graceful SIGTERM drains in-flight window, SIGKILL loses it (0.8.5) | yes (needs 0.8.5+ image)               | yes (image under test)                    |
 | failure-mode-backend-down      | 3 backends scale-to-0                                              | yes                                    | yes                                       |
 | failure-mode-network-partition | NetworkPolicy ingress isolation                                    | yes                                    | yes                                       |
 | cold-start-edge-cases          | 4 cold-start sub-tests                                             | yes (Docker required for 6.C)          | yes (Docker available on ubuntu-latest)   |
