@@ -62,7 +62,7 @@ color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
 color_red()   { printf "\033[31m%s\033[0m\n" "$*"; }
 step() { color_blue "==> $*"; }
 ok()   { color_green "    ok: $*"; }
-die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; cleanup; exit 1; }
+die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 1; }  # cleanup runs via the EXIT trap
 
 cleanup() {
   if [ "${KEEP_NAMESPACE:-no}" = "yes" ]; then
@@ -178,11 +178,20 @@ spec:
       volumeMounts: [ { name: data, mountPath: /data, readOnly: true } ]
   volumes: [ { name: data, persistentVolumeClaim: { claimName: perf-sentinel-acks, readOnly: true } } ]
 EOF
-  kubectl -n "${OBS_NS}" wait --for=condition=Ready pod/"${SCENARIO}-reader" --timeout=90s >/dev/null
-  local count
-  count="$(kubectl -n "${OBS_NS}" exec "${SCENARIO}-reader" -- sh -c "if [ -f /data/${base} ]; then grep -c '${marker}' /data/${base} || true; else echo 0; fi" 2>/dev/null | tail -1)"
+  if ! kubectl -n "${OBS_NS}" wait --for=condition=Ready pod/"${SCENARIO}-reader" --timeout=90s >/dev/null 2>&1; then
+    kubectl -n "${OBS_NS}" delete pod "${SCENARIO}-reader" --grace-period=1 --wait=false >/dev/null 2>&1 || true
+    echo "READFAIL"; return 0
+  fi
+  # Append an __OK__ sentinel: a swallowed exec/transport failure would otherwise
+  # print nothing and look identical to a legitimate zero-match, which on the
+  # negative control is a false PASS. The caller dies on READFAIL.
+  local out rc
+  out="$(kubectl -n "${OBS_NS}" exec "${SCENARIO}-reader" -- sh -c "if [ -f /data/${base} ]; then grep -c '${marker}' /data/${base} || true; else echo 0; fi; echo __OK__" 2>/dev/null)"; rc=$?
   kubectl -n "${OBS_NS}" delete pod "${SCENARIO}-reader" --grace-period=1 --wait=true >/dev/null 2>&1 || true
-  echo "${count:-0}"
+  if [ "${rc}" -ne 0 ] || ! printf '%s' "${out}" | grep -q __OK__; then
+    echo "READFAIL"; return 0
+  fi
+  printf '%s\n' "${out}" | grep -v __OK__ | tail -1
 }
 
 # Inject one fixture through an in-cluster Job that POSTs OTLP/protobuf to the
@@ -306,6 +315,10 @@ cat >> "${TMP_DIR}/scoped-config.toml" <<EOF
     # here; an ungraceful SIGKILL does not. Removed at scenario cleanup.
     path = "${ARCHIVE_PATH}"
 EOF
+# Fail loud if the TTL override silently no-op'd (committed value/spacing drift):
+# a short TTL would finalize the trace by eviction and defeat the in-flight premise.
+grep -q 'trace_ttl_ms = 30000' "${TMP_DIR}/scoped-config.toml" \
+  || die "scoped config missing 'trace_ttl_ms = 30000' (committed value changed? the sed matched nothing)"
 kubectl -n "${OBS_NS}" create configmap perf-sentinel-daemon-config \
   --from-file=config.toml="${TMP_DIR}/scoped-config.toml" \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -328,6 +341,7 @@ step "graceful SIGTERM via scale-to-0"
 scale_daemon 0
 wait_daemon_gone || die "daemon pod did not terminate within ${SCALEDOWN_TIMEOUT}s"
 POS_COUNT="$(archive_marker_count probe_positive)"
+[ "${POS_COUNT}" = "READFAIL" ] && die "positive control: could not read the archive (reader pod exec failed)"
 if [ "${POS_COUNT}" -ge 1 ]; then
   ok "probe_positive archived (${POS_COUNT} window) -- drain saved the in-flight window"
 else
@@ -349,6 +363,7 @@ sleep 2
 scale_daemon 0
 wait_daemon_gone || die "daemon pod did not terminate after SIGKILL within ${SCALEDOWN_TIMEOUT}s"
 NEG_COUNT="$(archive_marker_count probe_negative)"
+[ "${NEG_COUNT}" = "READFAIL" ] && die "negative control: could not read the archive (reader pod exec failed) -- cannot certify the window was lost"
 if [ "${NEG_COUNT}" -eq 0 ]; then
   ok "probe_negative absent (${NEG_COUNT}) -- ungraceful kill lost the in-flight window"
 else

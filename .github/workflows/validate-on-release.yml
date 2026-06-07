@@ -215,6 +215,14 @@ jobs:
         # under test, restoring the committed daemon on cleanup. The drain landed
         # in 0.8.5, so on an earlier daemon the positive control FAILs by design.
         # SIGKILL uses `docker exec <node> kill -9` against the k3d node containerd.
+        #
+        # Gated off the floating 'latest' tag (the default for the daily cron and
+        # for workflow_dispatch without an explicit version). 'latest' can point at
+        # a pre-0.8.5 image that does not drain on SIGTERM, which would fail the
+        # positive control by design and turn the nightly run red. Explicit release
+        # validations (repository_dispatch with the released version) are always
+        # >= 0.8.5, so they run.
+        if: env.PERF_SENTINEL_VERSION != 'latest'
         run: |
           pkill -f "kubectl.*port-forward" 2>/dev/null || true
           rm -f tmp/pf-*.pid

@@ -211,6 +211,7 @@ make verify-template-github-actions
 make verify-multi-agent-load
 make verify-long-running-drift
 make verify-failure-mode-daemon-restart
+make verify-daemon-sigterm-drain
 make verify-failure-mode-backend-down
 make verify-failure-mode-network-partition
 make verify-cold-start-edge-cases
@@ -218,7 +219,7 @@ make verify-daemon-ack-workflow
 make verify-scaphandre-mock-validation
 make verify-measured-energy-chain
 
-# All 27 (sequential, long-running-drift is the long pole)
+# All 28 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1141,12 +1142,13 @@ denial-of-service via oversized files (`crates/sentinel-core/src/acknowledgments
 
 ## Resilience and failure modes
 
-6 scenarios that validate the daemon under adverse conditions: massive
+7 scenarios that validate the daemon under adverse conditions: massive
 concurrency, multi-hour drift, backend pannes, network partition,
-cold-start edge cases. They are additive on top of the rest of the
-suite, no existing scenario or manifest is modified.
+cold-start edge cases, and graceful-vs-ungraceful shutdown drain. They
+are additive on top of the rest of the suite, no existing scenario or
+manifest is modified.
 
-All 6 share two design choices:
+All 7 share two design choices:
 
 - **OTLP producers run as kubectl Jobs in-cluster**, not as `docker run
   --network host`. The cluster DNS path (`perf-sentinel-daemon.observability.svc:14318`)
