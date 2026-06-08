@@ -28,23 +28,21 @@ step() { color_blue "==> $*"; }
 ok()   { color_green "    ok: $*"; }
 die()  { color_red   "    error: $*"; exit 1; }
 
-# k3d returns from `cluster create` as soon as the containers start, but the
-# k3s API server keeps booting for a few more seconds and answers 503 "the
-# server is currently unable to handle the request" in that window. With
-# Flannel disabled there is no CNI yet, but the API server comes up
-# independently of pod networking, so we can gate on it before any helm call.
-# helm's preflight reachability check otherwise hits the 503 window and aborts
-# (observed on run 27070024796, 2026-06-06: "cluster reachability check
-# failed: kubernetes cluster unreachable", 4s after cluster create).
+# k3d returns from `cluster create` before the k3s API server is fully up,
+# so helm preflight can race a 503 "kubernetes cluster unreachable" window.
+# /healthz alone is insufficient because it can flip green before the
+# discovery aggregator is serving /apis.
 step "Waiting for the Kubernetes API server to be reachable"
-api_attempts=30
+api_attempts=60
 for attempt in $(seq 1 "${api_attempts}"); do
-  if kubectl get --raw='/healthz' >/dev/null 2>&1; then
+  if kubectl get --raw='/readyz' >/dev/null 2>&1 \
+      && kubectl get --raw='/apis' >/dev/null 2>&1 \
+      && kubectl get --request-timeout=5s namespace kube-system >/dev/null 2>&1; then
     ok "API server reachable"
     break
   fi
   if [ "${attempt}" -eq "${api_attempts}" ]; then
-    die "API server not reachable after ${api_attempts} attempts (~60s)"
+    die "API server not reachable after ${api_attempts} attempts (~120s)"
   fi
   sleep 2
 done
@@ -70,14 +68,27 @@ case "${CNI}" in
     done
     helm repo update cilium
 
-    helm upgrade --install cilium cilium/cilium \
-      --namespace kube-system \
-      --version "${CILIUM_VERSION}" \
-      --set kubeProxyReplacement=false \
-      --set hubble.enabled=true \
-      --set hubble.relay.enabled=true \
-      --set hubble.ui.enabled=false \
-      --wait --timeout 5m
+    # Retry to absorb residual 503 flickers right after the readiness gate.
+    # --atomic rolls back partial installs so retries don't hit
+    # "another operation in progress" / "name in use".
+    install_attempts=3
+    for attempt in $(seq 1 "${install_attempts}"); do
+      if helm upgrade --install cilium cilium/cilium \
+          --namespace kube-system \
+          --version "${CILIUM_VERSION}" \
+          --set kubeProxyReplacement=false \
+          --set hubble.enabled=true \
+          --set hubble.relay.enabled=true \
+          --set hubble.ui.enabled=false \
+          --atomic --wait --timeout 5m; then
+        break
+      fi
+      if [ "${attempt}" -eq "${install_attempts}" ]; then
+        die "helm upgrade --install cilium failed after ${install_attempts} attempts"
+      fi
+      color_red "    helm upgrade --install cilium attempt ${attempt}/${install_attempts} failed, retrying in 10s"
+      sleep 10
+    done
 
     step "Waiting for Cilium agents Ready"
     kubectl -n kube-system rollout status daemonset/cilium --timeout=120s
