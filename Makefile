@@ -371,6 +371,9 @@ verify-failure-mode-daemon-restart: ## kubectl rollout restart while traffic flo
 verify-daemon-sigterm-drain: ## 0.8.5 graceful SIGTERM drains the in-flight window (needs SIGTERM_DRAIN_IMAGE)
 	./scenarios/daemon-sigterm-drain/verify.sh
 
+verify-daemon-analysis-shedding: ## 0.8.6 decoupled analysis worker sheds whole batches (metered) under overload
+	./scenarios/daemon-analysis-shedding/verify.sh
+
 verify-failure-mode-backend-down: ## OTel collector / Tempo / Postgres scaled to 0 in turn
 	./scenarios/failure-mode-backend-down/verify.sh
 
@@ -391,7 +394,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 28 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 29 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -409,7 +412,7 @@ verify-all-scenarios: ## Run all 28 scenarios sequentially (see docs/SCENARIOS.m
 	@#   (SIGTERM_DRAIN_IMAGE, default ghcr.io/robintra/perf-sentinel:0.8.5) and
 	@#   restores the committed image on cleanup; on a pre-0.8.5 image it FAILs
 	@#   the positive control by design.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
+	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

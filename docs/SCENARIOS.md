@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 28 scenarios live under `scenarios/<name>/` and each one ships a
+The 29 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 28 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The nineteen others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 28. The latest recorded PASS is v0.8.5 in `release-gate/lab-validations.txt`.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 29 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The twenty others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 29. The latest recorded PASS is v0.8.5 in `release-gate/lab-validations.txt`.
 
 ## Run
 
@@ -219,7 +219,7 @@ make verify-daemon-ack-workflow
 make verify-scaphandre-mock-validation
 make verify-measured-energy-chain
 
-# All 28 (sequential, long-running-drift is the long pole)
+# All 29 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1114,7 +1114,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 28 scenarios, in an order
+`make verify-all-scenarios` includes all 29 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1142,13 +1142,13 @@ denial-of-service via oversized files (`crates/sentinel-core/src/acknowledgments
 
 ## Resilience and failure modes
 
-7 scenarios that validate the daemon under adverse conditions: massive
+8 scenarios that validate the daemon under adverse conditions: massive
 concurrency, multi-hour drift, backend pannes, network partition,
-cold-start edge cases, and graceful-vs-ungraceful shutdown drain. They
-are additive on top of the rest of the suite, no existing scenario or
-manifest is modified.
+cold-start edge cases, graceful-vs-ungraceful shutdown drain, and
+metered analysis load-shedding. They are additive on top of the rest of
+the suite, no existing scenario or manifest is modified.
 
-All 7 share two design choices:
+All 8 share two design choices:
 
 - **OTLP producers run as kubectl Jobs in-cluster**, not as `docker run
   --network host`. The cluster DNS path (`perf-sentinel-daemon.observability.svc:14318`)
@@ -1222,6 +1222,26 @@ daemon the positive control FAILs by design, which is the counter-check.
 
 ```bash
 make verify-daemon-sigterm-drain   # default: ghcr.io/robintra/perf-sentinel:0.8.5
+```
+
+### daemon-analysis-shedding
+
+Proves the v0.8.6 **decoupled analysis worker** and its **metered load-shedding**.
+0.8.6 moves `detect + score` off the `select!` loop onto a single worker behind a
+bounded channel (`[daemon] analysis_queue_capacity`, default 1024). A scoped
+ConfigMap reduces the queue to `2` and shrinks `max_active_traces` to `10`, then a
+telemetrygen Job overloads the daemon. The scenario asserts the three 0.8.6
+surfaces climb/move (`perf_sentinel_analysis_shed_batches_total`,
+`perf_sentinel_analysis_shed_traces_total`, `perf_sentinel_analysis_queue_depth`),
+that **ingestion is not blocked while analysis sheds** (`events_processed` keeps
+climbing and `/api/status` answers on every poll), and that the new tunable is
+range-validated (`analysis_queue_capacity = 0` is rejected, via the local 0.8.6
+binary; skipped in CI). Fail-loud on worker death
+(`DaemonError::AnalysisWorkerStopped`) is covered by upstream unit tests and
+asserted statically (no safe lab lever to panic a detector mid-flight).
+
+```bash
+make verify-daemon-analysis-shedding
 ```
 
 ### failure-mode-backend-down
@@ -1416,6 +1436,7 @@ operating perf-sentinel in a production setup, not just for the lab.
 | long-running-drift             | RSS / FD / active_traces drift over hours                          | yes (2h default, 24h with LONG_RUN=1)  | yes (5 min smoke harness)                 |
 | failure-mode-daemon-restart    | rollout during traffic                                             | yes                                    | yes                                       |
 | daemon-sigterm-drain           | graceful SIGTERM drains in-flight window, SIGKILL loses it (0.8.5) | yes (needs 0.8.5+ image)               | yes (image under test)                    |
+| daemon-analysis-shedding       | metered analysis load-shedding + configurable queue (0.8.6)        | yes (bounds check needs host 0.8.6 bin) | yes (bounds check skipped)               |
 | failure-mode-backend-down      | 3 backends scale-to-0                                              | yes                                    | yes                                       |
 | failure-mode-network-partition | NetworkPolicy ingress isolation                                    | yes                                    | yes                                       |
 | cold-start-edge-cases          | 4 cold-start sub-tests                                             | yes (Docker required for 6.C)          | yes (Docker available on ubuntu-latest)   |
