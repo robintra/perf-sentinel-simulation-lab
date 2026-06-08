@@ -7,7 +7,7 @@ exhibit performance anti-patterns (three core Java 25 + Spring Boot 4
 services plus eleven multistack services), and a k6 driven validation
 pipeline that asserts perf-sentinel classifies each pattern correctly.
 It also acts as the pre-tag release gate for perf-sentinel: the latest
-recorded PASS is v0.8.5.
+recorded PASS is v0.8.6.
 
 ## What it is for
 
@@ -261,7 +261,7 @@ All planned milestones have shipped:
   ([docs/GITLAB-CI.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/GITLAB-CI.md)),
   plus Jenkins and GitHub Actions template scenarios.
 - A release gate: the lab is the pre-tag validation for perf-sentinel,
-  latest recorded PASS v0.8.5
+  latest recorded PASS v0.8.6
   ([docs/RELEASE-GATE.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/RELEASE-GATE.md)).
 
 ## Troubleshooting
