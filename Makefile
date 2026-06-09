@@ -20,6 +20,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-multiformat-input verify-calibrate-mode verify-sidecar-pattern \
         verify-correlation-finding verify-pg-stat verify-grafana-dashboard \
         verify-ci-shift-left verify-output-formats-coverage verify-disclose verify-disclose-temporal \
+        verify-verify-hash-roundtrip verify-intent-validator verify-daemon-analysis-shedding \
         verify-template-gitlab-ci verify-template-jenkinsfile verify-template-github-actions \
         verify-multi-agent-load verify-long-running-drift \
         verify-failure-mode-daemon-restart verify-failure-mode-backend-down \
@@ -126,6 +127,13 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/daemon-ack-workflow/verify.sh
 	@bash -n scenarios/scaphandre-mock-validation/verify.sh
 	@bash -n scenarios/measured-energy-chain/verify.sh
+	@bash -n scenarios/ci-shift-left/verify.sh
+	@bash -n scenarios/output-formats-coverage/verify.sh
+	@bash -n scenarios/verify-hash-roundtrip/verify.sh
+	@bash -n scenarios/template-gitlab-ci/verify.sh
+	@bash -n scenarios/template-jenkinsfile/verify.sh
+	@bash -n scenarios/template-github-actions/verify.sh
+	@bash -n scenarios/daemon-analysis-shedding/verify.sh
 	@echo "==> yaml parse on resilience scenario manifests"
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/multi-agent-load/manifests.yaml \
