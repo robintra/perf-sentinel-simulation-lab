@@ -6,8 +6,9 @@ ships an observability stack, fourteen services that intentionally
 exhibit performance anti-patterns (three core Java 25 + Spring Boot 4
 services plus eleven multistack services), and a k6 driven validation
 pipeline that asserts perf-sentinel classifies each pattern correctly.
-It also acts as the pre-tag release gate for perf-sentinel: the latest
-recorded PASS is v0.8.6.
+It also acts as the pre-tag release gate for perf-sentinel. Each
+validated version is recorded in the `release-gate/lab-validations.txt`
+ledger of the perf-sentinel repository.
 
 ## What it is for
 
@@ -26,7 +27,7 @@ Django, FastAPI, and Rust (Diesel, SeaORM). See
 `make seed-services && make validate-findings` runs the ten k6
 scenarios on the core Java services and reports how many anti-patterns
 perf-sentinel detected on the expected service. `make verify-all-scenarios`
-runs the full suite of 26 deployment, CI, resilience, measured-energy,
+runs the full suite of deployment, CI, resilience, measured-energy,
 and disclosure scenarios, documented in
 [docs/SCENARIOS.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/SCENARIOS.md).
 
@@ -122,14 +123,23 @@ make seed-quarkus-svc ... seed-seaorm-svc  # the 11 multistack services (see mak
 make validate-findings                     # 10 k6 scenarios on the core services, assert findings
 
 # Scenario suite
-make verify-all-scenarios   # run all 28 scenarios (see docs/SCENARIOS.md)
+make verify-all-scenarios   # run every scenario (see docs/SCENARIOS.md and make help)
 make verify-disclose        # periodic disclosure two-tier waste (schema v1.1)
 # plus one verify-<name> target per scenario, listed by make help
 
 # GreenOps and measured energy (optional)
 make seed-electricity-maps / verify-electricity-maps
-make seed-scaphandre-mock / seed-kepler-mock / seed-redfish-mock
+make seed-scaphandre-mock / seed-kepler-mock / seed-redfish-mock / seed-kepler-exporter
 make verify-measured-energy-chain
+
+# CNI and network policy
+make up-cni / install-cni / reset-cni
+make apply-network-policies / remove-network-policies / verify-network-policies
+make hubble-ui              # open the Cilium Hubble flow UI
+
+# Utilities
+make smoke / ps / redeploy-services / teardown-services / clean-images
+make capture-greenops-screenshot
 
 # GitLab CI template validation (optional, ~10 min)
 make up-gitlab / seed-gitlab-project / verify-gitlab-perf-sentinel / down-gitlab
@@ -261,7 +271,8 @@ All planned milestones have shipped:
   ([docs/GITLAB-CI.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/GITLAB-CI.md)),
   plus Jenkins and GitHub Actions template scenarios.
 - A release gate: the lab is the pre-tag validation for perf-sentinel,
-  latest recorded PASS v0.8.6
+  each PASS recorded in the upstream `release-gate/lab-validations.txt`
+  ledger
   ([docs/RELEASE-GATE.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/RELEASE-GATE.md)).
 
 ## Troubleshooting

@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 29 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The twenty others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 29. The latest recorded PASS is v0.8.6 in `release-gate/lab-validations.txt`.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 29 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The twenty others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 29. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -1004,7 +1004,7 @@ visible in Grafana :
 
 ---
 
-## CI/CD integration scenarios (sprint B1)
+## CI/CD integration scenarios
 
 5 scenarios that validate the perf-sentinel 0.5.17 integration in CI/CD
 pipelines: the canonical ack workflow (regression to ack via PR to
