@@ -71,6 +71,8 @@ def parse_args():
     p.add_argument("--dup-gap-s", type=int, default=int(env_default("DUP_GAP_S", "7")),
                    help="dup_trace_ids: seconds between the two identical emissions")
     p.add_argument("--batch-traces", type=int, default=int(env_default("BATCH_TRACES", "50")), help="traces per export request")
+    p.add_argument("--payload-bank", type=int, default=int(env_default("PAYLOAD_BANK", "0")),
+                   help="http-pb only: pre-serialize N distinct request payloads and send them round-robin, lifting the generator ceiling far above what per-second Python serialization allows. Trace ids repeat across the run (size the bank above tps x daemon TTL)")
     p.add_argument("--resource-blocks", type=int, default=int(env_default("RESOURCE_BLOCKS", "0")),
                    help="cap distinct ResourceSpans per request (0 = one per service)")
     p.add_argument("--seed", type=int, default=int(env_default("SEED", "42")))
@@ -326,17 +328,46 @@ def to_zipkin(batch):
 
 
 class HttpPbSender:
+    """Persistent connection (keep-alive) with bounded retries: a load
+    generator that dies on the first transient refusal measures its own
+    fragility, not the daemon's limit."""
+
     def __init__(self, endpoint):
-        self.url = endpoint.rstrip("/") + "/v1/traces"
+        import urllib.parse
+
+        u = urllib.parse.urlparse(endpoint)
+        self.host = u.hostname
+        self.port = u.port or 80
+        self.conn = None
+        self.retries_used = 0
+
+    def _connect(self):
+        import http.client
+
+        self.conn = http.client.HTTPConnection(self.host, self.port, timeout=30)
 
     def send(self, batch, resource_blocks):
-        import urllib.request
+        self.send_raw(to_otlp_request(batch, resource_blocks).SerializeToString())
 
-        body = to_otlp_request(batch, resource_blocks).SerializeToString()
-        req = urllib.request.Request(self.url, data=body, headers={"Content-Type": "application/x-protobuf"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            if resp.status >= 300:
-                raise RuntimeError("OTLP HTTP status %d" % resp.status)
+    def send_raw(self, body):
+        last = None
+        for attempt in range(5):
+            try:
+                if self.conn is None:
+                    self._connect()
+                self.conn.request("POST", "/v1/traces", body=body,
+                                  headers={"Content-Type": "application/x-protobuf"})
+                resp = self.conn.getresponse()
+                resp.read()
+                if resp.status >= 300:
+                    raise RuntimeError("OTLP HTTP status %d" % resp.status)
+                return
+            except (OSError, RuntimeError) as e:
+                last = e
+                self.conn = None
+                self.retries_used += 1
+                time.sleep(0.5 * (attempt + 1))
+        raise RuntimeError("send failed after retries: %s" % last)
 
 
 class GrpcSender:
@@ -437,14 +468,36 @@ def run_steady(args, gen, sender, steps):
     """Rate-controlled emission. Prints one marker line per ramp step so
     samplers can align their windows with the load profile."""
     requests = 0
+    bank = None
+    if args.payload_bank > 0:
+        if args.protocol != "http-pb":
+            sys.exit("--payload-bank only supports --protocol http-pb")
+        # Pre-serialize the bank once: runtime cost per request becomes a
+        # socket write, so the generator can outrun the daemon.
+        bank = []
+        for _ in range(args.payload_bank):
+            chunk = [gen.next_trace() for _ in range(args.batch_traces)]
+            bank.append(to_otlp_request(chunk, args.resource_blocks).SerializeToString())
+        print("PAYLOAD_BANK ready entries=%d traces_each=%d" % (len(bank), args.batch_traces), flush=True)
+    bank_idx = 0
     for tps, seconds in steps:
         print("RAMP_STEP tps=%d seconds=%d t=%d" % (tps, seconds, int(time.time())), flush=True)
         for _ in range(seconds):
             second_start = time.monotonic()
-            batch = [gen.next_trace() for _ in range(tps)]
-            for chunk in chunked(batch, args.batch_traces):
-                sender.send(chunk, args.resource_blocks)
-                requests += 1
+            if bank is not None:
+                sends = max(1, tps // args.batch_traces)
+                for _ in range(sends):
+                    sender.send_raw(bank[bank_idx % len(bank)])
+                    bank_idx += 1
+                    requests += 1
+                # Bank replays re-emit the same trace ids: account spans
+                # without regenerating.
+                gen.trace_seq += sends * args.batch_traces
+            else:
+                batch = [gen.next_trace() for _ in range(tps)]
+                for chunk in chunked(batch, args.batch_traces):
+                    sender.send(chunk, args.resource_blocks)
+                    requests += 1
             elapsed = time.monotonic() - second_start
             if elapsed > 1.2:
                 print("LAG behind by %.2fs at tps=%d" % (elapsed - 1.0, tps), flush=True)
