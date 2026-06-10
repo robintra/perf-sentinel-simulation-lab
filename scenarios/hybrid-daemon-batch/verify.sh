@@ -34,9 +34,17 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 verdict="UNKNOWN"
 
 step "Probe daemon"
-if ! curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
-  die "daemon not reachable at ${DAEMON_URL}, run make up-cni first"
-fi
+# Retry across the port-forward watcher's recycling window (~30s) so a
+# forward healing from a daemon rollout does not fail the scenario.
+daemon_up=0
+for i in $(seq 1 12); do
+  if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
+    daemon_up=1
+    break
+  fi
+  sleep 3
+done
+[ "${daemon_up}" -eq 1 ] || die "daemon not reachable at ${DAEMON_URL}, run make up-cni first"
 ok "daemon reachable"
 
 step "Snapshot the daemon Report JSON"

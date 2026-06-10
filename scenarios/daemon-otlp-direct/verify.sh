@@ -78,9 +78,17 @@ ORDER_PORT=18080
 kubectl -n "${NS}" port-forward svc/order-service ${ORDER_PORT}:8080 \
   > "${TMP_DIR}/pf-order.log" 2>&1 &
 PF_ORDER_PID=$!
-for i in $(seq 1 30); do
+# A cold first start of the freshly built Spring image can exceed 30s,
+# and kubectl exits immediately when the service has no ready endpoints
+# yet, so re-spawn it while waiting instead of probing a dead forward.
+for i in $(seq 1 90); do
   if curl -fsS "http://localhost:${ORDER_PORT}/actuator/health" >/dev/null 2>&1; then
     break
+  fi
+  if ! kill -0 "${PF_ORDER_PID}" 2>/dev/null; then
+    kubectl -n "${NS}" port-forward svc/order-service ${ORDER_PORT}:8080 \
+      >> "${TMP_DIR}/pf-order.log" 2>&1 &
+    PF_ORDER_PID=$!
   fi
   sleep 1
 done
