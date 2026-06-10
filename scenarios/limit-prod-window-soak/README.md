@@ -14,7 +14,7 @@ make verify-limit-prod-window-soak
 
 - `active_traces` plateaus near tps x 30 s (±50%) and stays far from the
   10000 cap: TTL eviction works at the production window.
-- RSS drift between the warm window and the tail stays under 10%
+- RSS drift between the post-fill window and the tail stays under 10%
   (long-running-drift analysis).
 - Zero shed and zero channel_full at this rate, zero restarts.
 - 90 s after the load stops, the window drains below 100 traces.

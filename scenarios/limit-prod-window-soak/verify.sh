@@ -171,12 +171,16 @@ print(sum(mid)//max(1,len(mid)))")"
   || die "active_traces plateau ${PLATEAU} outside [${PLATEAU_LOW}, ${PLATEAU_HIGH}] (expected ~${EXPECTED})"
 [ "${ACTIVE_MAX}" -lt 9000 ] || die "active_traces approached the 10000 cap (${ACTIVE_MAX})"
 
+# Drift windows start past the state-fill phase: the correlation window
+# (5 min) and the findings ring (~10k cap) legitimately fill RSS for the
+# first several minutes, so compare [50-70%] against [80-100%] of the
+# samples. The 2-hour long-running-drift scenario is the real leak hunter.
 DRIFT="$(python3 -c "
 rows=[l.split('\t') for l in open('${TSV}').read().splitlines()[1:]]
 rss=[int(r[1]) for r in rows]
 n=len(rss)
-warm=rss[max(0,n//10): max(1,3*n//10)]
-tail=rss[7*n//10:]
+warm=rss[n//2: max(n//2+1, 7*n//10)]
+tail=rss[8*n//10:]
 w=sum(warm)/max(1,len(warm)); t=sum(tail)/max(1,len(tail))
 print('%.1f' % (100.0*(t-w)/w if w else 0.0))")"
 python3 -c "exit(0 if float('${DRIFT}') <= float('${DRIFT_PCT_LIMIT}') else 1)" \
