@@ -166,8 +166,19 @@ else
     # Third ceiling form: the daemon plateaued and its socket backlog
     # backpressured the sender, which fell behind its own pacing. With
     # a healthy daemon this IS the designed degradation, record it.
+    # Retry the health probe: a CPU-saturated daemon legitimately drops
+    # a share of single probes (the liveness poll count documents it),
+    # one missed curl must not reclassify backpressure as a failure.
+    DAEMON_HEALTHY=0
+    for i in $(seq 1 6); do
+      if curl -fsS --max-time 5 "${ENDPOINT}/api/status" >/dev/null 2>&1; then
+        DAEMON_HEALTHY=1
+        break
+      fi
+      sleep 5
+    done
     if kubectl -n limit-testing logs job/tracegen-saturation 2>/dev/null | grep -q '^LAG' \
-       && curl -fsS --max-time 5 "${ENDPOINT}/api/status" >/dev/null 2>&1; then
+       && [ "${DAEMON_HEALTHY}" -eq 1 ]; then
       CEILING="sender backpressure (generator lagged behind its pacing, daemon healthy)"
       kubectl -n limit-testing delete job tracegen-saturation --ignore-not-found >/dev/null 2>&1 || true
       GEN_REPORT="(job cut at the backpressure plateau)"
