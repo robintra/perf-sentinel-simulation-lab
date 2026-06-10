@@ -1,6 +1,6 @@
 # limit-saturation-curve
 
-Ramps traces/sec (25 to 400, `LONG_RUN=1` extends to 1600) against the
+Ramps traces/sec (50 to 1600, `LONG_RUN=1` extends to 3200) against the
 committed daemon config and produces the saturation table operators size
 deployments with: per-step mean events/s, max queue depth, shed and
 channel_full deltas, max RSS, and the derived "max clean throughput at

@@ -28,8 +28,8 @@ mkdir -p "${TMP_DIR}"
 
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 ENDPOINT="http://localhost:${DAEMON_LOCAL_PORT}"
-RAMP="${RAMP:-25:90,50:90,100:90,200:90,400:90}"
-[ "${LONG_RUN:-0}" = "1" ] && RAMP="25:90,50:90,100:90,200:90,400:90,800:90,1600:90"
+RAMP="${RAMP:-50:60,100:60,200:60,400:90,800:90,1600:90}"
+[ "${LONG_RUN:-0}" = "1" ] && RAMP="50:60,100:60,200:60,400:90,800:120,1600:120,3200:120"
 SERVICES="${SERVICES:-64}"
 SAMPLE_EVERY_S=10
 
@@ -110,9 +110,10 @@ spec:
             - "--services=${SERVICES}"
             - "--service-prefix=sat"
             - "--ramp=${RAMP}"
+            - "--payload-bank=400"
           resources:
-            requests: { cpu: 200m, memory: 64Mi }
-            limits: { cpu: "2", memory: 256Mi }
+            requests: { cpu: 500m, memory: 64Mi }
+            limits: { cpu: "3", memory: 384Mi }
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: ["ALL"] }

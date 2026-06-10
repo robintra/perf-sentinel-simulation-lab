@@ -42,58 +42,57 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 [ -x "${PERF_SENTINEL_LOCAL_BIN}" ] || die "no local binary at ${PERF_SENTINEL_LOCAL_BIN} (cargo build --release first)"
 BIN_VERSION="$("${PERF_SENTINEL_LOCAL_BIN}" --version | awk '{print $2}')"
 
-# Scenario config: raise the payload cap so the big shards load, and pin a
-# region so carbon scoring runs on the batch path too.
+# Scenario config: pin a region so carbon scoring runs on the batch path
+# too. Since 0.8.7 local batch reads are capped at 1 GiB independently of
+# [daemon] max_payload_size, so no cap override is needed for the shards.
 cat > "${TMP_DIR}/scenario.toml" <<EOF
 [green]
 enabled = true
 default_region = "eu-west-3"
-
-[daemon]
-max_payload_size = 104857600
 EOF
 
 # =============================================================================
 step "Sub-test 1: generate ${TRACES} traces per format (seed=${SEED}, services=${SERVICES})"
-declare -A PLANTED_NPLUS1
 for fmt in native jaeger zipkin; do
   out="$(python3 "${TRACEGEN}" --protocol "dump-${fmt}" --traces "${TRACES}" --shards 1 \
         --seed "${SEED}" --services "${SERVICES}" --service-prefix batch --run-nonce fixed \
         --out "${TMP_DIR}/${fmt}" 2>/dev/null | tail -1)"
-  PLANTED_NPLUS1[$fmt]="$(echo "${out}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["planted"].get("n_plus_one",0))')"
+  planted="$(echo "${out}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["planted"].get("n_plus_one",0))')"
+  eval "PLANTED_${fmt}=\${planted}"
   size="$(du -h "${TMP_DIR}/${fmt}"/shard-00.*.json | cut -f1)"
-  ok "${fmt}: $(echo "${out}" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("%d traces, %d spans" % (d["traces"], d["spans"]))'), file ${size}, planted n+1=${PLANTED_NPLUS1[$fmt]}"
+  ok "${fmt}: $(echo "${out}" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("%d traces, %d spans" % (d["traces"], d["spans"]))'), file ${size}, planted n+1=${planted}"
 done
 # Same seed must plant the same counts in every format.
-[ "${PLANTED_NPLUS1[native]}" = "${PLANTED_NPLUS1[jaeger]}" ] || die "seeded generation diverged between formats"
+[ "${PLANTED_native}" = "${PLANTED_jaeger}" ] || die "seeded generation diverged between formats"
 
 # =============================================================================
 step "Sub-test 2: analyze each format (exit 0, < ${ANALYZE_TIME_LIMIT_S}s, planted findings reconcile)"
-declare -A DETECTED WALL
 for fmt in native jaeger zipkin; do
   f="${TMP_DIR}/${fmt}/shard-00.${fmt}.json"
   start="$(date +%s)"
   "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${f}" --format json --config "${TMP_DIR}/scenario.toml" \
     > "${TMP_DIR}/analyze-${fmt}.json" 2>"${TMP_DIR}/analyze-${fmt}.err" \
     || die "analyze failed on ${fmt}: $(tail -2 "${TMP_DIR}/analyze-${fmt}.err")"
-  WALL[$fmt]=$(( $(date +%s) - start ))
-  [ "${WALL[$fmt]}" -le "${ANALYZE_TIME_LIMIT_S}" ] || die "analyze ${fmt} took ${WALL[$fmt]}s (> ${ANALYZE_TIME_LIMIT_S}s)"
-  DETECTED[$fmt]="$(python3 -c "
+  wall=$(( $(date +%s) - start ))
+  eval "WALL_${fmt}=\${wall}"
+  [ "${wall}" -le "${ANALYZE_TIME_LIMIT_S}" ] || die "analyze ${fmt} took ${wall}s (> ${ANALYZE_TIME_LIMIT_S}s)"
+  detected="$(python3 -c "
 import json
 r=json.load(open('${TMP_DIR}/analyze-${fmt}.json'))
 n=sum(1 for f in r['findings'] if f.get('type')=='n_plus_one_sql')
 print('%d %d' % (r['analysis']['traces_analyzed'], n))
 ")"
-  ok "${fmt}: ${WALL[$fmt]}s, traces+n_plus_one_sql = ${DETECTED[$fmt]}"
+  eval "DETECTED_${fmt}=\${detected}"
+  ok "${fmt}: ${wall}s, traces+n_plus_one_sql = ${detected}"
 done
-NATIVE_N1="$(echo "${DETECTED[native]}" | awk '{print $2}')"
-PLANTED="${PLANTED_NPLUS1[native]}"
+NATIVE_N1="$(echo "${DETECTED_native}" | awk '{print $2}')"
+PLANTED="${PLANTED_native}"
 LOW=$(( PLANTED * 80 / 100 )); HIGH=$(( PLANTED * 120 / 100 ))
 [ "${NATIVE_N1}" -ge "${LOW}" ] && [ "${NATIVE_N1}" -le "${HIGH}" ] \
   || die "native n_plus_one_sql=${NATIVE_N1} outside ±20% of planted ${PLANTED}"
 # Cross-format coherence at equal seed: each format detects within ±10% of native.
 for fmt in jaeger zipkin; do
-  N1="$(echo "${DETECTED[$fmt]}" | awk '{print $2}')"
+  N1="$(eval "echo \"\${DETECTED_${fmt}}\"" | awk '{print $2}')"
   FLOW=$(( NATIVE_N1 * 90 / 100 )); FHIGH=$(( NATIVE_N1 * 110 / 100 ))
   [ "${N1}" -ge "${FLOW}" ] && [ "${N1}" -le "${FHIGH}" ] \
     || die "${fmt} n_plus_one_sql=${N1} incoherent with native ${NATIVE_N1}"
@@ -133,20 +132,17 @@ python3 -c "import json;json.load(open('${TMP_DIR}/diff.json'))" || die "diff ou
 ok "diff exit=${DIFF_RC}, JSON parses"
 
 # =============================================================================
-step "Sub-test 6: an input past max_payload_size is rejected loudly"
+step "Sub-test 6: an input past the 1 GiB batch cap is rejected loudly"
+# Sparse file: trips the metadata pre-check instantly, no real data written.
+python3 -c "
+f=open('${TMP_DIR}/oversized.json','w'); f.truncate(1024*1024*1024+1); f.close()"
 NEG_RC=0
-"${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${TMP_DIR}/native/shard-00.native.json" --format json \
+"${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${TMP_DIR}/oversized.json" --format json \
   > /dev/null 2>"${TMP_DIR}/neg.err" || NEG_RC=$?
-# Default cap is 16 MiB; the shard is far larger, so without the scenario
-# config the load must fail with a message naming the limit.
-SHARD_SIZE="$(wc -c < "${TMP_DIR}/native/shard-00.native.json" | tr -d ' ')"
-if [ "${SHARD_SIZE}" -gt $((16 * 1048576)) ]; then
-  [ "${NEG_RC}" -ne 0 ] || die "oversized input was accepted without the raised cap"
-  grep -qiE "payload|size|limit|large" "${TMP_DIR}/neg.err" || die "rejection does not name the limit: $(tail -1 "${TMP_DIR}/neg.err")"
-  ok "oversized input rejected loudly (exit ${NEG_RC}): $(tail -1 "${TMP_DIR}/neg.err" | head -c 120)"
-else
-  skip "shard under 16 MiB, negative probe not meaningful at this size"
-fi
+[ "${NEG_RC}" -ne 0 ] || die "an input past the 1 GiB batch cap was accepted"
+grep -qiE "exceeds maximum" "${TMP_DIR}/neg.err" || die "rejection does not name the limit: $(tail -1 "${TMP_DIR}/neg.err")"
+rm -f "${TMP_DIR}/oversized.json"
+ok "oversized input rejected loudly (exit ${NEG_RC}): $(grep -o 'exceeds maximum of [0-9]* bytes' "${TMP_DIR}/neg.err" | head -1)"
 
 # =============================================================================
 verdict="PASS"
@@ -160,7 +156,7 @@ verdict="PASS"
   echo "|---|---|"
   echo "| planted n+1 vs detected (native) | ${PLANTED} vs ${NATIVE_N1} |"
   for fmt in native jaeger zipkin; do
-    echo "| analyze ${fmt} wall time | ${WALL[$fmt]}s |"
+    echo "| analyze ${fmt} wall time | $(eval "echo \"\${WALL_${fmt}}\"")s |"
   done
   echo "| bench throughput | ${THROUGHPUT} events/s |"
   echo "| bench rss peak | $(( RSS_PEAK / 1048576 )) MiB |"

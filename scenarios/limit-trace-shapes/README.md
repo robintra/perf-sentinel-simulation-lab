@@ -16,8 +16,8 @@ release image exists) and `opentelemetry-proto` on the host python3.
 
 ## Asserts
 
-- Zero pod restarts across all five shapes, RSS at the end within 15% of
-  the start.
+- Zero pod restarts across all five shapes, RSS at the end under 200 MiB
+  (the pod limit is 256Mi).
 - Deep chains ingest without a latency cliff, all spans received.
 - The wide fanout produces an `excessive_fanout` finding.
 - Both generations of duplicate trace ids are analyzed (double-count by
