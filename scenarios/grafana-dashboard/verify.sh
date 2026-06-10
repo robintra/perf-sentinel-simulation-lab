@@ -82,20 +82,23 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Helper to query the in-cluster Prometheus HTTP API. Reused 5x below.
-# Use POST so panel exprs containing braces, quotes, and parentheses
-# survive shell quoting.
+# Helper to query the Prometheus HTTP API through the lab's persistent
+# port-forward (scripts/port-forward.sh, self-healing via its probe
+# watcher). The previous kubectl exec + wget approach broke with the
+# v3.x distroless Prometheus images (no shell, no wget in the pod),
+# and the API-server service proxy is blocked by the zero-trust
+# NetworkPolicies. Use POST so panel exprs containing braces, quotes,
+# and parentheses survive shell quoting.
+PROM_URL="${PROM_URL:-http://localhost:9090}"
 prom_api_get() {
   # Usage: prom_api_get <endpoint-path>
   # Example: prom_api_get rules
-  kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-    wget -qO- "http://localhost:9090/api/v1/$1" 2>/dev/null
+  curl -fsS --max-time 10 "${PROM_URL}/api/v1/$1" 2>/dev/null
 }
 prom_api_post() {
   # Usage: prom_api_post <endpoint-path> <encoded-body>
   # Example: prom_api_post query "query=up%7Bjob%3D%22foo%22%7D"
-  kubectl exec -n observability "${PROMETHEUS_POD}" -c prometheus -- \
-    wget -qO- --post-data="$2" "http://localhost:9090/api/v1/$1" 2>/dev/null
+  curl -fsS --max-time 10 --data "$2" "${PROM_URL}/api/v1/$1" 2>/dev/null
 }
 
 step "Probe daemon and Prometheus"
@@ -113,6 +116,18 @@ if [ -z "${PROMETHEUS_POD}" ]; then
 fi
 [ -n "${PROMETHEUS_POD}" ] || die "no prometheus pod found in observability"
 ok "prometheus pod ${PROMETHEUS_POD}"
+
+# Retry across the port-forward watcher's recycling window (~30s).
+prom_up=0
+for i in $(seq 1 12); do
+  if curl -fsS --max-time 3 "${PROM_URL}/-/ready" >/dev/null 2>&1; then
+    prom_up=1
+    break
+  fi
+  sleep 3
+done
+[ "${prom_up}" -eq 1 ] || die "Prometheus not reachable at ${PROM_URL}, run scripts/port-forward.sh start first"
+ok "Prometheus API reachable at ${PROM_URL}"
 
 step "Apply NetworkPolicies (re-applies the consolidated file with new postgres-exporter rules)"
 kubectl apply -f "${NETWORK_POLICIES_MANIFEST}" >/dev/null
