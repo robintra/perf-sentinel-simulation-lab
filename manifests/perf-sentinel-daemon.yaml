@@ -333,7 +333,11 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 20
             periodSeconds: 15
-            timeoutSeconds: 3
+            timeoutSeconds: 5
+            # Under sustained CPU saturation the cgroup quota freezes the
+            # whole process in quanta; a tight liveness budget restarts a
+            # functional daemon before queue shedding even engages.
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /health
