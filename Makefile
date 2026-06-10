@@ -29,6 +29,9 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         seed-scaphandre-mock verify-scaphandre-mock-validation \
         seed-kepler-mock seed-redfish-mock verify-measured-energy-chain \
         seed-kepler-exporter \
+        seed-tracegen seed-daemon-local \
+        verify-limit-batch-volume verify-limit-trace-shapes verify-limit-service-cardinality \
+        verify-limit-saturation-curve verify-limit-multi-source verify-limit-prod-window-soak \
         verify-all-scenarios
 
 help: ## List available targets
@@ -134,6 +137,14 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/template-jenkinsfile/verify.sh
 	@bash -n scenarios/template-github-actions/verify.sh
 	@bash -n scenarios/daemon-analysis-shedding/verify.sh
+	@bash -n scenarios/limit-batch-volume/verify.sh
+	@bash -n scenarios/limit-trace-shapes/verify.sh
+	@bash -n scenarios/limit-service-cardinality/verify.sh
+	@bash -n scenarios/limit-saturation-curve/verify.sh
+	@bash -n scenarios/limit-multi-source/verify.sh
+	@bash -n scenarios/limit-prod-window-soak/verify.sh
+	@bash -n scripts/seed-tracegen.sh
+	@bash -n scripts/seed-daemon-local.sh
 	@echo "==> yaml parse on resilience scenario manifests"
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/multi-agent-load/manifests.yaml \
@@ -382,6 +393,30 @@ verify-daemon-sigterm-drain: ## 0.8.5 graceful SIGTERM drains the in-flight wind
 verify-daemon-analysis-shedding: ## 0.8.6 decoupled analysis worker sheds whole batches (metered) under overload
 	./scenarios/daemon-analysis-shedding/verify.sh
 
+seed-tracegen: ## Build + import the tracegen load-generator image (I/O-semantic synthetic traces)
+	./scripts/seed-tracegen.sh
+
+seed-daemon-local: ## Build a daemon image from a local perf-sentinel checkout and pin the manifest to it (pre-release validation)
+	./scripts/seed-daemon-local.sh
+
+verify-limit-batch-volume: ## Large-input batch CLI (50k+ traces x 3 formats, no cluster)
+	./scenarios/limit-batch-volume/verify.sh
+
+verify-limit-trace-shapes: ## Adversarial trace shapes (1500-span traces, 400-deep chains, 1200-wide fanout, dup ids, 70KB SQL)
+	./scenarios/limit-trace-shapes/verify.sh
+
+verify-limit-service-cardinality: ## 1500+ services vs the 1024 metering cap (overflow counter, /metrics envelope)
+	./scenarios/limit-service-cardinality/verify.sh
+
+verify-limit-saturation-curve: ## Ramp tps until shed; emits the saturation table (max clean throughput at 256Mi/500m)
+	./scenarios/limit-saturation-curve/verify.sh
+
+verify-limit-multi-source: ## OTLP gRPC + HTTP + NDJSON socket + tempo batch reader, concurrently
+	./scenarios/limit-multi-source/verify.sh
+
+verify-limit-prod-window-soak: ## Production window config (ttl 30s) under sustained mixed load
+	./scenarios/limit-prod-window-soak/verify.sh
+
 verify-failure-mode-backend-down: ## OTel collector / Tempo / Postgres scaled to 0 in turn
 	./scenarios/failure-mode-backend-down/verify.sh
 
@@ -402,7 +437,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 29 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 35 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -420,7 +455,7 @@ verify-all-scenarios: ## Run all 29 scenarios sequentially (see docs/SCENARIOS.m
 	@#   (SIGTERM_DRAIN_IMAGE, default ghcr.io/robintra/perf-sentinel:0.8.5) and
 	@#   restores the committed image on cleanup; on a pre-0.8.5 image it FAILs
 	@#   the positive control by design.
-	@for s in hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain; do \
+	@for s in limit-batch-volume hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

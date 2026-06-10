@@ -154,3 +154,12 @@ The lab runs with `correlation.enabled = true` and
 `max_active_traces = 10000`, which can exceed 64 MiB under S2 load.
 Limits are bumped to `requests: 128Mi / limits: 256Mi`. If OOM kills
 return in S2, raise to 512 MiB or lower `max_active_traces`.
+
+
+## Limit-testing additions
+
+`tools/tracegen` Jobs run with 64-256 Mi limits and at most two concurrent
+Jobs plus one sidecar, under 0.7 GiB total. The cardinality, saturation and
+soak scenarios want the shop fleet DOWN for clean numbers
+(`scripts/teardown-services.sh`, re-seed afterwards): with the fleet up the
+Docker Desktop budget is tight and saturation results are noisier.

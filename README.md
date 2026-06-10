@@ -141,6 +141,13 @@ make hubble-ui              # open the Cilium Hubble flow UI
 make smoke / ps / redeploy-services / teardown-services / clean-images
 make capture-greenops-screenshot
 
+# Limit testing (synthetic I/O-semantic load, see docs/SCENARIOS.md)
+make seed-tracegen          # build + import the load-generator image
+make seed-daemon-local      # daemon image from a local checkout (pre-release)
+make verify-limit-batch-volume / verify-limit-trace-shapes
+make verify-limit-service-cardinality / verify-limit-saturation-curve
+make verify-limit-multi-source / verify-limit-prod-window-soak
+
 # GitLab CI template validation (optional, ~10 min)
 make up-gitlab / seed-gitlab-project / verify-gitlab-perf-sentinel / down-gitlab
 ```

@@ -1,0 +1,56 @@
+# Shared infrastructure for the limit-testing scenarios: one namespace for
+# every tracegen Job plus the zero-trust holes it needs (DNS, daemon OTLP
+# HTTP 14318 and gRPC 14317). Applied by each limit-* verify.sh, deleted on
+# cleanup by the last one (delete is idempotent and cheap to reapply).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: limit-testing
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    pod-security.kubernetes.io/enforce: baseline
+---
+# Egress: tracegen Pods reach cluster DNS and the perf-sentinel daemon.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: limit-testing-egress
+  namespace: limit-testing
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - { protocol: TCP, port: 14318 }
+        - { protocol: TCP, port: 14317 }
+---
+# Ingress on the daemon side: accept OTLP from the limit-testing namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-allow-limit-testing
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: limit-testing
+      ports:
+        - { protocol: TCP, port: 14318 }
+        - { protocol: TCP, port: 14317 }

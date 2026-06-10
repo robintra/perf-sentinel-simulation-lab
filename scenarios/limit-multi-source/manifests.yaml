@@ -1,0 +1,156 @@
+# limit-multi-source: a scoped daemon exposing all three live ingestion
+# paths at once (OTLP gRPC 14317, OTLP HTTP 14318, Unix NDJSON socket via a
+# shared emptyDir), with a tracegen sidecar feeding the socket. Lives in
+# its own namespace so the committed daemon is untouched.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: limit-multi-source
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: multi-source-daemon-config
+  namespace: limit-multi-source
+data:
+  config.toml: |
+    [green]
+    enabled = true
+    default_region = "eu-west-3"
+
+    [daemon]
+    listen_address = "0.0.0.0"
+    listen_port_http = 14318
+    listen_port_grpc = 14317
+    json_socket = "/var/run/perf-sentinel/ndjson.sock"
+    max_active_traces = 10000
+    trace_ttl_ms = 5000
+    api_enabled = true
+    environment = "staging"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multi-source-daemon
+  namespace: limit-multi-source
+  labels:
+    app.kubernetes.io/name: multi-source-daemon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: multi-source-daemon
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: multi-source-daemon
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: daemon
+          # Pinned by verify.sh to the same image as the main daemon
+          # deployment (local pre-release build or GHCR digest).
+          image: PLACEHOLDER_DAEMON_IMAGE
+          imagePullPolicy: Never
+          args: ["watch", "--config", "/etc/perf-sentinel/config.toml"]
+          ports:
+            - { containerPort: 14318, name: otlp-http }
+            - { containerPort: 14317, name: otlp-grpc }
+          volumeMounts:
+            - { name: config, mountPath: /etc/perf-sentinel, readOnly: true }
+            - { name: socket-dir, mountPath: /var/run/perf-sentinel }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+          readinessProbe:
+            httpGet: { path: /health, port: 14318 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+        - name: ndjson-feeder
+          image: lab-tracegen:1
+          imagePullPolicy: Never
+          args:
+            - "--protocol=ndjson-socket"
+            - "--endpoint=/var/run/perf-sentinel/ndjson.sock"
+            - "--services=16"
+            - "--service-prefix=n"
+            - "--tps=20"
+            - "--duration=2147483"
+            - "--report-file=/var/run/perf-sentinel/feeder-report.json"
+          volumeMounts:
+            - { name: socket-dir, mountPath: /var/run/perf-sentinel }
+          resources:
+            requests: { cpu: 50m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - name: config
+          configMap: { name: multi-source-daemon-config }
+        - name: socket-dir
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: multi-source-daemon
+  namespace: limit-multi-source
+spec:
+  selector:
+    app.kubernetes.io/name: multi-source-daemon
+  ports:
+    - { name: otlp-http, port: 14318, targetPort: 14318 }
+    - { name: otlp-grpc, port: 14317, targetPort: 14317 }
+---
+# Same-namespace Jobs reach the daemon; DNS via kube-system.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: multi-source-egress
+  namespace: limit-multi-source
+spec:
+  podSelector: {}
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: multi-source-daemon
+      ports:
+        - { protocol: TCP, port: 14318 }
+        - { protocol: TCP, port: 14317 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: multi-source-daemon-ingress
+  namespace: limit-multi-source
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: multi-source-daemon
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - { protocol: TCP, port: 14318 }
+        - { protocol: TCP, port: 14317 }

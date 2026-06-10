@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 29 scenarios live under `scenarios/<name>/` and each one ships a
+The 35 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 29 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The twenty others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI. The release gate runs all 29. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 35 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, plus the six limit-testing scenarios (`limit-*`, below). The release gate runs all 35. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -219,7 +219,7 @@ make verify-daemon-ack-workflow
 make verify-scaphandre-mock-validation
 make verify-measured-energy-chain
 
-# All 29 (sequential, long-running-drift is the long pole)
+# All 35 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1114,7 +1114,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 29 scenarios, in an order
+`make verify-all-scenarios` includes all 35 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1522,3 +1522,36 @@ grep -rn ':latest' scenarios/ scripts/ manifests/ helm/
 grep -nE 'helm (install|upgrade)' Makefile scripts/*.sh scenarios/*/verify.sh \
   | grep -v -- '--version'
 ```
+
+
+## Limit-testing scenarios
+
+Six scenarios stress perf-sentinel at the edges: many services, high trace
+volume, adversarial shapes, multiple concurrent sources, and large batch
+inputs. They are driven by `tools/tracegen/`, a parameterized load
+generator whose spans carry real I/O semantics (`db.statement`,
+`http.url`), so detection and scoring do real work (telemetrygen spans
+are filtered as `not_io` and never load the analysis path). Every run
+ends with a JSON line of exactly what was sent (traces, spans, planted
+patterns), which the verify scripts reconcile against the daemon
+counters.
+
+Prerequisites: `make seed-tracegen` once (builds + imports the generator
+image), and a 0.8.7+ daemon (before the release image exists, run
+`make seed-daemon-local` to build one from a local checkout - it pins the
+manifest with an uncommitted working-tree edit that the release flow
+replaces with the GHCR digest). For clean cardinality and saturation
+numbers, tear the shop fleet down first (`scripts/teardown-services.sh`).
+
+| Scenario | What it proves | Fast mode |
+|---|---|---|
+| `limit-batch-volume` | analyze/bench/report/diff on 50k+ traces x 3 formats, planted-finding reconciliation | ~8 min, no cluster |
+| `limit-trace-shapes` | 1500-span traces, 400-deep chains, 1200-wide fanout, duplicate ids across TTL, 70KB SQL | ~10 min |
+| `limit-service-cardinality` | 1500 services vs the 1024 metering cap, overflow counter, /metrics envelope | ~8 min |
+| `limit-saturation-curve` | tps ramp to shed, saturation table, max clean throughput at 256Mi/500m | ~12 min |
+| `limit-multi-source` | OTLP gRPC + HTTP + NDJSON socket + tempo reader concurrently, no starvation | ~10 min |
+| `limit-prod-window-soak` | production TTL (30 s) plateau, RSS drift, drain | ~12 min |
+
+`LONG_RUN=1` deepens each scenario (5000 services, 1600 tps ramp, 30 min
+soak, 250k-trace corpora). The saturation table lands in the scenario
+report and in `/tmp/limit-saturation-curve/saturation.tsv`.
