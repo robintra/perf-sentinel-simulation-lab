@@ -18,7 +18,7 @@ TMP_DIR="${REPO_ROOT}/tmp"
 mkdir -p "${TMP_DIR}"
 
 start_one() {
-  local name="$1" namespace="$2" service="$3" local_port="$4" remote_port="$5"
+  local name="$1" namespace="$2" service="$3" local_port="$4" remote_port="$5" probe_path="$6"
   local pid_file="${TMP_DIR}/pf-${name}.pid"
   local log_file="${TMP_DIR}/pf-${name}.log"
   if [ -f "${pid_file}" ] && kill -0 "$(cat "${pid_file}")" 2>/dev/null; then
@@ -31,19 +31,42 @@ start_one() {
   # from the 15th scenario on, because mutations on
   # svc/perf-sentinel-daemon kill the static forward and nothing
   # reconnects. The 2s sleep gives k8s time to repopulate endpoints.
+  #
+  # Exit-driven reconnect alone is not enough: kubectl can outlive its
+  # backend pod (the local listener stays bound, every stream errors),
+  # so the wrapper also probes the forwarded HTTP endpoint and recycles
+  # kubectl after 3 consecutive probe failures (~30s stale window).
   : > "${log_file}"
   (
     trap 'exit 0' TERM INT
     while true; do
       kubectl -n "${namespace}" port-forward "svc/${service}" \
-        "${local_port}:${remote_port}" >> "${log_file}" 2>&1 || true
+        "${local_port}:${remote_port}" >> "${log_file}" 2>&1 &
+      kpid=$!
+      fails=0
+      while kill -0 "${kpid}" 2>/dev/null; do
+        sleep 10
+        if curl -fsS --max-time 3 \
+          "http://localhost:${local_port}${probe_path}" >/dev/null 2>&1; then
+          fails=0
+        else
+          fails=$((fails + 1))
+          if [ "${fails}" -ge 3 ]; then
+            printf '[pf-watcher] %s stale (probe failed 3x), recycling kubectl\n' \
+              "${name}" >> "${log_file}"
+            kill "${kpid}" 2>/dev/null || true
+            break
+          fi
+        fi
+      done
+      wait "${kpid}" 2>/dev/null || true
       printf '[pf-watcher] %s disconnected, reconnecting in 2s\n' "${name}" >> "${log_file}"
       sleep 2
     done
   ) &
   local pid=$!
   echo "${pid}" > "${pid_file}"
-  echo "[start] ${name} pid=${pid} (svc/${service} ${local_port} -> ${remote_port}, auto-reconnect)"
+  echo "[start] ${name} pid=${pid} (svc/${service} ${local_port} -> ${remote_port}, auto-reconnect + probe ${probe_path})"
 }
 
 stop_one() {
@@ -69,10 +92,10 @@ stop_one() {
 cmd="${1:-start}"
 case "${cmd}" in
   start)
-    start_one grafana    observability kube-prometheus-stack-grafana    3000  3000
-    start_one daemon     observability perf-sentinel-daemon            14318 14318
-    start_one tempo      observability tempo                            3200  3200
-    start_one prometheus observability kube-prometheus-stack-prometheus 9090  9090
+    start_one grafana    observability kube-prometheus-stack-grafana    3000  3000 /api/health
+    start_one daemon     observability perf-sentinel-daemon            14318 14318 /health
+    start_one tempo      observability tempo                            3200  3200 /ready
+    start_one prometheus observability kube-prometheus-stack-prometheus 9090  9090 /-/ready
     ;;
   stop)
     stop_one grafana
