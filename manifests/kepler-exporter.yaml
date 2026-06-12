@@ -147,7 +147,7 @@ spec:
           key: node-role.kubernetes.io/master
       containers:
         - name: kepler
-          image: quay.io/sustainable_computing_io/kepler@sha256:694b62c9ab55b588d9a11240bd8ed3e769e594aec61216c54e4efd7316fdf5fa  # v0.11.4 amd64
+          image: quay.io/sustainable_computing_io/kepler@sha256:fbb9f98dd6ee063c4b82a4ace5c81b1e401c3fb08ad5f9438edf9710018b6e9f  # v0.11.4 amd64
           imagePullPolicy: IfNotPresent
           command: ["/usr/bin/kepler"]
           args:
