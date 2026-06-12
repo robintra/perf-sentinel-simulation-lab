@@ -5,7 +5,7 @@
 # Build with:  docker build -t helidon-se-svc:s2 services/helidon-se-svc
 
 # ---- otel agent download ----
-FROM alpine:3.23 AS otel-agent
+FROM alpine:3.24 AS otel-agent
 ARG OTEL_AGENT_VERSION=2.27.0
 ARG OTEL_AGENT_SHA256=bd01fea1304e8c8803fff827a0bdda02b2266742a85c62548053c6761474bb5b
 RUN apk add --no-cache wget \
