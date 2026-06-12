@@ -15,7 +15,7 @@
 # Build with:  docker build -t quarkus-svc:s2 services/quarkus-svc
 
 # ---- otel agent download ----
-FROM alpine:3.23 AS otel-agent
+FROM alpine:3.24 AS otel-agent
 ARG OTEL_AGENT_VERSION=2.27.0
 # SHA-256 of the v2.27.0 javaagent.jar, captured 2026-05-24. Fails the
 # build if the upstream asset changes — supply-chain hygiene that the
