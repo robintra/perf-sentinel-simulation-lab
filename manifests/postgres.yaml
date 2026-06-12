@@ -43,7 +43,7 @@ spec:
         fsGroup: 70
       containers:
         - name: postgres
-          image: postgres@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39  # 18.3-alpine
+          image: postgres@sha256:65f70a152846cf504dff86e807007e9aeac98c3aeb7b62541b2c55ab9d264e56  # 18.3-alpine
           imagePullPolicy: IfNotPresent
           # Enable pg_stat_statements at startup. The extension is bundled
           # with the postgres:18.3-alpine image, but only loads when listed
