@@ -134,7 +134,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: psql
-          image: postgres@sha256:8ff36f3c66371cba71d20ceedccfc3de9669a68737607888c4ef0af93abe8e39  # 18.3-alpine
+          image: postgres@sha256:65f70a152846cf504dff86e807007e9aeac98c3aeb7b62541b2c55ab9d264e56  # 18.3-alpine
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
