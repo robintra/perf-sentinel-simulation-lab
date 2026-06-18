@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 36 scenarios live under `scenarios/<name>/` and each one ships a
+The 41 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 36 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), and the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, plus the six limit-testing scenarios (`limit-*`, below). The release gate runs all 36. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 41 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below). The release gate runs all 41. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -220,7 +220,14 @@ make verify-daemon-ack-workflow
 make verify-scaphandre-mock-validation
 make verify-measured-energy-chain
 
-# All 36 (sequential, long-running-drift is the long pole)
+# 0.8.13 feature gates (run with PERF_SENTINEL_VERSION=0.8.13-rc until the image is published)
+make verify-sci-functional-unit
+make verify-rgesn-crosswalk
+make verify-esrs-e1-crosswalk
+make verify-verify-hash-fail-closed
+make verify-chart-prometheusrule-pdb
+
+# All 41 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1115,7 +1122,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 36 scenarios, in an order
+`make verify-all-scenarios` includes all 41 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough

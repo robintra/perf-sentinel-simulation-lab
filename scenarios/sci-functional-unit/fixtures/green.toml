@@ -1,0 +1,7 @@
+# Minimal green-scoring config for the SCI functional-unit scenario (0.8.13 G1).
+# Enables model-based carbon scoring with a region present in the embedded
+# carbon-intensity dataset, so `analyze --format json` emits green_summary.co2
+# (total + the new sci_per_trace intensity).
+[green]
+enabled = true
+default_region = "eu-west-3"

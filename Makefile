@@ -372,6 +372,21 @@ verify-disclose: ## periodic disclosure two-tier waste (schema v1.1, verify-hash
 verify-disclose-temporal: ## periodic disclosure v1.2 continuity (temporal_coverage, coverage_basis, dense/sparse)
 	./scenarios/disclose-temporal/verify.sh
 
+verify-sci-functional-unit: ## 0.8.13 G1: SCI per-functional-unit intensity (batch analyze + daemon /api/export/report)
+	./scenarios/sci-functional-unit/verify.sh
+
+verify-rgesn-crosswalk: ## 0.8.13 G2: RGESN 2024 crosswalk on disclosed anti_patterns (slow_* omitted)
+	./scenarios/rgesn-crosswalk/verify.sh
+
+verify-esrs-e1-crosswalk: ## 0.8.13 R1: ESRS E1 crosswalk + schema v1.3 + hash integrity + v1.2 retro-compat
+	./scenarios/esrs-e1-crosswalk/verify.sh
+
+verify-verify-hash-fail-closed: ## 0.8.13 R2: verify-hash fail-closed on a signed report without identity flags
+	./scenarios/verify-hash-fail-closed/verify.sh
+
+verify-chart-prometheusrule-pdb: ## 0.8.13 Phase A: chart PrometheusRule + PodDisruptionBudget (render + kubeconform + promtool)
+	./scenarios/chart-prometheusrule-pdb/verify.sh
+
 verify-template-gitlab-ci: ## Validate upstream gitlab-ci.yml template via GitLab CE in-cluster
 	./scenarios/template-gitlab-ci/verify.sh
 
@@ -440,7 +455,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 36 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 41 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -458,7 +473,7 @@ verify-all-scenarios: ## Run all 36 scenarios sequentially (see docs/SCENARIOS.m
 	@#   (SIGTERM_DRAIN_IMAGE, default ghcr.io/robintra/perf-sentinel:0.8.5) and
 	@#   restores the committed image on cleanup; on a pre-0.8.5 image it FAILs
 	@#   the positive control by design.
-	@for s in limit-batch-volume hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
