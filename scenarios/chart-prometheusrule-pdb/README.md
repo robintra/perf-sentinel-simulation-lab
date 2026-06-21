@@ -1,6 +1,6 @@
 # `chart-prometheusrule-pdb` scenario
 
-Locks the **0.8.13 Phase A** chart additions (chart `0.2.61`): the opt-in
+Locks the **0.8.13 Phase A** chart additions (tracked at chart `0.2.63`): the opt-in
 `PrometheusRule` and `PodDisruptionBudget` templates. Both default to disabled.
 
 The lab does **not** vendor the chart — the daemon ships via
@@ -12,16 +12,17 @@ The lab does **not** vendor the chart — the daemon ships via
    0 invalid (mirrors the product CI `flags-on` leg).
 2. `promtool check rules` on the PrometheusRule `spec.groups` (the product CI does
    **not** run promtool; we add it).
-3. every alert expr references a real daemon metric (the 13 names:
+3. every alert expr references a real daemon metric (the 11 names — chart 0.2.63
+   dropped the findings-store near-cap alert and its `…_stored_findings` /
+   `…_max_retained_findings` metrics:
    `perf_sentinel_active_traces`, `…_otlp_rejected_total`,
    `…_analysis_shed_traces_total`, `…_analysis_queue_depth`/`_capacity`,
-   `…_stored_findings`, `…_max_retained_findings`,
    `…_correlator_pairs_evicted_total`, `…_service_io_ops_overflow_total`, and the
    four `…_{scaphandre,kepler,redfish,cloud_energy}_last_scrape_age_seconds`).
 4. PDB edge cases: `minAvailable=0` renders `minAvailable: 0` (NOT
    `maxUnavailable`); the default renders `maxUnavailable: 1`; `apiVersion policy/v1`.
 5. if the cluster has the Prometheus-Operator CRD, `helm install` (no `--wait`, the
-   0.8.13 image need not exist) → PrometheusRule + PDB admitted; otherwise SKIP.
+   chart appVersion image need not exist) → PrometheusRule + PDB admitted; otherwise SKIP.
 
 ## Run
 

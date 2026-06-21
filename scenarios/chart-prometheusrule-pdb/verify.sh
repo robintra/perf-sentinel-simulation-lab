@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Chart Phase A: PrometheusRule + PodDisruptionBudget (perf-sentinel 0.8.13,
-# chart 0.2.61). Both features are opt-in (values default to disabled).
+# Chart Phase A: PrometheusRule + PodDisruptionBudget (perf-sentinel 0.8.13+,
+# chart 0.2.63). Both features are opt-in (values default to disabled).
+# Chart 0.2.63 dropped the findings-store near-cap alert, so the stored_findings
+# / max_retained_findings metrics are no longer referenced by the rule set.
 #
 # This scenario renders the upstream Helm chart (charts/perf-sentinel/ in the
 # perf-sentinel product repo -- the lab does NOT vendor it, the daemon ships via
@@ -12,7 +14,7 @@
 # Sub-tests:
 #   1. render flags-on | kubeconform -strict -ignore-missing-schemas -> 0 invalid.
 #   2. promtool check rules on the PrometheusRule spec.groups -> SUCCESS.
-#   3. every alert expr references a real daemon metric (13 names).
+#   3. every alert expr references a real daemon metric (11 names, chart 0.2.63).
 #   4. PDB edge case: minAvailable=0 renders `minAvailable: 0` (NOT maxUnavailable);
 #      default (no minAvailable) renders `maxUnavailable: 1`; apiVersion policy/v1.
 #   5. if the cluster has the Prometheus-Operator CRD, `helm install` (no --wait,
@@ -49,8 +51,6 @@ REQUIRED_METRICS=(
   perf_sentinel_analysis_shed_traces_total
   perf_sentinel_analysis_queue_depth
   perf_sentinel_analysis_queue_capacity
-  perf_sentinel_stored_findings
-  perf_sentinel_max_retained_findings
   perf_sentinel_correlator_pairs_evicted_total
   perf_sentinel_service_io_ops_overflow_total
   perf_sentinel_scaphandre_last_scrape_age_seconds
@@ -114,7 +114,7 @@ else
 fi
 
 # === 3. every required metric appears in the rendered rules ===
-step "3. alert exprs reference real daemon metrics (13)"
+step "3. alert exprs reference real daemon metrics (11)"
 miss=0
 for m in "${REQUIRED_METRICS[@]}"; do
   if grep -q "$m" "${TMP_DIR}/pr.yaml"; then ok "$m"; else fail "MISSING $m"; miss=$((miss+1)); fi
@@ -141,7 +141,7 @@ if kubectl get crd prometheusrules.monitoring.coreos.com >/dev/null 2>&1; then
   cleanup() { helm uninstall t -n "$NS" >/dev/null 2>&1 || true; kubectl delete ns "$NS" --wait=false >/dev/null 2>&1 || true; }
   trap cleanup EXIT
   kubectl create ns "$NS" >/dev/null 2>&1 || true
-  # No --wait: the 0.8.13 image need not exist; we only assert admission of the
+  # No --wait: the chart's appVersion image need not exist; we only assert admission of the
   # two opt-in objects, not that the daemon pod becomes Ready.
   if helm install t "${CHART}" -n "$NS" "${FLAGS[@]}" >/dev/null 2>"${TMP_DIR}/install-err.txt"; then
     sleep 3
