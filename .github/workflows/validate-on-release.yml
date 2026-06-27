@@ -287,7 +287,7 @@ jobs:
     needs: validate
     if: success()
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 65
     permissions:
       contents: read
 
@@ -421,6 +421,31 @@ jobs:
         # scenario itself (~3 min). Total ~12 min plus margin.
         timeout-minutes: 18
         run: make verify-daemon-ack-workflow
+
+      # Daemon dashboard non-regression. The read-only query APIs that
+      # back the dashboard tabs (query-monitor-api: Config/Trends/Scrapers
+      # + the 6 Grafana gauges), the cross-trace correlator
+      # (correlation-finding: /api/correlations), and the daemon Report ->
+      # self-contained HTML dashboard path (hybrid-daemon-batch). The ack
+      # tab is already covered by daemon-ack-workflow above. None of these
+      # need the heavy deployment-mode footprint (Jaeger/Zipkin/sidecars).
+      - name: query-monitor-api
+        # Daemon-only, read-only endpoints; satisfied by a fresh daemon.
+        timeout-minutes: 4
+        run: make verify-query-monitor-api
+
+      - name: correlation-finding
+        # Self-seeds chatty+fanout traffic via validate-findings (~9 min),
+        # then waits 90s for the correlator window before asserting
+        # /api/correlations.
+        timeout-minutes: 16
+        run: make verify-correlation-finding
+
+      - name: hybrid-daemon-batch
+        # Renders the daemon's accumulated Report as a self-contained HTML
+        # dashboard via report --input. Findings exist from the steps above.
+        timeout-minutes: 5
+        run: make verify-hybrid-daemon-batch
 
       - name: scaphandre-mock-validation
         timeout-minutes: 4
