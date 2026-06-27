@@ -1,0 +1,31 @@
+image:
+  repository: rails-svc
+  tag: s3
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8094
+
+database:
+  name: lab
+  host: postgres.db.svc.cluster.local
+  port: "5432"
+  username: rails_user
+  password: lab_rails
+
+otel:
+  serviceName: rails-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 800m
+    memory: 512Mi

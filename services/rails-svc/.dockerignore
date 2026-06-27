@@ -1,0 +1,8 @@
+.git
+.gitignore
+*.iml
+tmp
+log
+.bundle
+vendor/bundle
+README.md

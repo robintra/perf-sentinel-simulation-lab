@@ -1,6 +1,6 @@
 ---
 # Multistack Postgres bootstrap. Idempotent Kubernetes Job that creates
-# the 11 schemas + service roles + GRANTs the multistack services need.
+# the 12 schemas + service roles + GRANTs the multistack services need.
 # Mirrors the pattern of manifests/postgres-init-schemas.yaml (which
 # only runs on a fresh Postgres bootstrap via docker-entrypoint-initdb.d)
 # but works on an already-running Postgres without dropping the PVC.
@@ -40,6 +40,7 @@ data:
     CREATE SCHEMA IF NOT EXISTS django;
     CREATE SCHEMA IF NOT EXISTS fastapi;
     CREATE SCHEMA IF NOT EXISTS go;
+    CREATE SCHEMA IF NOT EXISTS rails;
 
     -- Multistack service roles. Passwords are lab-only placeholders;
     -- they are overridden by per-service Kubernetes Secrets when each
@@ -79,6 +80,9 @@ data:
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'go_user') THEN
         CREATE ROLE go_user LOGIN PASSWORD 'lab_go';
       END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rails_user') THEN
+        CREATE ROLE rails_user LOGIN PASSWORD 'lab_rails';
+      END IF;
     END
     $$;
 
@@ -93,6 +97,7 @@ data:
     GRANT USAGE, CREATE ON SCHEMA django     TO django_user;
     GRANT USAGE, CREATE ON SCHEMA fastapi    TO fastapi_user;
     GRANT USAGE, CREATE ON SCHEMA "go"       TO go_user;
+    GRANT USAGE, CREATE ON SCHEMA rails      TO rails_user;
 
     ALTER ROLE quarkus_user    SET search_path = quarkus, public;
     ALTER ROLE mutiny_user     SET search_path = mutiny, public;
@@ -105,6 +110,7 @@ data:
     ALTER ROLE django_user     SET search_path = django, public;
     ALTER ROLE fastapi_user    SET search_path = fastapi, public;
     ALTER ROLE go_user         SET search_path = "go", public;
+    ALTER ROLE rails_user      SET search_path = rails, public;
 ---
 apiVersion: batch/v1
 kind: Job

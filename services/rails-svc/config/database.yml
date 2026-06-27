@@ -1,0 +1,21 @@
+# Driven by the DB_* env vars the helm deployment injects (mirrors django-svc).
+# search_path pins the per-service schema so unqualified table names resolve to
+# the `rails` schema, matching the multistack schema/role provisioning.
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  host: <%= ENV.fetch("DB_HOST", "localhost") %>
+  port: <%= ENV.fetch("DB_PORT", "5432") %>
+  database: <%= ENV.fetch("DB_NAME", "lab") %>
+  username: <%= ENV.fetch("DB_USER", "rails_user") %>
+  password: <%= ENV.fetch("DB_PASSWORD", "lab_rails") %>
+  schema_search_path: <%= ENV.fetch("DB_SCHEMA", "rails") %>,public
+  pool: <%= ENV.fetch("DB_POOL", "10") %>
+  variables:
+    statement_timeout: 30000
+
+production:
+  <<: *default
+
+development:
+  <<: *default

@@ -70,6 +70,7 @@ data:
         {"exe": "/usr/bin/python3.13",                         "cmdline": "python3-muvicorn-app.main:app-fastapi-svc","pid": 5241},
         # Multistack: Go (static binary)
         {"exe": "/usr/local/bin/go-svc-bin",                   "cmdline": "go-svc-bin",                             "pid": 6240},
+        {"exe": "/usr/local/bin/ruby",                         "cmdline": "rubypuma/app/config.ru-rails-svc",       "pid": 7240},
     ]
 
     INSTANCE_LABEL = os.environ.get("SCAPHANDRE_MOCK_INSTANCE", "scaphandre-mock")

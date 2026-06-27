@@ -154,6 +154,10 @@ data:
     exe_contains = "/usr/local/bin/go-svc-bin"
     cmdline_contains = "go-svc"
 
+    [green.scaphandre.process_map."rails-svc"]
+    exe_contains = "bin/ruby"
+    cmdline_contains = "rails-svc"
+
     [green.kepler]
     # Kepler eBPF exporter scrape path. The real exporter needs
     # bare-metal perf counters which the lab cannot provide, so a

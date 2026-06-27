@@ -3,9 +3,9 @@
 This document is the canonical contract every multistack service in this lab
 must respect. The lab currently runs 3 Java/Spring Boot services
 (`order-service`, `payment-service`, `notification-service`) and is being
-extended with 11 additional services across distinct stacks (Quarkus,
+extended with 12 additional services across distinct stacks (Quarkus,
 Quarkus+Mutiny, Helidon SE, Helidon MP, .NET 10, Rust+Diesel, Rust+SeaORM,
-NestJS, Django, FastAPI, Go).
+NestJS, Django, FastAPI, Go, Rails).
 
 Every new stack reproduces the **same 10 perf-sentinel anti-patterns** in its
 own native runtime/ORM/HTTP-client. This makes perf-sentinel's detectors
@@ -123,7 +123,7 @@ paths are documented in each service's `README.md`.
 ## Service inventory
 
 The lab namespace `shop` hosts all services. New stacks land on ports 8083
-through 8093 (Java baseline keeps 8080-8082). Each service owns its own
+through 8094 (Java baseline keeps 8080-8082). Each service owns its own
 Postgres schema in the shared `lab` database.
 
 | Service              | Port | Schema        | Stack                                       |
@@ -142,6 +142,7 @@ Postgres schema in the shared `lab` database.
 | django-svc           | 8091 | django        | Django 5.2 LTS + psycopg 3                  |
 | fastapi-svc          | 8092 | fastapi       | FastAPI 0.136 + SQLAlchemy 2 async          |
 | go-svc               | 8093 | go            | Go 1.26 + pgx v5                            |
+| rails-svc            | 8094 | rails         | Rails 8 + Active Record (Ruby 3.3)          |
 
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
@@ -168,6 +169,8 @@ stable. Re-verify before each Dockerfile bump.
 | Django          | **5.2.14 LTS** (2026-05-05)  | Yes — security support through ~April 2028                            | 6.0.5 latest non-LTS not chosen. Next LTS is 6.2 (~April 2027). |
 | FastAPI         | **0.136.3** (2026-05-23)     | No LTS                                                                | Pydantic ≥ 2.13 required.                                       |
 | Go              | **1.26.3** (2026-05-07)      | No LTS (6-month cadence, N and N-1)                                   | + `pgx v5.7.5`.                                                 |
+| Rails           | **8.x** (Active Record)      | No LTS                                                                | Ruby 3.3; opentelemetry-instrumentation-rails + active_record. |
+| Ruby            | **3.3** (slim-bookworm)      | Stable                                                               | The ActiveRecord ORM scope is emitted by record loads (`_query_by_sql`), not `.count`. |
 
 Verification sources (re-fetched per stack at delivery time):
 
@@ -204,9 +207,9 @@ baseline's shape, so the fault endpoints can target consistent queries:
 
 Seed data is the responsibility of the service's own migration tool (Flyway,
 EF Core migrations, diesel-cli, sea-orm-cli, Prisma migrate, django migrate,
-alembic, golang-migrate).
+alembic, golang-migrate, Active Record / a startup bootstrap).
 
-The shared schema bootstrap (schema + role + GRANT + search_path) for the 11
+The shared schema bootstrap (schema + role + GRANT + search_path) for the 12
 new services lives in `manifests/postgres-multistack-schemas.yaml` as a
 Kubernetes Job. It must be applied once before any new service comes up,
 and is idempotent (`CREATE SCHEMA IF NOT EXISTS`, `CREATE ROLE` guarded by
@@ -262,6 +265,7 @@ absolute path:
 - Node distroless: `exe_contains = "bin/node"`
 - Python distroless: `exe_contains = "bin/python3"`
 - Go static: `exe_contains = "/usr/local/bin/<svc>-bin"`
+- Ruby slim: `exe_contains = "bin/ruby"`
 
 `cmdline_contains` is the service slug (e.g. `quarkus-svc`) so identical
 runtimes (multiple Java services) stay disambiguated. The Scaphandre mock at
@@ -271,7 +275,7 @@ per service so the sub-test 7 of `scaphandre-mock-validation` keeps passing.
 ## Network policies
 
 The intra-shop NetworkPolicy in `manifests/network-policies.yaml` (rule
-`shop-intra-namespace`) covers ports 8080-8093 for ingress between pods in
+`shop-intra-namespace`) covers ports 8080-8094 for ingress between pods in
 the `shop` namespace. Any pod arboring `app.kubernetes.io/part-of:
 perf-sentinel-lab` inherits Postgres + OTel Collector egress for free.
 
@@ -296,8 +300,8 @@ Success criterion per stack: 10/10 PASS in
 (`make validate-findings`) must keep returning 10/10 untouched (regression
 guard).
 
-End-to-end target after the 11 stacks are landed: **140 findings** total
-(14 services × 10 anti-patterns) on the daemon `/api/findings`, with
+End-to-end target after the 12 stacks are landed: **150 findings** total
+(15 services × 10 anti-patterns) on the daemon `/api/findings`, with
 non-regression on the Java baseline. See the plan file for details.
 
 ## Stack-specific release notes

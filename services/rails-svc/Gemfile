@@ -1,0 +1,26 @@
+# rails-svc: Rails 8 API-only multistack member for perf-sentinel-simulation-lab.
+# The OpenTelemetry ActiveRecord instrumentation is the point of this service:
+# it tags every ActiveRecord query with the InstrumentationScope
+# `OpenTelemetry::Instrumentation::ActiveRecord`, the ORM marker the daemon's
+# strict sanitizer-aware classifier consumes and the suggestions engine maps to
+# `suggested_fix.framework = ruby_active_record`.
+#
+# Loose constraints + a committed Gemfile.lock keep the resolve reproducible
+# without pinning every transitive OTel gem by hand.
+source "https://rubygems.org"
+
+ruby "~> 3.3"
+
+gem "rails", "~> 8.0"
+gem "pg", "~> 1.5"
+gem "puma", "~> 6.0"
+
+# OpenTelemetry: SDK + OTLP HTTP exporter (honours OTEL_EXPORTER_OTLP_* env).
+# `-rails` brings the Rack SERVER middleware + ActiveRecord ORM scope (the
+# marker the daemon keys on); `-net_http` instruments the outbound HTTP faults;
+# `-pg` instruments the raw connections pool-saturation opens outside the ORM.
+gem "opentelemetry-sdk"
+gem "opentelemetry-exporter-otlp"
+gem "opentelemetry-instrumentation-rails"
+gem "opentelemetry-instrumentation-net_http"
+gem "opentelemetry-instrumentation-pg"
