@@ -1,7 +1,9 @@
 # Idempotent schema + seed bootstrap, mirroring django-svc/schema.py.
 # Creates the 3 tables in the `rails` schema and seeds 100 orders / 500 order
-# items / 200 payments only when empty. A PostgreSQL advisory lock serializes
-# the puma workers so they cannot double-seed.
+# items / 200 payments only when empty. The current deploy is single-mode puma
+# at replicas:1 + Recreate, so concurrency cannot occur; the PostgreSQL
+# advisory lock is kept defensively so a future move to cluster-mode puma or
+# replicas>1 cannot double-seed.
 module SchemaBootstrap
   ADVISORY_LOCK = 808_094 # unique per service (django uses 808191)
 

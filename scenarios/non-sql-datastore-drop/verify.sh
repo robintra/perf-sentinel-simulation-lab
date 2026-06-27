@@ -45,6 +45,11 @@ trap cleanup EXIT
 [ -x "${PERF_SENTINEL_LOCAL_BIN}" ] || die "no local binary at ${PERF_SENTINEL_LOCAL_BIN} (cargo build --release -p perf-sentinel first)"
 
 start_local_daemon() {
+  # Kill any daemon orphaned on our port by a hard-interrupted prior run, so we
+  # never bind-fail silently and then assert against a stale daemon's cumulative
+  # metrics/findings (a false PASS). Matches the sibling 0.9.2 scenarios.
+  pkill -f "perf-sentinel watch.*${DAEMON_HTTP_PORT}" 2>/dev/null || true
+  sleep 1
   cat > "${TMP_DIR}/daemon.toml" <<EOF
 [daemon]
 listen_address = "127.0.0.1"

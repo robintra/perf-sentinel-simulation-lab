@@ -11,7 +11,7 @@ FROM ruby:3.3-slim-bookworm AS builder
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential libpq-dev git \
+ && apt-get install -y --no-install-recommends build-essential libpq-dev \
  && rm -rf /var/lib/apt/lists/*
 
 COPY Gemfile Gemfile.lock* ./

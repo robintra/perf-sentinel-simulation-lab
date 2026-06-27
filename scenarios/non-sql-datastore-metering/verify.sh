@@ -35,7 +35,9 @@ DAEMON_HTTP_PORT="${DAEMON_HTTP_PORT:-14396}"
 DAEMON_GRPC_PORT="${DAEMON_GRPC_PORT:-14397}"
 DAEMON_URL="http://127.0.0.1:${DAEMON_HTTP_PORT}"
 # AF_UNIX path must stay short (~104 char limit), so /tmp not the scratch dir.
-SOCK="${SOCK:-/tmp/ps-nsm.sock}"
+# Per-pid suffix avoids colliding with a leftover socket from a crashed run
+# (possibly owned by another user, which `rm -f` could not clear).
+SOCK="${SOCK:-/tmp/ps-nsm-$$.sock}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
