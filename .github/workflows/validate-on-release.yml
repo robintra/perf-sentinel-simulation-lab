@@ -287,7 +287,11 @@ jobs:
     needs: validate
     if: success()
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    # +30 over the pre-dashboard 45: the added scenarios cost ~16 min
+    # (correlation-finding self-seeds a full ~9-min validate-findings), and
+    # make up-cni's Cilium image pull has no per-step cap, so keep slack for
+    # slow-runner variance — the job-level cap is a single wall-clock kill.
+    timeout-minutes: 75
     permissions:
       contents: read
 
@@ -388,6 +392,15 @@ jobs:
             sleep 1
           done
 
+      # Daemon dashboard non-regression (see also correlation-finding and
+      # hybrid-daemon-batch after the energy tail; daemon-ack-workflow covers
+      # the ack tab). query-monitor-api is daemon-only and traffic-free, so it
+      # runs first to fail fast on a /api/config, /api/status, /api/energy or
+      # /metrics-gauge regression instead of after ~30 min of traffic steps.
+      - name: query-monitor-api
+        timeout-minutes: 4
+        run: make verify-query-monitor-api
+
       - name: multi-agent-load (smoke 10 producers)
         timeout-minutes: 8
         run: PRODUCERS=10 RATE_PER_PRODUCER=100 DURATION=60s make verify-multi-agent-load
@@ -422,31 +435,6 @@ jobs:
         timeout-minutes: 18
         run: make verify-daemon-ack-workflow
 
-      # Daemon dashboard non-regression. The read-only query APIs that
-      # back the dashboard tabs (query-monitor-api: Config/Trends/Scrapers
-      # + the 6 Grafana gauges), the cross-trace correlator
-      # (correlation-finding: /api/correlations), and the daemon Report ->
-      # self-contained HTML dashboard path (hybrid-daemon-batch). The ack
-      # tab is already covered by daemon-ack-workflow above. None of these
-      # need the heavy deployment-mode footprint (Jaeger/Zipkin/sidecars).
-      - name: query-monitor-api
-        # Daemon-only, read-only endpoints; satisfied by a fresh daemon.
-        timeout-minutes: 4
-        run: make verify-query-monitor-api
-
-      - name: correlation-finding
-        # Self-seeds chatty+fanout traffic via validate-findings (~9 min),
-        # then waits 90s for the correlator window before asserting
-        # /api/correlations.
-        timeout-minutes: 16
-        run: make verify-correlation-finding
-
-      - name: hybrid-daemon-batch
-        # Renders the daemon's accumulated Report as a self-contained HTML
-        # dashboard via report --input. Findings exist from the steps above.
-        timeout-minutes: 5
-        run: make verify-hybrid-daemon-batch
-
       - name: scaphandre-mock-validation
         timeout-minutes: 4
         run: make verify-scaphandre-mock-validation
@@ -457,6 +445,24 @@ jobs:
         # 3 min covers the worst case plus startup jitter.
         timeout-minutes: 3
         run: make verify-measured-energy-chain
+
+      # Traffic-dependent dashboard scenarios run last so their heavy seed
+      # does not push the cheaper, previously-stable energy tail above past
+      # the job timeout. correlation-finding self-seeds chatty+fanout traffic;
+      # hybrid-daemon-batch then renders the daemon's fully-accumulated Report
+      # via `report --input` using the version under test.
+      - name: correlation-finding
+        # Self-seeds chatty+fanout traffic via validate-findings (~9 min),
+        # then waits 90s for the correlator window before asserting
+        # /api/correlations.
+        timeout-minutes: 16
+        run: make verify-correlation-finding
+
+      - name: hybrid-daemon-batch
+        # Renders the daemon's accumulated Report as a self-contained HTML
+        # dashboard via report --input (PERF_SENTINEL_VERSION-pinned render).
+        timeout-minutes: 5
+        run: make verify-hybrid-daemon-batch
 
       - name: Show daemon logs (debug)
         if: always()
@@ -482,6 +488,9 @@ jobs:
             /tmp/scenario-daemon-ack-workflow-report.md
             /tmp/scenario-scaphandre-mock-validation-report.md
             /tmp/scenario-measured-energy-chain-report.md
+            /tmp/scenario-query-monitor-api-report.md
+            /tmp/scenario-correlation-finding-report.md
+            /tmp/scenario-hybrid-daemon-batch-report.md
             /tmp/multi-agent-load/*
             /tmp/long-running-drift/*
             /tmp/failure-mode-*/*
@@ -489,6 +498,9 @@ jobs:
             /tmp/daemon-ack-workflow/*
             /tmp/scaphandre-mock-validation/*
             /tmp/measured-energy-chain/*
+            /tmp/query-monitor-api/*
+            /tmp/correlation-finding/*
+            /tmp/hybrid-daemon-batch/*
           retention-days: 14
           if-no-files-found: warn
 

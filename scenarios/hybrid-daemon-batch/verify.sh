@@ -20,7 +20,11 @@ set -euo pipefail
 SCENARIO="hybrid-daemon-batch"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.21"
+# The `report --input` render must run the version under test, not a fixed
+# old CLI: the whole point of this scenario is to exercise the release's own
+# report HTML renderer against a daemon Report it produced. CI sets
+# PERF_SENTINEL_VERSION; standalone runs keep the historical 0.5.21 default.
+IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION:-0.5.21}"
 TMP_DIR="/tmp/${SCENARIO}"
 mkdir -p "${TMP_DIR}"
 
