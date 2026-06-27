@@ -1,0 +1,98 @@
+[
+  {
+    "timestamp": "2025-06-07T12:00:00.006Z",
+    "trace_id": "t000000000000000000000000000000a2",
+    "span_id": "s000000000a200002",
+    "parent_span_id": "s000000000a200001",
+    "service": "shop-mysql",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM t WHERE owner = 1 AND tags = ARRAY['secret', 'pii'] AND data['ssn'] IS NOT NULL",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/audit",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.010Z",
+    "trace_id": "t000000000000000000000000000000a2",
+    "span_id": "s000000000a200003",
+    "parent_span_id": "s000000000a200001",
+    "service": "shop-mysql",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM t WHERE owner = 2 AND tags = ARRAY['secret', 'pii'] AND data['ssn'] IS NOT NULL",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/audit",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.014Z",
+    "trace_id": "t000000000000000000000000000000a2",
+    "span_id": "s000000000a200004",
+    "parent_span_id": "s000000000a200001",
+    "service": "shop-mysql",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM t WHERE owner = 3 AND tags = ARRAY['secret', 'pii'] AND data['ssn'] IS NOT NULL",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/audit",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.018Z",
+    "trace_id": "t000000000000000000000000000000a2",
+    "span_id": "s000000000a200005",
+    "parent_span_id": "s000000000a200001",
+    "service": "shop-mysql",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM t WHERE owner = 4 AND tags = ARRAY['secret', 'pii'] AND data['ssn'] IS NOT NULL",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/audit",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.022Z",
+    "trace_id": "t000000000000000000000000000000a2",
+    "span_id": "s000000000a200006",
+    "parent_span_id": "s000000000a200001",
+    "service": "shop-mysql",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM t WHERE owner = 5 AND tags = ARRAY['secret', 'pii'] AND data['ssn'] IS NOT NULL",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/audit",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.026Z",
+    "trace_id": "t000000000000000000000000000000a2",
+    "span_id": "s000000000a200007",
+    "parent_span_id": "s000000000a200001",
+    "service": "shop-mysql",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM t WHERE owner = 6 AND tags = ARRAY['secret', 'pii'] AND data['ssn'] IS NOT NULL",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/audit",
+      "method": "Handler::handle"
+    }
+  }
+]

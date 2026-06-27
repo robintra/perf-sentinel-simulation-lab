@@ -1,0 +1,335 @@
+{
+  "data": [
+    {
+      "traceID": "t000000000000000000000000000000c0",
+      "spans": [
+        {
+          "spanID": "s000000000c000001",
+          "operationName": "GET /api/orders",
+          "references": [],
+          "startTime": 1749297600001000,
+          "duration": 120000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "http.route",
+              "value": "/api/orders"
+            },
+            {
+              "key": "url.full",
+              "value": "http://gw/api/orders"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000002",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600002000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgresql"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 1"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000003",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600003000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgresql"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 2"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000004",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600004000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgresql"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 3"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000005",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600005000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgresql"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 4"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000006",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600006000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgresql"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 5"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000007",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600007000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgresql"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 6"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000008",
+          "operationName": "redis-GET",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600008000,
+          "duration": 800,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "redis"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET user:1"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c000009",
+          "operationName": "redis-GET",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600009000,
+          "duration": 800,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "redis"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET user:2"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c00000a",
+          "operationName": "redis-GET",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600010000,
+          "duration": 800,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "redis"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET user:3"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c00000b",
+          "operationName": "redis-GET",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600011000,
+          "duration": 800,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "redis"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET user:4"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c00000c",
+          "operationName": "redis-GET",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600012000,
+          "duration": 800,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "redis"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET user:5"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c00000d",
+          "operationName": "redis-GET",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600013000,
+          "duration": 800,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "redis"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET user:6"
+            }
+          ]
+        },
+        {
+          "spanID": "s000000000c00000e",
+          "operationName": "es-search",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s000000000c000001"
+            }
+          ],
+          "startTime": 1749297600014000,
+          "duration": 5000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "elasticsearch"
+            },
+            {
+              "key": "db.statement",
+              "value": "GET /orders/_search"
+            },
+            {
+              "key": "url.full",
+              "value": "http://es:9200/orders/_search"
+            }
+          ]
+        }
+      ],
+      "processes": {
+        "p1": {
+          "serviceName": "shop-mixed"
+        }
+      }
+    }
+  ]
+}

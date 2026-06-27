@@ -1,0 +1,212 @@
+[
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000001",
+    "name": "GET /api/orders",
+    "timestamp": 1749297600001000,
+    "duration": 120000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "http.route": "/api/orders",
+      "url.full": "http://gw/api/orders"
+    }
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000002",
+    "name": "db-query",
+    "timestamp": 1749297600002000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM orders WHERE id = 1"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000003",
+    "name": "db-query",
+    "timestamp": 1749297600003000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM orders WHERE id = 2"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000004",
+    "name": "db-query",
+    "timestamp": 1749297600004000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM orders WHERE id = 3"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000005",
+    "name": "db-query",
+    "timestamp": 1749297600005000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM orders WHERE id = 4"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000006",
+    "name": "db-query",
+    "timestamp": 1749297600006000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM orders WHERE id = 5"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000007",
+    "name": "db-query",
+    "timestamp": 1749297600007000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "postgresql",
+      "db.statement": "SELECT * FROM orders WHERE id = 6"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000008",
+    "name": "redis-GET",
+    "timestamp": 1749297600008000,
+    "duration": 800,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "redis",
+      "db.statement": "GET user:1"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c000009",
+    "name": "redis-GET",
+    "timestamp": 1749297600009000,
+    "duration": 800,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "redis",
+      "db.statement": "GET user:2"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c00000a",
+    "name": "redis-GET",
+    "timestamp": 1749297600010000,
+    "duration": 800,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "redis",
+      "db.statement": "GET user:3"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c00000b",
+    "name": "redis-GET",
+    "timestamp": 1749297600011000,
+    "duration": 800,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "redis",
+      "db.statement": "GET user:4"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c00000c",
+    "name": "redis-GET",
+    "timestamp": 1749297600012000,
+    "duration": 800,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "redis",
+      "db.statement": "GET user:5"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c00000d",
+    "name": "redis-GET",
+    "timestamp": 1749297600013000,
+    "duration": 800,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "redis",
+      "db.statement": "GET user:6"
+    },
+    "parentId": "s000000000c000001"
+  },
+  {
+    "traceId": "t000000000000000000000000000000c0",
+    "id": "s000000000c00000e",
+    "name": "es-search",
+    "timestamp": 1749297600014000,
+    "duration": 5000,
+    "localEndpoint": {
+      "serviceName": "shop-mixed"
+    },
+    "tags": {
+      "db.system": "elasticsearch",
+      "db.statement": "GET /orders/_search",
+      "url.full": "http://es:9200/orders/_search"
+    },
+    "parentId": "s000000000c000001"
+  }
+]
