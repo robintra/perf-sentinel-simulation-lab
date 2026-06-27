@@ -1,6 +1,6 @@
 apiVersion: v2
 name: rails-svc
-description: Rails 8 + Active Record (Ruby 3.3) multistack member for perf-sentinel-simulation-lab
+description: Rails 8 + Active Record (Ruby 4.0) multistack member for perf-sentinel-simulation-lab
 type: application
 version: 1.0.0
 appVersion: "1.0.0"

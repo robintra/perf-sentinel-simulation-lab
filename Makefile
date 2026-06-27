@@ -212,7 +212,7 @@ seed-diesel-svc: ## Build + import + helm install the Rust + Diesel 2.x multista
 seed-seaorm-svc: ## Build + import + helm install the Rust + SeaORM 1.1 async multistack member
 	./scripts/seed-seaorm-svc.sh
 
-seed-rails-svc: ## Build + import + helm install the Rails 8 + Active Record (Ruby 3.3) multistack member
+seed-rails-svc: ## Build + import + helm install the Rails 8 + Active Record (Ruby 4.0) multistack member
 	./scripts/seed-rails-svc.sh
 
 inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)

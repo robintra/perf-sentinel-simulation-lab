@@ -1,6 +1,6 @@
 image:
   repository: rails-svc
-  tag: s3
+  tag: s4
   pullPolicy: IfNotPresent
 
 service:

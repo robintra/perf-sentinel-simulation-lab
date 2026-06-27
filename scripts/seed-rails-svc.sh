@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build, import, and helm-install the rails-svc multistack member.
-# Rails 8 + Active Record + opentelemetry-ruby (Ruby 3.3).
+# Rails 8 + Active Record + opentelemetry-ruby (Ruby 4.0).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -8,7 +8,7 @@ cd "${REPO_ROOT}"
 
 CLUSTER_NAME="perf-sentinel-lab"
 SVC="rails-svc"
-TAG="s3"
+TAG="s4"
 IMAGE="${SVC}:${TAG}"
 
 . "${REPO_ROOT}/scripts/k3d-image.sh"

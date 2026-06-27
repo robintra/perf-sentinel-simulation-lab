@@ -1,13 +1,13 @@
 # rails-svc multistage Dockerfile.
 #
-#   1. ruby:3.3-slim-bookworm builder: build toolchain + libpq-dev to compile
+#   1. ruby:4.0-slim-bookworm builder: build toolchain + libpq-dev to compile
 #      the pg and OpenTelemetry C extensions, then bundle install.
 #   2. Same slim image as runtime (distroless ruby does not exist with the
 #      native gem deps; slim-bookworm + libpq5 is the pragmatic choice, like
 #      django-svc).
 #
-# Build with:  docker build -t rails-svc:s3 services/rails-svc
-FROM ruby:3.3-slim-bookworm AS builder
+# Build with:  docker build -t rails-svc:s4 services/rails-svc
+FROM ruby:4.0-slim-bookworm AS builder
 WORKDIR /app
 
 RUN apt-get update \
@@ -19,7 +19,7 @@ RUN bundle install --jobs 4 --retry 3
 
 COPY . .
 
-FROM ruby:3.3-slim-bookworm
+FROM ruby:4.0-slim-bookworm
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libpq5 \
