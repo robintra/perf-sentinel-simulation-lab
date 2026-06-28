@@ -34,15 +34,22 @@ class ApplicationController < ActionController::API
     ENV.fetch("SELF_BASE_URL", "http://localhost:#{ENV.fetch('HTTP_PORT', '8094')}")
   end
 
-  # Net::HTTP is OTel-instrumented, so each call emits a CLIENT span under
-  # OpenTelemetry::Instrumentation::Net::HTTP, the shape the daemon needs for
-  # the HTTP anti-patterns. Returns 1 on HTTP 200, else 0.
+  # Emit our own CLIENT span carrying `url.full` (the attribute perf-sentinel's
+  # ingest needs to classify a span as HTTP I/O), rather than relying on the
+  # Net::HTTP auto-instrumentation whose spans omit it. This is the shape the
+  # daemon groups for the HTTP anti-patterns. Returns 1 on HTTP 200, else 0.
   def http_get(path)
-    uri = URI("#{self_base}#{path}")
-    res = Net::HTTP.start(uri.host, uri.port, open_timeout: 15, read_timeout: 15) do |http|
-      http.get(uri.request_uri)
+    url = "#{self_base}#{path}"
+    tracer = OpenTelemetry.tracer_provider.tracer("rails-svc-http")
+    tracer.in_span("HTTP GET", kind: :client,
+                   attributes: { "url.full" => url, "http.request.method" => "GET" }) do |span|
+      uri = URI(url)
+      res = Net::HTTP.start(uri.host, uri.port, open_timeout: 15, read_timeout: 15) do |http|
+        http.get(uri.request_uri)
+      end
+      span.set_attribute("http.response.status_code", res.code.to_i)
+      res.code == "200" ? 1 : 0
     end
-    res.code == "200" ? 1 : 0
   rescue StandardError
     0
   end

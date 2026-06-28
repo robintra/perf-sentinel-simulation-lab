@@ -10,15 +10,20 @@
 require "opentelemetry/sdk"
 require "opentelemetry/exporter/otlp"
 require "opentelemetry/instrumentation/rails"
-require "opentelemetry/instrumentation/net/http"
 require "opentelemetry/instrumentation/pg"
 
 ENV["OTEL_BSP_SCHEDULE_DELAY"] ||= "1000"
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = ENV.fetch("OTEL_SERVICE_NAME", "rails-svc")
-  # use_all activates every installed instrumentation: Rails (Rack SERVER span
-  # + ActiveRecord ORM scope + ActionPack), Net::HTTP (outbound CLIENT spans),
-  # and PG (raw pool-saturation connections).
-  c.use_all
+  # Rails: Rack SERVER span + ActiveRecord ORM scope + ActionPack.
+  c.use "OpenTelemetry::Instrumentation::Rails"
+  # PG: the raw connections pool-saturation opens outside the AR pool.
+  c.use "OpenTelemetry::Instrumentation::PG"
+  # Net::HTTP auto-instrumentation is intentionally NOT enabled: in every
+  # semconv mode its CLIENT spans omit `url.full`/`http.url`, and perf-sentinel
+  # classifies a span as HTTP I/O ONLY when it carries one of those
+  # (ingest/otlp.rs classify_io_event) — so its spans are dropped as
+  # MissingHttpUrl and the HTTP anti-patterns never fire. ApplicationController#http_get
+  # emits its own CLIENT span with `url.full` instead (one clean span, no dup).
 end
