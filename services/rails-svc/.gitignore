@@ -1,0 +1,10 @@
+# Local Ruby/bundler artifacts. The service builds in Docker; a local
+# `bundle install` is only for IDE intelligence. Install gems project-local
+# (`bundle config set --local path vendor/bundle`) to avoid writing into the
+# read-only Homebrew system gem dir.
+/.bundle/
+/vendor/bundle/
+/log/*
+/tmp/*
+!/tmp/.keep
+*.gem
