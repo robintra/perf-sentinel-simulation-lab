@@ -11,7 +11,9 @@ exporters:
 service:
   telemetry:
     logs:
-      level: warn
+      # info (not warn) so the "Everything is ready" startup banner is emitted —
+      # run-live.sh gates readiness on it (a real signal, short-circuits early).
+      level: info
   pipelines:
     traces:
       receivers: [datadog]

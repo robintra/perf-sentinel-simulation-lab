@@ -28,6 +28,10 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIX="${SCRIPT_DIR}/fixtures"
 LIVE_DIR="${SCRIPT_DIR}/live"
+# Fresh per run: a stale report.html / metrics.txt from a prior run must never
+# be read in place of this run's output (would make a leak/counter check assert
+# against the wrong binary).
+rm -rf "${TMP_DIR}"
 mkdir -p "${TMP_DIR}"
 
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
@@ -35,7 +39,12 @@ PERF_SENTINEL_LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH}/t
 DAEMON_HTTP_PORT="${DAEMON_HTTP_PORT:-14396}"
 DAEMON_GRPC_PORT="${DAEMON_GRPC_PORT:-14397}"
 DAEMON_URL="http://127.0.0.1:${DAEMON_HTTP_PORT}"
-COLLECTOR_IMAGE="${COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:latest}"
+# Pinned to the contrib version this scenario was validated against (the
+# datadogreceiver is alpha; :latest can change its span mapping under us).
+COLLECTOR_IMAGE="${COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.155.0}"
+# Exported so the optional live leg (live/run-live.sh, a child process) honors
+# a DAEMON_HTTP_PORT / image override instead of falling back to its own default.
+export DAEMON_HTTP_PORT DAEMON_GRPC_PORT COLLECTOR_IMAGE
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -62,11 +71,23 @@ trap cleanup EXIT
 [ -x "${PERF_SENTINEL_LOCAL_BIN}" ] || die "no local binary at ${PERF_SENTINEL_LOCAL_BIN} (cargo build --release -p perf-sentinel first)"
 
 # ── helpers ─────────────────────────────────────────────────────────────────
+# Free our loopback ports for a fresh daemon. The port lives only in the TOML,
+# not the argv, so a port-pattern pkill is a no-op; kill by the unique config
+# path (our own stragglers) AND by whoever holds the ports (a SIGKILLed prior
+# run whose EXIT trap never fired). Without this, the port-only readiness probe
+# would adopt a stale daemon and the scenario would validate the wrong binary.
+free_daemon_port() {
+  pkill -f "perf-sentinel watch.*${TMP_DIR}/daemon.toml" 2>/dev/null || true
+  for p in "${DAEMON_HTTP_PORT}" "${DAEMON_GRPC_PORT}"; do
+    lsof -ti "tcp:${p}" 2>/dev/null | while read -r pid; do kill "${pid}" 2>/dev/null || true; done
+  done
+}
+
 start_local_daemon() {  # $1 = sanitizer mode: "auto"(default, omit key)|strict
   local mode="${1:-auto}" line=""
   [ "${mode}" != "auto" ] && line="sanitizer_aware_classification = \"${mode}\""
   [ -n "${DAEMON_PID}" ] && kill "${DAEMON_PID}" 2>/dev/null || true
-  pkill -f "perf-sentinel watch.*${DAEMON_HTTP_PORT}" 2>/dev/null || true
+  free_daemon_port
   sleep 1
   cat > "${TMP_DIR}/daemon.toml" <<EOF
 [daemon]
@@ -98,26 +119,32 @@ post_pb() {  # $1 = fixture file under fixtures/
     -H 'Content-Type: application/x-protobuf' --data-binary @"${FIX}/$1"
 }
 
-metric_val() {  # $1 = full metric line key (with labels); reads metrics.txt
-  awk -v m="$1" 'index($0,m)==1 {print int($2); found=1} END {if(!found) print 0}' \
-    "${TMP_DIR}/metrics.txt" | head -1
+metric_val() {  # $1 = metric name, $2 = reason label value; reads metrics.txt
+  # Match the counter by name-prefix AND the reason label anywhere on the line,
+  # tolerant of label order / extra labels (e.g. a future service= label).
+  awk -v name="$1" -v reason="reason=\"$2\"" \
+    'index($0,name)==1 && index($0,reason)>0 {print int($2); found=1; exit} END {if(!found) print 0}' \
+    "${TMP_DIR}/metrics.txt"
 }
 
 # Finding type(s) for a service from a /api/findings array (bare or wrapped).
 finding_types_for() {  # $1 = service ; reads stdin
-  python3 -c "
+  python3 -c '
 import sys, json
+svc = sys.argv[1]
 items = json.load(sys.stdin)
-items = items if isinstance(items, list) else items.get('findings', [])
-def u(it): return it.get('finding', it) if isinstance(it, dict) else {}
-print(' '.join(u(it).get('type','') for it in items if u(it).get('service') == '$1'))
-"
+items = items if isinstance(items, list) else items.get("findings", [])
+def u(it): return it.get("finding", it) if isinstance(it, dict) else {}
+print(" ".join(u(it).get("type","") for it in items if u(it).get("service") == svc))
+' "$1"
 }
 
 # =============================================================================
 # C + D — cross-format canonicalization (batch analyze + explain)
 # =============================================================================
-XF_TRACE="t0000000000000000000000000000a0e0"
+# Read the trace id straight from the committed fixture so it can never drift
+# from the generator (explain --trace-id must match the encoded id exactly).
+XF_TRACE="$(python3 -c "import json;print(json.load(open('${FIX}/crossfmt-jaeger.json'))['data'][0]['traceID'])")"
 for fmt in jaeger zipkin; do
   step "Batch ${fmt}: canonicalization (C) + stable db.system.name + non-SQL drop (D)"
   "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${FIX}/crossfmt-${fmt}.json" --format json \
@@ -193,22 +220,31 @@ else
   assert_fail "E" "no SQL finding for snowflake (got [${SNOW_TYPES}])"
 fi
 # B: no non-SQL key/secret leaked into findings, and none in the HTML report.
+# The HTML half must inspect a freshly-generated report — if the export or the
+# render fails we CANNOT claim "no leak", so that is a FAIL, not a vacuous PASS.
 curl -fsS "${DAEMON_URL}/api/export/report" > "${TMP_DIR}/report.json" 2>/dev/null || true
-"${PERF_SENTINEL_LOCAL_BIN}" report --input "${TMP_DIR}/report.json" \
-  --output "${TMP_DIR}/report.html" >/dev/null 2>&1 || true
+HTML_OK=0
+if [ -s "${TMP_DIR}/report.json" ] \
+   && "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TMP_DIR}/report.json" \
+        --output "${TMP_DIR}/report.html" >/dev/null 2>&1 \
+   && [ -s "${TMP_DIR}/report.html" ]; then
+  HTML_OK=1
+fi
 LEAK_FINDINGS=0; LEAK_HTML=0
 for s in SECRET-REDIS SECRET-DDB; do
   grep -qi "${s}" "${TMP_DIR}/findings-auto.json" && LEAK_FINDINGS=1
-  grep -qi "${s}" "${TMP_DIR}/report.html" 2>/dev/null && LEAK_HTML=1
+  [ "${HTML_OK}" = "1" ] && grep -qi "${s}" "${TMP_DIR}/report.html" && LEAK_HTML=1
 done
-if [ "${LEAK_FINDINGS}" = "0" ] && [ "${LEAK_HTML}" = "0" ]; then
+if [ "${HTML_OK}" != "1" ]; then
+  assert_fail "B-otlp" "could not generate a fresh HTML report to verify no leak (export empty or render failed)"
+elif [ "${LEAK_FINDINGS}" = "0" ] && [ "${LEAK_HTML}" = "0" ]; then
   assert_pass "B-otlp" "no redis/dynamodb key or secret in findings or HTML report"
 else
   assert_fail "B-otlp" "PII leak: findings=${LEAK_FINDINGS}, html=${LEAK_HTML}"
 fi
 # G: instrumentation-gap + non-SQL filter counters.
-NON_SQL="$(metric_val 'perf_sentinel_otlp_spans_filtered_total{reason="non_sql_datastore"}')"
-GAP="$(metric_val 'perf_sentinel_otlp_spans_filtered_total{reason="missing_db_statement"}')"
+NON_SQL="$(metric_val perf_sentinel_otlp_spans_filtered_total non_sql_datastore)"
+GAP="$(metric_val perf_sentinel_otlp_spans_filtered_total missing_db_statement)"
 if [ "${NON_SQL}" -ge 12 ] && [ "${GAP}" -ge 1 ]; then
   assert_pass "G" "filter counters: non_sql_datastore=${NON_SQL} (>=12), missing_db_statement=${GAP} (>=1)"
 else
@@ -222,7 +258,11 @@ step "Daemon (strict): F3 recovery at high occurrence (>=3x threshold)"
 start_local_daemon strict || die "strict daemon not ready: $(tail -3 "${TMP_DIR}/daemon.log")"
 code="$(post_pb dd-bridge-16.pb)"; [ "${code}" = "200" ] || die "dd-bridge-16.pb POST returned ${code}"
 sleep 5
-S16_TYPES="$(curl -fsS "${DAEMON_URL}/api/findings" | finding_types_for dd-bridge-shop16)"
+# Guarded like the auto leg: an infra failure here must `die` (not silently
+# yield an empty result that reads as a product regression).
+curl -fsS "${DAEMON_URL}/api/findings" > "${TMP_DIR}/findings-strict.json" \
+  || die "strict findings fetch failed: $(tail -3 "${TMP_DIR}/daemon.log")"
+S16_TYPES="$(finding_types_for dd-bridge-shop16 < "${TMP_DIR}/findings-strict.json")"
 if echo "${S16_TYPES}" | grep -q 'n_plus_one_sql'; then
   assert_pass "F-strict" "strict + 16 identical -> n_plus_one_sql recovered [${S16_TYPES}]"
 else

@@ -18,7 +18,7 @@
     "id": "s00000000a0e00002",
     "name": "db-query",
     "timestamp": 1749297600002000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -33,7 +33,7 @@
     "id": "s00000000a0e00003",
     "name": "db-query",
     "timestamp": 1749297600003000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -48,7 +48,7 @@
     "id": "s00000000a0e00004",
     "name": "db-query",
     "timestamp": 1749297600004000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -63,7 +63,7 @@
     "id": "s00000000a0e00005",
     "name": "db-query",
     "timestamp": 1749297600005000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -78,7 +78,7 @@
     "id": "s00000000a0e00006",
     "name": "db-query",
     "timestamp": 1749297600006000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -93,7 +93,7 @@
     "id": "s00000000a0e00007",
     "name": "db-query",
     "timestamp": 1749297600007000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -108,7 +108,7 @@
     "id": "s00000000a0e00008",
     "name": "db-query",
     "timestamp": 1749297600008000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -123,7 +123,7 @@
     "id": "s00000000a0e00009",
     "name": "db-query",
     "timestamp": 1749297600009000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -138,7 +138,7 @@
     "id": "s00000000a0e0000a",
     "name": "db-query",
     "timestamp": 1749297600010000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -153,7 +153,7 @@
     "id": "s00000000a0e0000b",
     "name": "db-query",
     "timestamp": 1749297600011000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -168,7 +168,7 @@
     "id": "s00000000a0e0000c",
     "name": "db-query",
     "timestamp": 1749297600012000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -183,7 +183,7 @@
     "id": "s00000000a0e0000d",
     "name": "db-query",
     "timestamp": 1749297600013000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -198,7 +198,7 @@
     "id": "s00000000a0e0000e",
     "name": "db-query",
     "timestamp": 1749297600014000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -212,7 +212,7 @@
     "id": "s00000000a0e0000f",
     "name": "db-query",
     "timestamp": 1749297600015000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -226,7 +226,7 @@
     "id": "s00000000a0e00010",
     "name": "db-query",
     "timestamp": 1749297600016000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -240,7 +240,7 @@
     "id": "s00000000a0e00011",
     "name": "db-query",
     "timestamp": 1749297600017000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -254,7 +254,7 @@
     "id": "s00000000a0e00012",
     "name": "db-query",
     "timestamp": 1749297600018000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },
@@ -268,7 +268,7 @@
     "id": "s00000000a0e00013",
     "name": "db-query",
     "timestamp": 1749297600019000,
-    "duration": 2000,
+    "duration": 800,
     "localEndpoint": {
       "serviceName": "dd-xfmt-shop"
     },

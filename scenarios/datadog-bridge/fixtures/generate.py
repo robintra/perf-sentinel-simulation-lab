@@ -27,7 +27,7 @@ from opentelemetry.proto.trace.v1 import trace_pb2 as trace
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE_NS = 1_749_297_600_000_000_000
-BASE_US = 1_749_297_600_000_000
+BASE_US = BASE_NS // 1000          # same fixed epoch, microseconds (Jaeger/Zipkin)
 
 DD_SCOPE = "Datadog"                 # verbatim scope the datadogreceiver attaches
 DD_SCOPE_VER = "Datadog 2.9.0"
@@ -129,17 +129,17 @@ def xf_spans():
     sid = 2
     # group P: legacy db.system="postgres" -> canonical operation "postgresql"
     for i in range(1, 7):
-        out.append((sid, 1, "db-query", 2_000,
+        out.append((sid, 1, "db-query", 800,
                     {"db.system": "postgres",
                      "db.statement": "SELECT * FROM orders WHERE id = %d" % i})); sid += 1
     # group S: stable db.system.name="postgres" (no legacy key) -> SQL finding
     for i in range(1, 7):
-        out.append((sid, 1, "db-query", 2_000,
+        out.append((sid, 1, "db-query", 800,
                     {"db.system.name": "postgres",
                      "db.statement": "SELECT * FROM line_items WHERE order_id = %d" % i})); sid += 1
     # group X: NO db system at all -> operation label falls back to "sql"
     for i in range(1, 7):
-        out.append((sid, 1, "db-query", 2_000,
+        out.append((sid, 1, "db-query", 800,
                     {"db.statement": "SELECT * FROM users WHERE uid = %d" % i})); sid += 1
     # drop: stable namespaced non-SQL store -> dropped, key must not leak
     out.append((sid, 1, "ddb-get", 1_500,
