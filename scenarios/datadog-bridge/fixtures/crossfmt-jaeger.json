@@ -1,0 +1,445 @@
+{
+  "data": [
+    {
+      "traceID": "t0000000000000000000000000000a0e0",
+      "spans": [
+        {
+          "spanID": "s00000000a0e00001",
+          "operationName": "GET /api/orders",
+          "references": [],
+          "startTime": 1749297600001000,
+          "duration": 120000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "http.route",
+              "value": "/api/orders"
+            },
+            {
+              "key": "url.full",
+              "value": "http://gw/api/orders"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00002",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600002000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 1"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00003",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600003000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 2"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00004",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600004000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 3"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00005",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600005000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 4"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00006",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600006000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 5"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00007",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600007000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM orders WHERE id = 6"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00008",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600008000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM line_items WHERE order_id = 1"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00009",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600009000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM line_items WHERE order_id = 2"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e0000a",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600010000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM line_items WHERE order_id = 3"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e0000b",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600011000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM line_items WHERE order_id = 4"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e0000c",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600012000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM line_items WHERE order_id = 5"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e0000d",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600013000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "postgres"
+            },
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM line_items WHERE order_id = 6"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e0000e",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600014000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM users WHERE uid = 1"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e0000f",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600015000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM users WHERE uid = 2"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00010",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600016000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM users WHERE uid = 3"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00011",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600017000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM users WHERE uid = 4"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00012",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600018000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM users WHERE uid = 5"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00013",
+          "operationName": "db-query",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600019000,
+          "duration": 2000,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.statement",
+              "value": "SELECT * FROM users WHERE uid = 6"
+            }
+          ]
+        },
+        {
+          "spanID": "s00000000a0e00014",
+          "operationName": "ddb-get",
+          "references": [
+            {
+              "refType": "CHILD_OF",
+              "spanID": "s00000000a0e00001"
+            }
+          ],
+          "startTime": 1749297600020000,
+          "duration": 1500,
+          "processID": "p1",
+          "tags": [
+            {
+              "key": "db.system.name",
+              "value": "aws.dynamodb"
+            },
+            {
+              "key": "db.statement",
+              "value": "GetItem pk=SECRET-DDB-XF"
+            }
+          ]
+        }
+      ],
+      "processes": {
+        "p1": {
+          "serviceName": "dd-xfmt-shop"
+        }
+      }
+    }
+  ]
+}

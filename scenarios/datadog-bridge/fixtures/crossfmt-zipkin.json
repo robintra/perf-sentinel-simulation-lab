@@ -1,0 +1,295 @@
+[
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00001",
+    "name": "GET /api/orders",
+    "timestamp": 1749297600001000,
+    "duration": 120000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "http.route": "/api/orders",
+      "url.full": "http://gw/api/orders"
+    }
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00002",
+    "name": "db-query",
+    "timestamp": 1749297600002000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system": "postgres",
+      "db.statement": "SELECT * FROM orders WHERE id = 1"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00003",
+    "name": "db-query",
+    "timestamp": 1749297600003000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system": "postgres",
+      "db.statement": "SELECT * FROM orders WHERE id = 2"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00004",
+    "name": "db-query",
+    "timestamp": 1749297600004000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system": "postgres",
+      "db.statement": "SELECT * FROM orders WHERE id = 3"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00005",
+    "name": "db-query",
+    "timestamp": 1749297600005000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system": "postgres",
+      "db.statement": "SELECT * FROM orders WHERE id = 4"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00006",
+    "name": "db-query",
+    "timestamp": 1749297600006000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system": "postgres",
+      "db.statement": "SELECT * FROM orders WHERE id = 5"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00007",
+    "name": "db-query",
+    "timestamp": 1749297600007000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system": "postgres",
+      "db.statement": "SELECT * FROM orders WHERE id = 6"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00008",
+    "name": "db-query",
+    "timestamp": 1749297600008000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "postgres",
+      "db.statement": "SELECT * FROM line_items WHERE order_id = 1"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00009",
+    "name": "db-query",
+    "timestamp": 1749297600009000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "postgres",
+      "db.statement": "SELECT * FROM line_items WHERE order_id = 2"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e0000a",
+    "name": "db-query",
+    "timestamp": 1749297600010000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "postgres",
+      "db.statement": "SELECT * FROM line_items WHERE order_id = 3"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e0000b",
+    "name": "db-query",
+    "timestamp": 1749297600011000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "postgres",
+      "db.statement": "SELECT * FROM line_items WHERE order_id = 4"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e0000c",
+    "name": "db-query",
+    "timestamp": 1749297600012000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "postgres",
+      "db.statement": "SELECT * FROM line_items WHERE order_id = 5"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e0000d",
+    "name": "db-query",
+    "timestamp": 1749297600013000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "postgres",
+      "db.statement": "SELECT * FROM line_items WHERE order_id = 6"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e0000e",
+    "name": "db-query",
+    "timestamp": 1749297600014000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.statement": "SELECT * FROM users WHERE uid = 1"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e0000f",
+    "name": "db-query",
+    "timestamp": 1749297600015000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.statement": "SELECT * FROM users WHERE uid = 2"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00010",
+    "name": "db-query",
+    "timestamp": 1749297600016000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.statement": "SELECT * FROM users WHERE uid = 3"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00011",
+    "name": "db-query",
+    "timestamp": 1749297600017000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.statement": "SELECT * FROM users WHERE uid = 4"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00012",
+    "name": "db-query",
+    "timestamp": 1749297600018000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.statement": "SELECT * FROM users WHERE uid = 5"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00013",
+    "name": "db-query",
+    "timestamp": 1749297600019000,
+    "duration": 2000,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.statement": "SELECT * FROM users WHERE uid = 6"
+    },
+    "parentId": "s00000000a0e00001"
+  },
+  {
+    "traceId": "t0000000000000000000000000000a0e0",
+    "id": "s00000000a0e00014",
+    "name": "ddb-get",
+    "timestamp": 1749297600020000,
+    "duration": 1500,
+    "localEndpoint": {
+      "serviceName": "dd-xfmt-shop"
+    },
+    "tags": {
+      "db.system.name": "aws.dynamodb",
+      "db.statement": "GetItem pk=SECRET-DDB-XF"
+    },
+    "parentId": "s00000000a0e00001"
+  }
+]

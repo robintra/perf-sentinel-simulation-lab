@@ -1,0 +1,18 @@
+# OTel Collector (contrib) config for the optional live leg: ingest dd-trace
+# APM on :8126 via the datadogreceiver, forward OTLP to the perf-sentinel daemon
+# over HTTP (gRPC container->host is flaky on Docker Desktop macOS; otlphttp +
+# --add-host=host.docker.internal:host-gateway is reliable).
+receivers:
+  datadog:
+    endpoint: 0.0.0.0:8126
+exporters:
+  otlphttp/ps:
+    endpoint: http://host.docker.internal:14396
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    traces:
+      receivers: [datadog]
+      exporters: [otlphttp/ps]

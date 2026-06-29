@@ -33,7 +33,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-limit-batch-volume verify-limit-trace-shapes verify-limit-service-cardinality \
         verify-limit-saturation-curve verify-limit-multi-source verify-limit-prod-window-soak \
         verify-sql-backtick-redaction verify-non-sql-datastore-drop verify-non-sql-datastore-metering \
-        verify-ruby-activerecord-suggestion \
+        verify-ruby-activerecord-suggestion verify-datadog-bridge \
         verify-all-scenarios
 
 help: ## List available targets
@@ -384,6 +384,9 @@ verify-non-sql-datastore-metering: ## 0.9.2 metering: non_sql_datastore counter 
 verify-ruby-activerecord-suggestion: ## 0.9.2 detect: Ruby/ActiveRecord suggested_fix (ruby_active_record via OTLP scope, ruby_generic via .rb)
 	./scenarios/ruby-activerecord-suggestion/verify.sh
 
+verify-datadog-bridge: ## 0.9.3 ingest: dd-trace/Datadog bridge end to end (db.system.name + canonicalization across OTLP/Jaeger/Zipkin; F3 auto vs strict; optional live datadogreceiver)
+	./scenarios/datadog-bridge/verify.sh
+
 verify-intent-validator: ## disclose-time validators (75% gate + org-config required fields)
 	./scenarios/intent-validator/verify.sh
 
@@ -476,7 +479,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 45 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 46 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -497,7 +500,10 @@ verify-all-scenarios: ## Run all 45 scenarios sequentially (see docs/SCENARIOS.m
 	@# - sql-backtick-redaction / non-sql-datastore-* / ruby-activerecord-suggestion
 	@#   are self-contained 0.9.2 checks (local release binary + throwaway loopback
 	@#   daemon, no cluster); grouped with the CLI-heavy batch scenarios.
-	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@# - datadog-bridge is the self-contained 0.9.3 check (local binary + throwaway
+	@#   daemon + batch analyze/explain; an optional live datadogreceiver leg SKIPs
+	@#   cleanly when Docker is unavailable).
+	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

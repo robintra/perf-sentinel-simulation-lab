@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 45 scenarios live under `scenarios/<name>/` and each one ships a
+The 46 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 45 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion` — see the section near the end of this guide). The release gate runs all 45. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 46 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge` — see the sections near the end of this guide). The release gate runs all 46. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -1122,7 +1122,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 45 scenarios, in an order
+`make verify-all-scenarios` includes all 46 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1589,3 +1589,33 @@ case first seeds one analyzable trace over the NDJSON socket (a non-OTLP path
 that does not bump `otlp_spans_received_total`) before flooding OTLP — see that
 scenario's `README.md`. Validated end to end against a `0.9.2` (`feature/0.9.2`)
 binary.
+
+## 0.9.3 Datadog / dd-trace bridge scenario
+
+One scenario, `datadog-bridge`, validates the `0.9.3` Datadog / dd-trace
+ingestion bridge and the db-system classification hardening that shipped with
+it. **Self-contained**: local release binary + a throwaway loopback daemon
+(OTLP `/v1/traces`) and batch `analyze`/`explain` on committed Jaeger/Zipkin
+fixtures, no cluster. Every bridged fixture mimics the **real** OTel Collector
+`datadogreceiver` output (contrib v0.155.0): instrumentation scope `Datadog`,
+SQL pre-obfuscated (`?`) in `dd.span.Resource`, the engine under the stable
+OTel 1.27+ key `db.system.name`. An optional live leg sends a synthetic
+dd-trace v0.4 payload through a real `datadogreceiver` container into the daemon
+(`otlphttp` tee); it **SKIPs** cleanly when Docker is unavailable, so the
+deterministic assertions always gate.
+
+| Assertion | What it proves |
+|---|---|
+| A | a dd-trace N+1 carrying only `db.system.name` is recognized as SQL and yields a non-zero SQL finding (the 0.9.3 stable-semconv fix; a regression here = zero findings) |
+| B | non-SQL stores (`db.type=redis`, stable `db.system.name=aws.dynamodb`) are dropped, never tokenized, and no key/secret leaks into `/api/findings` or the HTML report |
+| C | cross-format `operation` label canonicalization via `explain`: `db.system="postgres"` → `postgresql`, a db-system-less SQL span → `sql`, on Jaeger and Zipkin |
+| D | the stable `db.system.name` is honored in every batch path: SQL engines yield findings, `aws.dynamodb` is dropped (events drop from 20 to 19) |
+| E | a cloud SQL engine (`snowflake` via the dd-trace `db.type` meta key) yields a SQL finding |
+| F | F3 limitation locked, not flagged: pre-obfuscated SQL under default `auto` + uniform timing surfaces as `redundant_sql`; `strict` recovers `n_plus_one_sql` at ≥ 3× the threshold (≥ 15 identical) |
+| G | `perf_sentinel_otlp_spans_filtered_total{reason="non_sql_datastore"}` and `{reason="missing_db_statement"}` rise for dropped stores and a statement-less SQL gap |
+
+Note: the `operation` label (assertion C) is exposed by `explain --format json`
+on the batch (Jaeger/Zipkin) paths; OTLP does not round-trip through `analyze`,
+so the OTLP path asserts the same canonicalization via finding recognition
+(assertion A/D) rather than the label string. Validated end to end against a
+`0.9.3` (`feature/0.9.3`) binary, including the live `datadogreceiver` leg.
