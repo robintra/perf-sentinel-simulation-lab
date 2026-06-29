@@ -66,7 +66,7 @@ EOF
 ok "synthetic CSV: $(wc -l < "${TMP_DIR}/power.csv") lines covering trace window"
 
 step "Run perf-sentinel calibrate"
-if docker run --rm \
+if docker run --rm -u "$(id -u):$(id -g)" \
      -v "${TRACES_FIXTURE}:/input/traces.json:ro" \
      -v "${TMP_DIR}/power.csv:/input/power.csv:ro" \
      -v "${TMP_DIR}:/output" \

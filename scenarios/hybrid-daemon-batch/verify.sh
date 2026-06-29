@@ -58,7 +58,7 @@ DAEMON_CORRELATIONS=$(python3 -c "import json; data=json.load(open('${TMP_DIR}/d
 ok "daemon report snapshot: ${DAEMON_FINDINGS} findings, ${DAEMON_CORRELATIONS} correlations entries"
 
 step "Render the daemon Report as a self-contained HTML dashboard via report --input"
-if docker run --rm \
+if docker run --rm -u "$(id -u):$(id -g)" \
      -v "${TMP_DIR}/daemon-report.json:/input.json:ro" \
      -v "${TMP_DIR}:/output" \
      "${IMAGE}" \

@@ -71,7 +71,7 @@ if [ "${ROW_COUNT}" -lt 5 ]; then
 fi
 
 step "Run perf-sentinel report --input <traces> --pg-stat <csv>"
-if docker run --rm \
+if docker run --rm -u "$(id -u):$(id -g)" \
      -v "${TRACES_FIXTURE}:/input/traces.json:ro" \
      -v "${TMP_DIR}/pg-stat.csv:/input/pg-stat.csv:ro" \
      -v "${TMP_DIR}:/output" \
@@ -125,7 +125,7 @@ if kubectl -n db get deploy postgres-exporter >/dev/null 2>&1; then
     PROM_URL_FROM_DOCKER="http://host.docker.internal:9090"
     DOCKER_NET_FLAGS=(--add-host=host.docker.internal:host-gateway)
   fi
-  if docker run --rm \
+  if docker run --rm -u "$(id -u):$(id -g)" \
        "${DOCKER_NET_FLAGS[@]}" \
        -v "${TRACES_FIXTURE}:/input/traces.json:ro" \
        -v "${TMP_DIR}:/output" \
