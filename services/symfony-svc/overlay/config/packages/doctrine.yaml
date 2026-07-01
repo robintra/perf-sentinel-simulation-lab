@@ -12,9 +12,9 @@ doctrine:
         # manifests/postgres-multistack-schemas.yaml), so no schema qualifier here.
         server_version: '16'
     orm:
-        auto_generate_proxy_classes: true
-        enable_lazy_ghost_objects: true
-        report_fields_where_declared: true
+        # auto_generate_proxy_classes / enable_lazy_ghost_objects /
+        # report_fields_where_declared removed: DoctrineBundle 3 (ORM 4) dropped
+        # these ORM 2->3 transition flags and rejects them at container compile.
         naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
         auto_mapping: true
         mappings:
