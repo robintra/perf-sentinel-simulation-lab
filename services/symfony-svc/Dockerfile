@@ -11,7 +11,7 @@
 #
 # Single-stage (ponytail): the opentelemetry PECL extension must be present at
 # runtime. Build with: docker build -t symfony-svc:s1 services/symfony-svc
-FROM php:8.3-cli-bookworm
+FROM php:8.5-cli-bookworm
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \

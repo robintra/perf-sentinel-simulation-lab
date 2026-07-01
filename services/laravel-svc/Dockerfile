@@ -10,7 +10,7 @@
 # Single-stage (ponytail): the opentelemetry PECL extension must be present at
 # runtime, and rebuilding it in a second stage buys only image size, which does
 # not matter for a lab member. Build with: docker build -t laravel-svc:s1 services/laravel-svc
-FROM php:8.3-cli-bookworm
+FROM php:8.5-cli-bookworm
 
 # Build + runtime libs: git/unzip for composer, libpq for pdo_pgsql, PHPIZE deps
 # for the opentelemetry PECL extension.
