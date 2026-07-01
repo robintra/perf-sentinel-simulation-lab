@@ -13,7 +13,7 @@ ruby "~> 4.0"
 
 gem "rails", "~> 8.0"
 gem "pg", "~> 1.5"
-gem "puma", "~> 6.0"
+gem "puma", "~> 8.0"
 
 # OpenTelemetry: SDK + OTLP HTTP exporter (honours OTEL_EXPORTER_OTLP_* env).
 # `-rails` brings the Rack SERVER middleware + ActiveRecord ORM scope (the
