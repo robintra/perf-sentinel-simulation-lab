@@ -52,9 +52,16 @@ check_prereqs() {
 
 pull_perf_sentinel_image() {
   step "Pulling perf-sentinel image ${PERF_SENTINEL_IMAGE}"
-  docker pull "${PERF_SENTINEL_IMAGE}" \
-    || die "failed to pull ${PERF_SENTINEL_IMAGE}. Image private? Run: docker login ghcr.io"
-  ok "image cached on host (kubelets will pull on demand)"
+  # GHCR reads flake on hosted CI (transient DNS i/o timeouts). Retry with
+  # back-off before giving up, same reflex as the k3d image import below.
+  for attempt in 1 2 3; do
+    if docker pull "${PERF_SENTINEL_IMAGE}"; then
+      ok "image cached on host (kubelets will pull on demand)"
+      return
+    fi
+    [ "${attempt}" -lt 3 ] && warn "pull attempt ${attempt} failed, retry in $((attempt * 5))s" && sleep "$((attempt * 5))"
+  done
+  die "failed to pull ${PERF_SENTINEL_IMAGE} after 3 attempts. Image private? Run: docker login ghcr.io"
 }
 
 create_cluster() {
