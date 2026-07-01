@@ -1,0 +1,39 @@
+image:
+  repository: laravel-svc
+  tag: s1
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8095
+  # PHP built-in server worker count (curl_multi fan-out + reentrant self-calls
+  # need real workers; a single worker deadlocks on self-calls). Kept in sync
+  # with the memory limit below.
+  workers: 20
+
+database:
+  name: lab
+  host: postgres.db.svc.cluster.local
+  port: "5432"
+  schema: laravel
+  username: laravel_user
+  password: lab_laravel
+
+# Laravel APP_KEY (lab-only, not secret-sensitive). base64 of a fixed 32-byte key.
+appKey: base64:cGVyZnNlbnRpbmVsbGFiLWxhcmF2ZWxzdmMtMDAwMDE=
+
+otel:
+  serviceName: laravel-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: ""
+
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 1200m
+    memory: 768Mi

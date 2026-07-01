@@ -1,6 +1,6 @@
 ---
 # Multistack Postgres bootstrap. Idempotent Kubernetes Job that creates
-# the 12 schemas + service roles + GRANTs the multistack services need.
+# the 14 schemas + service roles + GRANTs the multistack services need.
 # Mirrors the pattern of manifests/postgres-init-schemas.yaml (which
 # only runs on a fresh Postgres bootstrap via docker-entrypoint-initdb.d)
 # but works on an already-running Postgres without dropping the PVC.
@@ -41,6 +41,8 @@ data:
     CREATE SCHEMA IF NOT EXISTS fastapi;
     CREATE SCHEMA IF NOT EXISTS go;
     CREATE SCHEMA IF NOT EXISTS rails;
+    CREATE SCHEMA IF NOT EXISTS laravel;
+    CREATE SCHEMA IF NOT EXISTS symfony;
 
     -- Multistack service roles. Passwords are lab-only placeholders;
     -- they are overridden by per-service Kubernetes Secrets when each
@@ -83,6 +85,12 @@ data:
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rails_user') THEN
         CREATE ROLE rails_user LOGIN PASSWORD 'lab_rails';
       END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'laravel_user') THEN
+        CREATE ROLE laravel_user LOGIN PASSWORD 'lab_laravel';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'symfony_user') THEN
+        CREATE ROLE symfony_user LOGIN PASSWORD 'lab_symfony';
+      END IF;
     END
     $$;
 
@@ -98,6 +106,8 @@ data:
     GRANT USAGE, CREATE ON SCHEMA fastapi    TO fastapi_user;
     GRANT USAGE, CREATE ON SCHEMA "go"       TO go_user;
     GRANT USAGE, CREATE ON SCHEMA rails      TO rails_user;
+    GRANT USAGE, CREATE ON SCHEMA laravel    TO laravel_user;
+    GRANT USAGE, CREATE ON SCHEMA symfony    TO symfony_user;
 
     ALTER ROLE quarkus_user    SET search_path = quarkus, public;
     ALTER ROLE mutiny_user     SET search_path = mutiny, public;
@@ -111,6 +121,8 @@ data:
     ALTER ROLE fastapi_user    SET search_path = fastapi, public;
     ALTER ROLE go_user         SET search_path = "go", public;
     ALTER ROLE rails_user      SET search_path = rails, public;
+    ALTER ROLE laravel_user    SET search_path = laravel, public;
+    ALTER ROLE symfony_user    SET search_path = symfony, public;
 ---
 apiVersion: batch/v1
 kind: Job

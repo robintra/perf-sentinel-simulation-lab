@@ -158,6 +158,16 @@ data:
     exe_contains = "bin/ruby"
     cmdline_contains = "rails-svc"
 
+    # PHP members run the built-in server (php -S), so the runtime path is
+    # bin/php; the service slug disambiguates the two identical runtimes.
+    [green.scaphandre.process_map."laravel-svc"]
+    exe_contains = "bin/php"
+    cmdline_contains = "laravel-svc"
+
+    [green.scaphandre.process_map."symfony-svc"]
+    exe_contains = "bin/php"
+    cmdline_contains = "symfony-svc"
+
     [green.kepler]
     # Kepler eBPF exporter scrape path. The real exporter needs
     # bare-metal perf counters which the lab cannot provide, so a

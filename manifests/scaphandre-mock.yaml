@@ -40,9 +40,10 @@ data:
     # One process per service running in the lab. The 3 Java baseline
     # services (order, payment, notification) all share the OpenJDK 25
     # runtime baked into gcr.io/distroless/java25:nonroot
-    # (services/shared-dockerfile/Dockerfile). The 12 multistack
+    # (services/shared-dockerfile/Dockerfile). The 14 multistack
     # services (quarkus, mutiny, helidon-se/mp, dotnet, diesel, seaorm,
-    # nest, django, fastapi, go, rails) each expose a fictional process whose
+    # nest, django, fastapi, go, rails, laravel, symfony) each expose a
+    # fictional process whose
     # exe matches the runtime path their container would bake. Temurin
     # (eclipse-temurin:25-jdk-alpine) is the BUILD stage only, never
     # the runtime — the Java exe paths here are OpenJDK distroless.
@@ -72,6 +73,9 @@ data:
         {"exe": "/usr/local/bin/go-svc-bin",                   "cmdline": "go-svc-bin",                             "pid": 6240},
         # Multistack: Ruby (slim-bookworm, puma)
         {"exe": "/usr/local/bin/ruby",                         "cmdline": "rubypuma/app/config.ru-rails-svc",       "pid": 7240},
+        # Multistack: PHP (cli built-in server; exe matches process_map bin/php)
+        {"exe": "/usr/local/bin/php",                          "cmdline": "php-Sserver.php-laravel-svc",            "pid": 7241},
+        {"exe": "/usr/local/bin/php",                          "cmdline": "php-Sserver.php-symfony-svc",            "pid": 7242},
     ]
 
     INSTANCE_LABEL = os.environ.get("SCAPHANDRE_MOCK_INSTANCE", "scaphandre-mock")

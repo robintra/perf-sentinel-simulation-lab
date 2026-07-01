@@ -1,0 +1,11 @@
+framework:
+    secret: '%env(APP_SECRET)%'
+    http_method_override: false
+    handle_all_throwables: true
+    php_errors:
+        log: true
+    router:
+        utf8: true
+    # No session: the fault/health endpoints are stateless, which also keeps the
+    # read-only rootfs from needing session storage.
+    session: false

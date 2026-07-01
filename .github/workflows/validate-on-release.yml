@@ -566,7 +566,7 @@ jobs:
           printf '%s' "${EM_TOKEN}" > .electricity-maps-token
           chmod 600 .electricity-maps-token
 
-      - name: Free up runner disk space (multistack builds 12 images)
+      - name: Free up runner disk space (multistack builds 14 images)
         run: |
           echo "disk before:"; df -h / | tail -1
           # Service images build inside Docker, so the runner's preinstalled
@@ -590,9 +590,9 @@ jobs:
           kubectl apply -f manifests/postgres-multistack-schemas.yaml
           kubectl -n db wait --for=condition=Complete job/postgres-multistack-schemas --timeout=120s
 
-      - name: Seed multistack services (build + import + deploy all 12)
+      - name: Seed multistack services (build + import + deploy all 14)
         run: |
-          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm rails; do
+          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm rails laravel symfony; do
             echo "::group::seed-${stack}-svc"
             make "seed-${stack}-svc"
             echo "::endgroup::"
@@ -613,10 +613,10 @@ jobs:
             sleep 1
           done
 
-      - name: Validate multistack (12 stacks x 10 anti-patterns)
+      - name: Validate multistack (14 stacks x 10 anti-patterns)
         run: |
           PASS=0; FAIL=0; RESULTS=""
-          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm rails; do
+          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm rails laravel symfony; do
             echo "::group::${stack}-svc"
             if ./scripts/run-multistack-scenario.sh "${stack}"; then
               score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ PASS' | grep -oE '^[0-9]+' || echo "0")
@@ -637,9 +637,13 @@ jobs:
           echo "========================================="
           printf '%b' "${RESULTS}"
           TOTAL=$((PASS + FAIL))
-          echo "Total: ${PASS}/${TOTAL} (threshold: 110/120)"
-          if [ "${PASS}" -lt 110 ]; then
-            echo "::error::multistack validation below threshold: ${PASS}/${TOTAL} < 110/120"
+          # 128/140 preserves the original 110/120 (91.7%) proportional pass rate:
+          # the 14 stacks keep the same per-stack flakiness budget (e.g. PHP slow_sql
+          # can miss under load). Requires the pinned daemon to carry the PHP
+          # framework tagging (0.9.4+); the run-multistack matcher asserts it.
+          echo "Total: ${PASS}/${TOTAL} (threshold: 128/140)"
+          if [ "${PASS}" -lt 128 ]; then
+            echo "::error::multistack validation below threshold: ${PASS}/${TOTAL} < 128/140"
             exit 1
           fi
 

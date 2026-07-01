@@ -56,6 +56,10 @@ ANTI_PATTERNS=(
 
 declare -a RESULTS
 
+# PHP framework/recommendation expectations — single source of truth, shared with
+# scripts/run-multistack-scenario.sh (defines framework_expectation()).
+. "${REPO_ROOT}/scripts/framework-expectation.sh"
+
 probe_daemon() {
     local max_probe_attempts=5 probe_sleep_s=2 attempt=1
     while [ "${attempt}" -le "${max_probe_attempts}" ]; do
@@ -75,7 +79,9 @@ probe_daemon() {
 count_findings() {
     local pattern="$1" findings_json="$2"
     printf "%s" "${findings_json}" \
-        | EXPECTED_TYPE="${pattern}" EXPECTED_SERVICE="${SERVICE}" python3 -c "
+        | EXPECTED_TYPE="${pattern}" EXPECTED_SERVICE="${SERVICE}" \
+          EXPECTED_FRAMEWORK="${EXPECTED_FRAMEWORK:-}" EXPECTED_REC="${EXPECTED_REC:-}" \
+          python3 -c "
 import json, os, sys
 try:
     items = json.load(sys.stdin)
@@ -83,13 +89,23 @@ except json.JSONDecodeError:
     print(-1); sys.exit(0)
 expected_type = os.environ['EXPECTED_TYPE']
 expected_service = os.environ['EXPECTED_SERVICE']
+expected_fw = os.environ.get('EXPECTED_FRAMEWORK', '')
+expected_rec = os.environ.get('EXPECTED_REC', '')
 def unwrap(it):
     return it.get('finding', it) if isinstance(it, dict) else {}
-matched = [
-    f for it in items
-    if (f := unwrap(it)).get('type') == expected_type
-    and f.get('service') == expected_service
-]
+def matches(f):
+    if f.get('type') != expected_type or f.get('service') != expected_service:
+        return False
+    if expected_fw:
+        sf = f.get('suggested_fix') or {}
+        if sf.get('framework') != expected_fw:
+            return False
+        if expected_rec:
+            rec = sf.get('recommendation') or ''
+            if not any(sub in rec for sub in expected_rec.split('||')):
+                return False
+    return True
+matched = [f for it in items if matches(f := unwrap(it))]
 print(len(matched))
 " 2>/dev/null || echo -1
 }
@@ -106,17 +122,24 @@ grade_service() {
         return
     fi
 
-    local pattern count
+    local stack="${SERVICE%-svc}"
+    local pattern count expectation exp_fw exp_rec fw_note
     for pattern in "${ANTI_PATTERNS[@]}"; do
-        count="$(count_findings "${pattern}" "${findings_json}")"
+        expectation="$(framework_expectation "${stack}" "${pattern}")"
+        exp_fw="${expectation%%|*}"
+        if [ "${expectation}" = "${exp_fw}" ]; then exp_rec=""; else exp_rec="${expectation#*|}"; fi
+        fw_note=""
+        [ -n "${exp_fw}" ] && fw_note=" framework=${exp_fw}"
+        count="$(EXPECTED_FRAMEWORK="${exp_fw}" EXPECTED_REC="${exp_rec}" \
+                 count_findings "${pattern}" "${findings_json}")"
         if [ "${count}" = "-1" ]; then
             RESULTS+=("FAIL|${pattern}|0|daemon returned malformed JSON")
         elif [ "${count:-0}" -ge 1 ]; then
-            color_green "    PASS ${pattern} (${count} matching findings)"
-            RESULTS+=("PASS|${pattern}|${count}|")
+            color_green "    PASS ${pattern} (${count} matching findings${fw_note})"
+            RESULTS+=("PASS|${pattern}|${count}|${fw_note# }")
         else
-            color_red "    FAIL ${pattern} (0 matching findings)"
-            RESULTS+=("FAIL|${pattern}|0|no finding of this type tagged service=${SERVICE}")
+            color_red "    FAIL ${pattern} (0 matching findings${fw_note})"
+            RESULTS+=("FAIL|${pattern}|0|no finding of this type tagged service=${SERVICE}${fw_note}")
         fi
     done
 }

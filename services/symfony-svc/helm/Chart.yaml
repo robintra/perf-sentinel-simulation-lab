@@ -1,0 +1,6 @@
+apiVersion: v2
+name: symfony-svc
+description: Symfony 7 + Doctrine ORM (PHP 8.3, native OTel) multistack member for perf-sentinel-simulation-lab
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
