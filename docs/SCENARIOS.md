@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 46 scenarios live under `scenarios/<name>/` and each one ships a
+The 48 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -186,7 +186,7 @@ Findings produced by the standard rule omit the field.
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 46 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge` — see the sections near the end of this guide). The release gate runs all 46. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The nine rows above are the core deployment-mode scenarios. The lab now ships 48 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide). The release gate runs all 48. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -227,7 +227,11 @@ make verify-esrs-e1-crosswalk
 make verify-verify-hash-fail-closed
 make verify-chart-prometheusrule-pdb
 
-# All 41 (sequential, long-running-drift is the long pole)
+# 0.9.5 feature gates (local release binary + Docker)
+make verify-batch-otlp-file
+make verify-mysql-stat
+
+# All 48 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1122,7 +1126,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 46 scenarios, in an order
+`make verify-all-scenarios` includes all 48 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1619,3 +1623,47 @@ on the batch (Jaeger/Zipkin) paths; OTLP does not round-trip through `analyze`,
 so the OTLP path asserts the same canonicalization via finding recognition
 (assertion A/D) rather than the label string. Validated end to end against a
 `0.9.3` (`feature/0.9.3`) binary, including the live `datadogreceiver` leg.
+
+## 0.9.5 batch OTLP + mysql-stat scenarios
+
+Two scenarios validate the `0.9.5` features. Both need the local release
+binary and Docker; `batch-otlp-file` adds an optional cluster leg.
+
+`batch-otlp-file` proves the **OTLP/JSON batch input**: the whole `--input`
+family auto-detects `ExportTraceServiceRequest` payloads (structural top-level
+key sniff), both as a single pretty-printed object and as the NDJSON stream
+written by the Collector `file` exporter. The headline path is backend-less:
+dd-trace → `datadogreceiver` → `file` exporter → `analyze`, no Tempo/Jaeger.
+A throwaway contrib collector tees the converted OTLP to a loopback daemon
+(strict sanitizer mode on both sides, dd-trace SQL is pre-obfuscated) and to
+an NDJSON dump; batch findings must cohere with `/api/findings` on the same
+traffic. A truncated trailing line (file rotation / in-flight write) is
+tolerated with the `truncated trailing OTLP JSON document` warning; a
+half-line-only file and mid-stream garbage hard-fail; a Jaeger UI export
+stays Jaeger even when a tag value says `resourceSpans`, and an OTLP dump
+stays OTLP even with an attribute named/valued `data`. The native-OTel leg
+layers `collector-overlay.yaml` (a `file/dump` exporter + hostPath mount) on
+the cluster collector, drives order-service N+1 faults, reads the dump off
+the k3d nodes (the contrib image is scratch-based: no tar, no `kubectl cp`),
+and reverts the overlay on exit; it SKIPs cleanly without a cluster.
+
+`mysql-stat` proves the **`pg-stat` twin for MySQL** on a real
+`performance_schema.events_statements_summary_by_digest`: a `mysql:9.7`
+container runs a workload mirroring the instrumented services' patterns
+(N+1 point lookups, `IN (a, b, c)`, `UPDATE`, full-scan aggregates), exported
+as JSON via `JSON_ARRAYAGG` (never `INTO OUTFILE`, which emits unsupported
+TSV) plus a properly quoted CSV twin. It asserts the four rankings in stable
+order (`top by total_exec_time`, `calls`, `mean_exec_time`, `rows_examined`)
+with plausible millisecond timers (picoseconds / 1e9), CSV/JSON equivalence,
+and the `--traces` cross-reference: `[seen in traces]` lands on a genuine
+backticked MySQL digest matching a dd-trace obfuscated template (backtick /
+spacing / case canonicalization on real data on both sides). Robustness legs
+force the real `DIGEST_TEXT = NULL` catch-all row with
+`--performance-schema-digests-size=10` (ignored without failing the export),
+reject an all-null export with an error naming `DIGEST_TEXT`, render
+`NULL`/`\N` schemas as absent, and prove ANSI escape sequences in a trapped
+export never reach the terminal (normal and parse-error paths — the check
+targets the attacker-controlled OSC/BEL bytes, not the logger's own CSI color
+codes). The dashboard legs cover `report --mysql-stat` (tab + 4 ranking
+chips + digest data, `--mysql-stat-top` bounds and companion-flag
+validation) and the populated `mysql_stat` tab in `demo --html`.
