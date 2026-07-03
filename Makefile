@@ -34,6 +34,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-limit-saturation-curve verify-limit-multi-source verify-limit-prod-window-soak \
         verify-sql-backtick-redaction verify-non-sql-datastore-drop verify-non-sql-datastore-metering \
         verify-ruby-activerecord-suggestion verify-datadog-bridge \
+        verify-batch-otlp-file verify-mysql-stat \
         verify-all-scenarios
 
 help: ## List available targets
@@ -139,6 +140,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/non-sql-datastore-drop/verify.sh
 	@bash -n scenarios/non-sql-datastore-metering/verify.sh
 	@bash -n scenarios/ruby-activerecord-suggestion/verify.sh
+	@bash -n scenarios/batch-otlp-file/verify.sh
+	@bash -n scenarios/mysql-stat/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
 	@bash -n scenarios/template-github-actions/verify.sh
@@ -393,6 +396,12 @@ verify-ruby-activerecord-suggestion: ## 0.9.2 detect: Ruby/ActiveRecord suggeste
 verify-datadog-bridge: ## 0.9.3 ingest: dd-trace/Datadog bridge end to end (db.system.name + canonicalization across OTLP/Jaeger/Zipkin; F3 auto vs strict; optional live datadogreceiver)
 	./scenarios/datadog-bridge/verify.sh
 
+verify-batch-otlp-file: ## 0.9.5 ingest: OTLP/JSON batch from the Collector file exporter (dd-trace -> datadogreceiver -> NDJSON -> analyze; truncation, negatives, Jaeger/OTLP sniff non-regression)
+	./scenarios/batch-otlp-file/verify.sh
+
+verify-mysql-stat: ## 0.9.5 stats: mysql-stat on a real MySQL LTS (9.7) performance_schema (4 rankings, --traces cross-ref, NULL/ANSI robustness, report --mysql-stat tab)
+	./scenarios/mysql-stat/verify.sh
+
 verify-intent-validator: ## disclose-time validators (75% gate + org-config required fields)
 	./scenarios/intent-validator/verify.sh
 
@@ -485,7 +494,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 46 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 48 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -506,10 +515,15 @@ verify-all-scenarios: ## Run all 46 scenarios sequentially (see docs/SCENARIOS.m
 	@# - sql-backtick-redaction / non-sql-datastore-* / ruby-activerecord-suggestion
 	@#   are self-contained 0.9.2 checks (local release binary + throwaway loopback
 	@#   daemon, no cluster); grouped with the CLI-heavy batch scenarios.
+	@# - batch-otlp-file / mysql-stat are the 0.9.5 gates: both need the local
+	@#   release binary + Docker; batch-otlp-file's native-OTel leg overlays the
+	@#   cluster collector with a file exporter and reverts it on exit, so it is
+	@#   grouped with the other collector-touching scenarios before the daemon
+	@#   resilience block.
 	@# - datadog-bridge is the self-contained 0.9.3 check (local binary + throwaway
 	@#   daemon + batch analyze/explain; an optional live datadogreceiver leg SKIPs
 	@#   cleanly when Docker is unavailable).
-	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

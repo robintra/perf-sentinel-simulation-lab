@@ -1,0 +1,44 @@
+# Helm values overlay applied on top of helm/values/otel-collector.yaml.
+# Tees the traces pipeline into a file exporter (NDJSON dump of the exact
+# OTLP the daemon receives) for the batch-otlp-file scenario's native-OTel
+# leg. Helm merge replaces lists wholesale, so the full pipeline is
+# re-declared with the existing exporters kept.
+#
+# Apply with:
+#   helm upgrade otel-collector open-telemetry/opentelemetry-collector \
+#     --version 0.160.0 \
+#     -n observability \
+#     -f helm/values/otel-collector.yaml \
+#     -f scenarios/batch-otlp-file/collector-overlay.yaml
+
+config:
+  exporters:
+    file/dump:
+      path: /var/otel/otlp-dump.ndjson
+  service:
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - k8sattributes
+          - batch
+        exporters:
+          - otlphttp/tempo
+          - otlphttp/perf_sentinel
+          - file/dump
+
+# hostPath (not emptyDir): the contrib image is scratch-based (no tar, so no
+# kubectl cp) — verify.sh reads the dump straight off the k3d node containers
+# with `docker exec <node> cat`. The collector runs as UID 10001 and fsGroup
+# does NOT apply to hostPath volumes, so verify.sh pre-creates /tmp/otel-dump
+# with mode 0777 on every k3d node before applying this overlay.
+extraVolumes:
+  - name: otlp-dump
+    hostPath:
+      path: /tmp/otel-dump
+      type: DirectoryOrCreate
+extraVolumeMounts:
+  - name: otlp-dump
+    mountPath: /var/otel
