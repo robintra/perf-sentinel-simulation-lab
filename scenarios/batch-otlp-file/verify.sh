@@ -212,16 +212,19 @@ step "A3: native OTel -> cluster collector file exporter (overlay)"
 if kubectl -n observability get ds >/dev/null 2>&1; then
   # fsGroup does not apply to hostPath volumes: pre-create the dump dir
   # world-writable on every k3d node so the UID-10001 collector can write.
-  for node in $(docker ps --format '{{.Names}}' | grep -E '^k3d-.*(server|agent)'); do
+  for node in $(docker ps --format '{{.Names}}' | grep -E '^k3d-.*-(server|agent)-[0-9]+$'); do
     docker exec "${node}" sh -c 'rm -rf /tmp/otel-dump && mkdir -p -m 777 /tmp/otel-dump' \
       || die "cannot prepare /tmp/otel-dump on ${node}"
   done
+  # Arm the revert BEFORE the upgrade: a partial apply that then errors has
+  # still mutated the shared cluster collector, and the EXIT trap must revert it
+  # (a non-atomic helm upgrade has no rollback of its own).
+  CLUSTER_OVERLAY_APPLIED=1
   helm upgrade otel-collector open-telemetry/opentelemetry-collector \
     --version "${OTEL_CHART_VERSION}" -n observability \
     -f "${REPO_ROOT}/helm/values/otel-collector.yaml" \
     -f "${SCRIPT_DIR}/collector-overlay.yaml" > "${TMP_DIR}/helm.log" 2>&1 \
     || die "helm upgrade with file-exporter overlay failed: $(tail -3 "${TMP_DIR}/helm.log")"
-  CLUSTER_OVERLAY_APPLIED=1
   DS_NAME="$(kubectl -n observability get ds -o name | grep -m1 otel-collector)"
   kubectl -n observability rollout status "${DS_NAME}" --timeout=180s >/dev/null \
     || die "collector daemonset rollout did not converge"
@@ -240,7 +243,7 @@ if kubectl -n observability get ds >/dev/null 2>&1; then
   # The contrib image is scratch-based (no tar -> no kubectl cp): read the
   # hostPath dump straight off every k3d node container and concatenate.
   : > "${TMP_DIR}/cluster-dump.ndjson"
-  for node in $(docker ps --format '{{.Names}}' | grep -E '^k3d-.*(server|agent)'); do
+  for node in $(docker ps --format '{{.Names}}' | grep -E '^k3d-.*-(server|agent)-[0-9]+$'); do
     docker exec "${node}" cat /tmp/otel-dump/otlp-dump.ndjson 2>/dev/null \
       >> "${TMP_DIR}/cluster-dump.ndjson" || true
   done
@@ -298,6 +301,15 @@ d["data"][0]["spans"][0]["tags"].append(
     {"key": "note", "type": "string", "value": "resourceSpans"})
 json.dump(d, open(sys.argv[2], "w"))
 PY
+# Baseline trace counts from the PRISTINE files parsed by their correct parser.
+# Asserting the trap yields the SAME count (not merely >0) catches a lenient
+# misroute: if the trap were parsed by the wrong parser it would fail outright
+# OR analyze to a different count — a bare traces>0 check would miss the latter.
+run_analyze "${JAEGER_FIXTURE}" || die "A6: pristine Jaeger fixture failed to analyze"
+JAEGER_BASE="$(traces_analyzed)"
+head -1 "${TMP_DIR}/dd-dump.ndjson" > "${TMP_DIR}/otlp-base.json"
+run_analyze "${TMP_DIR}/otlp-base.json" || die "A6: pristine single OTLP request failed to analyze"
+OTLP_BASE="$(traces_analyzed)"
 JAEGER_RC=0; run_analyze "${TMP_DIR}/jaeger-trap.json" || JAEGER_RC=$?
 JAEGER_TA=0; [ "${JAEGER_RC}" = "0" ] && JAEGER_TA="$(traces_analyzed)"
 python3 - "${TMP_DIR}/dd-dump.ndjson" "${TMP_DIR}/otlp-trap.json" <<'PY'
@@ -312,13 +324,13 @@ json.dump(d, open(sys.argv[2], "w"), indent=2)
 PY
 OTLP_RC=0; run_analyze "${TMP_DIR}/otlp-trap.json" || OTLP_RC=$?
 OTLP_TA=0; [ "${OTLP_RC}" = "0" ] && OTLP_TA="$(traces_analyzed)"
-# A misroute is a hard serde failure on either side, so exit 0 + traces > 0
-# proves the format each file was routed to.
-if [ "${JAEGER_RC}" = "0" ] && [ "${JAEGER_TA}" -gt 0 ] \
-   && [ "${OTLP_RC}" = "0" ] && [ "${OTLP_TA}" -gt 0 ]; then
-  assert_pass "A6" "jaeger-trap analyzed as Jaeger (traces=${JAEGER_TA}), otlp-trap as OTLP (traces=${OTLP_TA})"
+# Each trap must exit 0 AND analyze to the same count as its pristine baseline
+# (>0) — proving it was routed to the correct parser, not leniently mis-parsed.
+if [ "${JAEGER_RC}" = "0" ] && [ "${JAEGER_TA}" -gt 0 ] && [ "${JAEGER_TA}" = "${JAEGER_BASE}" ] \
+   && [ "${OTLP_RC}" = "0" ] && [ "${OTLP_TA}" -gt 0 ] && [ "${OTLP_TA}" = "${OTLP_BASE}" ]; then
+  assert_pass "A6" "jaeger-trap analyzed as Jaeger (traces=${JAEGER_TA}=${JAEGER_BASE}), otlp-trap as OTLP (traces=${OTLP_TA}=${OTLP_BASE})"
 else
-  assert_fail "A6" "jaeger rc=${JAEGER_RC}/traces=${JAEGER_TA}, otlp rc=${OTLP_RC}/traces=${OTLP_TA}"
+  assert_fail "A6" "jaeger rc=${JAEGER_RC}/traces=${JAEGER_TA}(base ${JAEGER_BASE}), otlp rc=${OTLP_RC}/traces=${OTLP_TA}(base ${OTLP_BASE})"
 fi
 
 # ── A7: report on the dump ──────────────────────────────────────────────────
