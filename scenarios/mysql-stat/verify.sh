@@ -183,7 +183,10 @@ out = open(sys.argv[1]).read()
 labels = ["top by total_exec_time", "top by calls",
           "top by mean_exec_time", "top by rows_examined"]
 pos = [out.find(l) for l in labels]
-print(1 if all(p >= 0 for p in pos) and pos == sorted(pos) else 0)
+# each label exactly once: str.find keys off the FIRST hit, so a future
+# summary line listing all four in order could mask out-of-order sections.
+unique = all(out.count(l) == 1 for l in labels)
+print(1 if all(p >= 0 for p in pos) and pos == sorted(pos) and unique else 0)
 PY
 )"
   if [ "${ORDER_OK}" = "1" ] && grep -q "schema:" "${TMP_DIR}/out.txt"; then
@@ -214,6 +217,10 @@ fi
 
 # ── B2: JSON ranking labels ─────────────────────────────────────────────────
 step "B2: --format json ranking labels"
+# Self-contained: run our own --format json rather than depending on the JSON
+# residue B1-ms happens to leave in out.txt (which would silently break if B1
+# is reordered or switched back to text).
+run_ms --input "${TMP_DIR}/digests.csv" --format json || die "B2: mysql-stat --format json failed"
 LABELS="$(python3 -c '
 import json,sys
 d = json.load(open(sys.argv[1]))
@@ -281,10 +288,15 @@ if run_ms --input "${TMP_DIR}/sat.json" --format json \
    && python3 -c '
 import json,sys
 d = json.load(open(sys.argv[1]))
-sys.exit(0 if any(r["entries"] for r in d["rankings"]) else 1)' "${TMP_DIR}/out.txt"; then
-  assert_pass "B5-catchall" "NULL catch-all digest row ignored, remaining entries ranked"
+entries = [e for r in d["rankings"] for e in r["entries"]]
+# Rankings non-empty AND the NULL catch-all row is actually excluded: were it
+# ranked, its entry would carry an empty/null template. A bare non-emptiness
+# check would greenlight a regression that surfaces the NULL row as a hotspot.
+ok = bool(entries) and all(e.get("normalized_template") for e in entries)
+sys.exit(0 if ok else 1)' "${TMP_DIR}/out.txt"; then
+  assert_pass "B5-catchall" "NULL catch-all digest row excluded, remaining entries ranked (no empty-template hotspot)"
 else
-  assert_fail "B5-catchall" "saturated export with NULL catch-all row broke mysql-stat"
+  assert_fail "B5-catchall" "saturated export: NULL catch-all row ranked or mysql-stat broke"
 fi
 
 step "B5: all-null export fails with a clear error"
@@ -374,7 +386,10 @@ FLAGS_OK=1
   --mysql-stat-top 10001 --output "${TMP_DIR}/x.html" >/dev/null 2>&1 && FLAGS_OK=0
 "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TRACES}" \
   --mysql-stat-top 5 --output "${TMP_DIR}/x.html" >/dev/null 2>"${TMP_DIR}/orphan.err" && FLAGS_OK=0
-if [ "${FLAGS_OK}" = "1" ] && grep -qi "mysql-stat" "${TMP_DIR}/orphan.err"; then
+# `--mysql-stat <` (companion flag, with the space+angle) is distinct from the
+# offending `--mysql-stat-top`, so this proves clap named the required companion
+# flag — not just that "mysql-stat" (a substring of --mysql-stat-top) appears.
+if [ "${FLAGS_OK}" = "1" ] && grep -q -- "--mysql-stat <" "${TMP_DIR}/orphan.err"; then
   assert_pass "B6-flags" "--mysql-stat-top 0 / 10001 / orphan all rejected with a pointer to the companion flag"
 else
   assert_fail "B6-flags" "flag validation gap (ok=${FLAGS_OK}, orphan msg: $(tail -1 "${TMP_DIR}/orphan.err" 2>/dev/null))"
@@ -384,8 +399,12 @@ fi
 step "B7: demo --html ships a populated mysql_stat tab"
 if "${PERF_SENTINEL_LOCAL_BIN}" demo --html "${TMP_DIR}/demo.html" >/dev/null 2>&1 \
    && grep -q "mysql_stat" "${TMP_DIR}/demo.html" \
-   && grep -q "top by rows_examined" "${TMP_DIR}/demo.html"; then
-  assert_pass "B7" "demo dashboard mysql_stat tab present and populated"
+   && grep -q "top by rows_examined" "${TMP_DIR}/demo.html" \
+   && grep -q 'rows_examined":' "${TMP_DIR}/demo.html"; then
+  # `rows_examined":` is the mysql_stat entry JSON field (MySQL-only; pg_stat
+  # uses rows/shared_blks) present on every data row — absent from the empty
+  # scaffold and from the `top by rows_examined` chip label (no colon there).
+  assert_pass "B7" "demo dashboard mysql_stat tab present and populated (real digest rows)"
 else
   assert_fail "B7" "demo dashboard mysql_stat tab missing or empty"
 fi
