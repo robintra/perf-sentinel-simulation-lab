@@ -207,18 +207,20 @@ jobs:
       - name: B1 verify-output-formats-coverage (depends on ci-shift-left)
         run: make verify-output-formats-coverage
 
-      - name: B1 verify-disclose (two-tier waste schema v1.1, CLI-only)
-        # disclose is offline (no daemon/cluster contact). Pinned to 0.8.2 —
-        # the version that introduced the two-tier feature and whose embedded
-        # CCF vintage matches the fixture org-config — so it stays a stable
-        # contract lock regardless of which release triggered this workflow.
-        run: PERF_SENTINEL_VERSION=0.8.2 make verify-disclose
+      - name: B1 verify-disclose (two-tier waste, CLI-only)
+        # disclose is offline (no daemon/cluster contact). Runs against the
+        # release binary (inherits the job PERF_SENTINEL_VERSION) so it follows
+        # the current two-tier waste + report-schema behavior, not a frozen
+        # historical version. NOTE: the fixture org-config pins
+        # specpower_table_version to the binary's embedded CCF vintage; bump it
+        # (scenarios/disclose/fixtures/org-config.toml) when the vintage changes.
+        run: make verify-disclose
 
-      - name: B1 verify-disclose-temporal (disclosure v1.2 continuity, CLI-only)
-        # Same offline contract-lock pattern as verify-disclose. Pinned to 0.8.3,
-        # the version that introduced schema v1.2 (temporal_coverage,
-        # coverage_basis) and whose CCF vintage matches the fixture org-config.
-        run: PERF_SENTINEL_VERSION=0.8.3 make verify-disclose-temporal
+      - name: B1 verify-disclose-temporal (disclosure continuity, CLI-only)
+        # Same offline pattern as verify-disclose, also following the release
+        # binary. Locks the temporal_coverage / coverage_basis continuity fields
+        # against the current schema. Same org-config CCF-vintage caveat.
+        run: make verify-disclose-temporal
 
       - name: B1 verify-daemon-sigterm-drain (0.8.5 graceful drain-on-SIGTERM)
         # Proves the v0.8.5 contract: a graceful SIGTERM (scale-down) drains the

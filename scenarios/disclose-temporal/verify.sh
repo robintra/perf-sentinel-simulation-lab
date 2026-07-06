@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Periodic-disclosure v1.2 continuity scenario (v0.8.3+, schema v1.2).
+# Periodic-disclosure continuity scenario (v0.8.3+; follows the current binary
+# and its report schema, perf-sentinel-report/v1.x).
 #
-# Locks the v0.8.3 schema-v1.2 additions that the `disclose` scenario (a 0.8.2 /
-# v1.1 contract lock) does not cover: aggregate.temporal_coverage,
+# Locks the schema-v1.2 continuity additions that the `disclose` scenario (which
+# covers the two-tier waste headline) does not: aggregate.temporal_coverage,
 # scope_manifest.coverage_basis, the reserved integrity.cross_period_log, the
 # dense-vs-sparse continuity signal, and the v1.2 validator rules.
 #
@@ -17,10 +18,12 @@
 #                            largest_gap 14 (missing days in the 05-22..06-06 span)
 #
 # 5 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
-# (defaults to 0.8.3, the version that introduced v1.2):
+# (defaults to `latest` so it tracks the current binary; CI drives the release
+# version via the PERF_SENTINEL_VERSION env):
 #
-#   1. schema v1.2 + v1.2 fields: schema_version, temporal_coverage (4 subfields),
-#      coverage_basis (operator_declared/machine_derived), cross_period_log absent.
+#   1. recognized schema + continuity fields: schema_version is
+#      perf-sentinel-report/v1.x, temporal_coverage (4 subfields), coverage_basis
+#      (operator_declared/machine_derived), cross_period_log absent.
 #   2. dense continuity: temporal_coverage 1.0, observed==days==30, gap 0, NO
 #      "temporal coverage is" warning on stderr, in-band "Temporal coverage" disclaimer.
 #   3. sparse continuity: temporal_coverage 0.1 (3/30), gap 14, stderr warning
@@ -42,7 +45,7 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES_DIR="${SCENARIO_DIR}/fixtures"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.8.3}"
+PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-latest}"
 IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
 
 mkdir -p "${TMP_DIR}"
@@ -91,8 +94,8 @@ in_image disclose --intent internal --confidentiality internal "${PERIOD_ARGS[@]
   --input /workdir/reports-sparse.ndjson --output /workdir/out-sparse.json \
   --org-config /workdir/org-config.toml >/dev/null 2>"${TMP_DIR}/sparse.stderr" || true
 
-# === Sub-test 1: schema v1.2 + v1.2 fields (dense) ===
-step "1. schema v1.2 + temporal_coverage + coverage_basis + cross_period_log absent"
+# === Sub-test 1: recognized report schema + v1.2 continuity fields (dense) ===
+step "1. recognized schema + temporal_coverage + coverage_basis + cross_period_log absent"
 note=""
 if [ -f "${TMP_DIR}/out-dense.json" ] \
    && note="$(python3 - "${TMP_DIR}/out-dense.json" <<'PY'
@@ -101,7 +104,7 @@ r = json.load(open(sys.argv[1]))
 tc = r["aggregate"].get("temporal_coverage")
 cb = r["scope_manifest"].get("coverage_basis")
 checks = {
-    "schema v1.2": r["schema_version"] == "perf-sentinel-report/v1.2",
+    "recognized report schema": r["schema_version"].startswith("perf-sentinel-report/v1."),
     "temporal_coverage 4 subfields": isinstance(tc, dict) and all(
         k in tc for k in ("temporal_coverage", "observed_days", "days_in_period", "largest_gap_days")),
     "coverage_basis present": isinstance(cb, dict)
@@ -115,10 +118,10 @@ print("schema=%s, coverage_basis=%d operator/%d machine" % (
     r["schema_version"], len(cb["operator_declared"]), len(cb["machine_derived"])))
 PY
 )"; then
-  ok "${note}"; record "1. schema v1.2 + fields" PASS "${note}"
+  ok "${note}"; record "1. schema + fields" PASS "${note}"
 else
   fail "v1.2 field assertion failed (${note:-no out-dense.json})"
-  record "1. schema v1.2 + fields" FAIL "${note:-no out-dense.json}"
+  record "1. schema + fields" FAIL "${note:-no out-dense.json}"
 fi
 
 # === Sub-test 2: dense continuity ===
