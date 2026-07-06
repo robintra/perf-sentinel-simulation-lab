@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Periodic-disclosure two-tier avoidable-waste scenario (v0.8.2+, schema v1.1).
+# Periodic-disclosure two-tier avoidable-waste scenario (v0.8.2+; follows the
+# current binary and its report schema, perf-sentinel-report/v1.x).
 #
 # Locks the v0.8.2 headline feature: `disclose` aggregates the per-window
 # `canonical_waste` (binary-pinned N+1 threshold 2, operator cannot configure)
@@ -16,10 +17,13 @@
 #                           n+1 reclassified to redundant at the high threshold)
 #
 # 4 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
-# (defaults to 0.8.2, the feature's introduction):
+# (defaults to `latest` so it tracks the current binary; CI drives the release
+# version via the PERF_SENTINEL_VERSION env):
 #
-#   1. schema v1.1 + tiers: schema_version, canonical threshold == 2,
-#      operational threshold == 5, both tiers energy/carbon > 0.
+#   1. recognized schema + tiers: schema_version is perf-sentinel-report/v1.x,
+#      canonical threshold == 2, operational threshold == 5, both tiers
+#      energy/carbon > 0. (The tier structure is the contract; the schema string
+#      is accepted across the v1.x family so a schema refresh doesn't false-fail.)
 #   2. flat-field aliasing: estimated_optimization_potential_kgco2eq,
 #      aggregate_waste_ratio, aggregate_efficiency_score alias the canonical tier.
 #   3. official intent + verify-hash round-trip: `disclose --intent official`
@@ -45,7 +49,7 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES_DIR="${SCENARIO_DIR}/fixtures"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.8.2}"
+PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-latest}"
 IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
 
 mkdir -p "${TMP_DIR}"
@@ -88,8 +92,8 @@ in_image() {
 declare -a NAMES=() VERDICTS=() NOTES=()
 record() { NAMES+=("$1"); VERDICTS+=("$2"); NOTES+=("$3"); }
 
-# === Sub-test 1: schema v1.1 + tiers (internal/internal over thr5) ===
-step "1. schema v1.1 + two tiers (canonical==2, operational==5, tiers non-zero)"
+# === Sub-test 1: recognized report schema + tiers (internal/internal over thr5) ===
+step "1. recognized schema + two tiers (canonical==2, operational==5, tiers non-zero)"
 if in_image disclose --intent internal --confidentiality internal "${PERIOD_ARGS[@]}" \
      --input /workdir/reports-thr5.ndjson --output /workdir/out-thr5.json \
      --org-config /workdir/org-config.toml >/dev/null 2>&1 \
@@ -98,7 +102,7 @@ import json, sys
 a = json.load(open(sys.argv[1]))
 ag = a["aggregate"]; cw = ag["canonical_waste"]; ow = ag["operational_waste"]
 checks = {
-    "schema v1.1": a["schema_version"] == "perf-sentinel-report/v1.1",
+    "recognized report schema": a["schema_version"].startswith("perf-sentinel-report/v1."),
     "canonical thr==2": cw["n_plus_one_threshold"] == 2,
     "operational thr==5": ow["n_plus_one_threshold"] == 5,
     "canonical energy>0": cw["energy_kwh"] > 0,
@@ -113,10 +117,10 @@ print("schema=%s canonical_thr=%d operational_thr=%d" % (
     a["schema_version"], cw["n_plus_one_threshold"], ow["n_plus_one_threshold"]))
 PY
 )"; then
-  ok "${note}"; record "1. schema v1.1 + tiers" PASS "${note}"
+  ok "${note}"; record "1. schema + tiers" PASS "${note}"
 else
   fail "schema/tier assertion failed (${note:-disclose error})"
-  record "1. schema v1.1 + tiers" FAIL "${note:-disclose error}"
+  record "1. schema + tiers" FAIL "${note:-disclose error}"
 fi
 
 # === Sub-test 2: flat-field aliasing of the canonical tier ===

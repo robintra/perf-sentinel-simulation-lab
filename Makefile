@@ -405,10 +405,10 @@ verify-mysql-stat: ## 0.9.5 stats: mysql-stat on a real MySQL LTS (9.7) performa
 verify-intent-validator: ## disclose-time validators (75% gate + org-config required fields)
 	./scenarios/intent-validator/verify.sh
 
-verify-disclose: ## periodic disclosure two-tier waste (schema v1.1, verify-hash round-trip, anti-gaming)
+verify-disclose: ## periodic disclosure two-tier waste (current schema, verify-hash round-trip, anti-gaming)
 	./scenarios/disclose/verify.sh
 
-verify-disclose-temporal: ## periodic disclosure v1.2 continuity (temporal_coverage, coverage_basis, dense/sparse)
+verify-disclose-temporal: ## periodic disclosure continuity (temporal_coverage, coverage_basis, dense/sparse)
 	./scenarios/disclose-temporal/verify.sh
 
 verify-sci-functional-unit: ## 0.8.13 G1: SCI per-functional-unit intensity (batch analyze + daemon /api/export/report)
