@@ -2,9 +2,9 @@
 
 Local Kubernetes cluster preconfigured to validate perf-sentinel
 against instrumented services across many language stacks. The lab
-ships an observability stack, fourteen services that intentionally
+ships an observability stack, seventeen services that intentionally
 exhibit performance anti-patterns (three core Java 25 + Spring Boot 4
-services plus eleven multistack services), and a k6 driven validation
+services plus fourteen multistack services), and a k6 driven validation
 pipeline that asserts perf-sentinel classifies each pattern correctly.
 It also acts as the pre-tag release gate for perf-sentinel. Each
 validated version is recorded in the `release-gate/lab-validations.txt`
@@ -18,10 +18,11 @@ OpenTelemetry Collector, Tempo, Prometheus, Grafana, perf-sentinel
 daemon, PostgreSQL, plus the three core Java services in the `shop`
 namespace (`order-service`, `payment-service`, `notification-service`)
 that produce the ten canonical anti-pattern classes on demand via
-`/api/fault/*` endpoints. A multistack expansion adds eleven more
+`/api/fault/*` endpoints. A multistack expansion adds fourteen more
 services that reproduce the same anti-patterns across the JVM
 (Quarkus, Quarkus + Mutiny, Helidon MP, Helidon SE), .NET, Go, NestJS,
-Django, FastAPI, and Rust (Diesel, SeaORM). See
+Django, FastAPI, PHP (Laravel, Symfony), Ruby on Rails, and Rust
+(Diesel, SeaORM). See
 [docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md).
 
 `make seed-services && make validate-findings` runs the ten k6
@@ -119,7 +120,7 @@ make help         # list every target
 
 # Service deployment (depends on `make up` first)
 make seed-services                         # the 3 core Java services
-make seed-quarkus-svc ... seed-seaorm-svc  # the 11 multistack services (see make help)
+make seed-quarkus-svc ... seed-symfony-svc # the 14 multistack services (see make help)
 make validate-findings                     # 10 k6 scenarios on the core services, assert findings
 
 # Scenario suite
@@ -235,7 +236,7 @@ plus actuator health and prometheus endpoints.
 Together they cover the ten canonical detection classes.
 `make validate-findings` exercises all ten through k6 Jobs running
 in-cluster and asserts that each scenario produces at least one
-matching finding on the expected service. The eleven multistack
+matching finding on the expected service. The fourteen multistack
 services reproduce the same ten patterns in other language stacks.
 Drive one with `scripts/run-multistack-scenario.sh <stack>`, and see
 [docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md).
@@ -268,8 +269,8 @@ All planned milestones have shipped:
   stack, PostgreSQL, and the perf-sentinel daemon.
 - 3 core Java 25 + Spring Boot 4 services with `/api/fault/*`
   endpoints, 10 k6 scenarios, and the validate-findings pipeline.
-- A multistack expansion: 11 more services across the JVM, .NET, Go,
-  NestJS, Django, FastAPI, and Rust
+- A multistack expansion: 14 more services across the JVM, .NET, Go,
+  NestJS, Django, FastAPI, PHP, Ruby, and Rust
   ([docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md)).
 - Measured-energy backends (Scaphandre, Kepler, Redfish) and GreenOps
   carbon scoring
