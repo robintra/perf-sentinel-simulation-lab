@@ -1675,7 +1675,8 @@ validation) and the populated `mysql_stat` tab in `demo --html`.
 ## astronomy-shop capture-and-replay
 
 The `astronomy-shop` scenario validates perf-sentinel against the
-**OpenTelemetry Astronomy Shop demo** - the two things the lab cannot produce
+**OpenTelemetry Astronomy Shop demo**
+([open-telemetry/opentelemetry-demo](https://github.com/open-telemetry/opentelemetry-demo)) - the two things the lab cannot produce
 with its own services: spans from canonical, community-maintained OTel
 auto-instrumentation across languages (vendor-scope recognition against
 instrumentation we did not author), and a **false-positive budget** on

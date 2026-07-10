@@ -1,6 +1,7 @@
 # astronomy-shop
 
-Validates perf-sentinel against the **OpenTelemetry Astronomy Shop demo**:
+Validates perf-sentinel against the **OpenTelemetry Astronomy Shop demo**
+([open-telemetry/opentelemetry-demo](https://github.com/open-telemetry/opentelemetry-demo)):
 `analyze --input` / `report --input` replayed over committed NDJSON slices of
 Collector file-exporter output. This covers the two things the lab cannot
 produce with its own services: **foreign instrumentation** (canonical,
