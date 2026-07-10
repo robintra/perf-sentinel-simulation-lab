@@ -1,0 +1,14 @@
+{
+  "demo_version": "2.2.0",
+  "otel_demo_commit": "b74a7bc7bbe66099c61951f42b24dab8b6f02d18",
+  "flags_enabled": [
+    "recommendationCacheFailure"
+  ],
+  "expected_finding_classes": [
+    "n_plus_one_sql",
+    "n_plus_one_http",
+    "redundant_sql",
+    "redundant_http"
+  ],
+  "fp_budget": 253
+}

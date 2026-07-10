@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 48 scenarios live under `scenarios/<name>/` and each one ships a
+The 49 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -185,8 +185,9 @@ Findings produced by the standard rule omit the field.
 | [`correlation-finding`](#cross-trace-correlation-finding) | cross-trace correlation finding                                | running daemon + cross-service traffic           | PASS   |
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
+| [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 
-The nine rows above are the core deployment-mode scenarios. The lab now ships 48 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide). The release gate runs all 48. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 49 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices). The release gate runs all 49. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -231,7 +232,10 @@ make verify-chart-prometheusrule-pdb
 make verify-batch-otlp-file
 make verify-mysql-stat
 
-# All 48 (sequential, long-running-drift is the long pole)
+# Astronomy Shop capture-and-replay (committed fixtures + local release binary only)
+make verify-astronomy-shop
+
+# All 49 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1126,7 +1130,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 48 scenarios, in an order
+`make verify-all-scenarios` includes all 49 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1667,3 +1671,60 @@ targets the attacker-controlled OSC/BEL bytes, not the logger's own CSI color
 codes). The dashboard legs cover `report --mysql-stat` (tab + 4 ranking
 chips + digest data, `--mysql-stat-top` bounds and companion-flag
 validation) and the populated `mysql_stat` tab in `demo --html`.
+
+## astronomy-shop capture-and-replay
+
+The `astronomy-shop` scenario validates perf-sentinel against the
+**OpenTelemetry Astronomy Shop demo** - the two things the lab cannot produce
+with its own services: spans from canonical, community-maintained OTel
+auto-instrumentation across languages (vendor-scope recognition against
+instrumentation we did not author), and a **false-positive budget** on
+continuous, concurrent, legitimate mixed traffic (until now the only negative
+fixture was `scenarios/clean-load.js`, two endpoints on one controller).
+
+The design is capture-once/replay-forever. The demo is ~15-20 services and
+would blow the Docker budget on top of the lab stack, so it never enters the
+k3d cluster: `make capture-astronomy-shop` (one-off) runs the upstream docker
+compose at a pinned tag, injects a Collector `file` exporter through the
+demo's own `otelcol-config-extras.yml` extension hook (restating the exporter
+list - the collector config merge replaces arrays), and cuts two phases by
+stop/mv/start of the collector (the live dump is never truncated: buffered
+writer, fd not guaranteed O_APPEND). The clean phase (all flagd flags off,
+normal load-generator profile) is the false-positive corpus; the degraded
+phase (the manifest's `flags_enabled` on, `recommendationCacheFailure` by
+default) is the recall corpus. Full dumps stay in gitignored
+`artifacts/astronomy-shop/`; `curate.py` selects a deterministic slice of
+complete traces from each (window minus a 30s edge guard, ordered by start
+time) and only the slices plus `fixtures/fixture-manifest.json` are
+committed.
+
+The manifest is the contract: `flags_enabled` drives the capture, and
+`demo_version` / `otel_demo_commit` / `fp_budget` are stamped back. Ground
+truth is loose and documented - we do not control Astronomy Shop internals -
+so R1 asserts at least one finding class from `expected_finding_classes`
+appears on the degraded slice, not that a specific service owns a specific
+pattern. F1 is the novel gate: total findings on the clean slice must stay
+`<= fp_budget`, stamped as the **exact observed count** at curation time
+(replay is deterministic, so no slack factor); a later binary exceeding it
+fails by design and forces a human triage, and the actual classes are
+emitted into the report even on PASS so a class shift under budget stays
+visible. R1 and F1 run under the same default detection config. F2 renders
+the batch dashboard from the clean slice. `make verify-astronomy-shop`
+replays the committed slices with no cluster and no Docker.
+
+Day-one catch: on first capture R1 FAILed because `analyze` rejected the
+whole degraded slice with `JSON parse error: missing field values` - the
+recommendation service emits `app.filtered_products.list` as `"arrayValue":{}`
+(an empty list; canonical protojson omits empty repeated fields, so `values`
+is legitimately absent) whenever `recommendationCacheFailure` is on, and
+perf-sentinel's OTLP JSON model required `values`. One such attribute poisoned
+the entire batch ingest (exit non-zero, zero findings) - 6 of the 660 slice
+lines carry it. That was an upstream fix, not a lab fix: it landed as
+`fix(ingest): accept OTLP/JSON arrayValue/kvlistValue with omitted values
+(#81)`, and the committed degraded slice keeps those lines as its regression
+fixture. R1 now passes: the slice analyzes to 231 traces with `n_plus_one_sql`
++ `redundant_sql` on product-catalog and `redundant_http` on the frontend
+chain, no lab edits needed. F1 measures 253 findings on the 226-trace clean
+corpus (redundant_http, redundant_sql, slow_http) - the false-positive profile
+on realistic mixed traffic that motivated the scenario, recorded as the
+ratchet budget.
