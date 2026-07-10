@@ -50,6 +50,13 @@ for f in "${MANIFEST}" "${CLEAN}" "${DEGRADED}"; do
   [ -s "${f}" ] || die "missing fixture ${f} - run scenarios/astronomy-shop/capture.sh (make capture-astronomy-shop) to capture and curate the slices"
 done
 
+# Guard: R1's recall depends on the empty-list attributes ("arrayValue":{},
+# canonical protojson that omits empty repeated fields) which community
+# auto-instrumentation emits under the failure flag. This coverage is incidental
+# to the slice, so fail fast if a recapture ever drops those lines rather than
+# letting the ingest regression test vanish silently.
+grep -q '"arrayValue":{}' "${DEGRADED}" || die "degraded slice lost its empty-arrayValue lines (ingest coverage gone), recapture from a flagd failure set that emits them"
+
 manifest_get() {  # $1 = key ; lists joined by spaces
   python3 -c '
 import json, sys
