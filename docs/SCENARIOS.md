@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 50 scenarios live under `scenarios/<name>/` and each one ships a
+The 51 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -187,7 +187,7 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 50 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the `sampling-degradation` replay-robustness gate (deterministic trace-sampled and span-loss variants of the astronomy slices — see the section after astronomy-shop). The release gate runs all 50. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 51 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop). The release gate runs all 51. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -238,7 +238,10 @@ make verify-astronomy-shop
 # Sampling robustness on the astronomy fixtures (local release binary only)
 make verify-sampling-degradation
 
-# All 50 (sequential, long-running-drift is the long pole)
+# Semconv-migration robustness on the astronomy fixtures (local release binary only)
+make verify-semconv-drift
+
+# All 51 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1133,7 +1136,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 50 scenarios, in an order
+`make verify-all-scenarios` includes all 51 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1769,3 +1772,42 @@ span-loss variants still analyze traces and invent no class (counts
 deliberately unconstrained: broken parentage may legitimately reshape
 timing statistics). `make verify-sampling-degradation` runs it with the
 local release binary and python3 only.
+
+## semconv-drift migration robustness
+
+The second hidden assumption in every lab corpus is **one semantic
+convention at a time**. OTel renamed the attribute keys the detectors read
+(`db.statement` → `db.query.text`, `db.system` → `db.system.name`,
+`http.method` → `http.request.method`, `http.url` → `url.full`), and during
+the migration real fleets emit any mix of both generations
+(`OTEL_SEMCONV_STABILITY_OPT_IN`), sometimes both keys on the same span.
+The product ingest is dual-keyed across OTLP/Jaeger/Zipkin with a
+documented preference per pair - `db.system.name` is new-preferred, the
+other three pairs old-preferred - but the lab never isolated the
+stable-only shape: the astronomy capture dual-emits per service (never per
+span - measured zero dual-keyed spans), every lab generator uses the legacy
+keys, and `datadog-bridge` isolates `db.system.name` but still pairs it
+with `db.statement`. A span carrying `db.query.text` without `db.statement`
+had zero scenario coverage.
+
+`semconv-drift` closes that in both directions with the same transform-based
+replay substrate as `sampling-degradation`: `drift.py` streams the degraded
+astronomy slice and rewrites span-level attributes into three run-time
+variants - `old-only` (pure legacy), `new-only` (pure stable, the headline
+corpus shape), and `dup` (both keys on every carrying span, the opt-in
+"dup" mode). Structure, ids and timings are untouched, and the resolved
+value is always the preferred key's, so the rewrite is finding-preserving
+by construction and recapture-proof even if a future capture ever
+dual-emits on one span. A B0 die-guard establishes the in-run baseline,
+and G1-G3 die-guards assert each variant's actual key population (plus the
+absence of the third dd-trace alias `db.type` in the fixture), so the
+equality can never pass vacuously on a no-op transform.
+
+D1-D3 then assert **strict equality**: each variant must analyze to the
+same `traces_analyzed` and the exact same per-class finding counts as the
+untransformed baseline (first run: 231 traces, `n_plus_one_sql=1
+redundant_http=237 redundant_sql=9`, 913 events, identical on all three
+variants). Any drift here is precisely the ingest asymmetry the scenario
+exists to catch, with `events_processed` recorded per variant to localize
+a failure to ingest vs detection. `make verify-semconv-drift` runs it with
+the local release binary and python3 only.
