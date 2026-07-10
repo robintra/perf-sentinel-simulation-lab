@@ -36,6 +36,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-ruby-activerecord-suggestion verify-datadog-bridge \
         verify-batch-otlp-file verify-mysql-stat \
         verify-astronomy-shop capture-astronomy-shop \
+        verify-sampling-degradation \
         verify-all-scenarios
 
 help: ## List available targets
@@ -145,6 +146,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/mysql-stat/verify.sh
 	@bash -n scenarios/astronomy-shop/verify.sh
 	@bash -n scenarios/astronomy-shop/capture.sh
+	@bash -n scenarios/sampling-degradation/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
 	@bash -n scenarios/template-github-actions/verify.sh
@@ -411,6 +413,9 @@ verify-astronomy-shop: ## Foreign instrumentation + FP budget: replay committed 
 capture-astronomy-shop: ## One-off: run the OTel demo (docker compose, ~8 GiB), dump OTLP NDJSON clean+degraded, curate committed slices, stamp the manifest
 	./scenarios/astronomy-shop/capture.sh
 
+verify-sampling-degradation: ## Sampling robustness: FNV-1a trace-sampled (50/10/1%) + span-loss variants of the astronomy slices (monotone totals, no class invention, FP budget holds; no cluster, no Docker)
+	./scenarios/sampling-degradation/verify.sh
+
 verify-intent-validator: ## disclose-time validators (75% gate + org-config required fields)
 	./scenarios/intent-validator/verify.sh
 
@@ -503,7 +508,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 49 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 50 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -534,7 +539,9 @@ verify-all-scenarios: ## Run all 49 scenarios sequentially (see docs/SCENARIOS.m
 	@#   cleanly when Docker is unavailable).
 	@# - astronomy-shop replays committed Astronomy Shop fixtures (local binary
 	@#   only, no Docker, no cluster); grouped with the CLI-heavy batch scenarios.
-	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@# - sampling-degradation replays deterministic transforms of the astronomy
+	@#   fixtures (local binary only), so it runs right after astronomy-shop.
+	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
