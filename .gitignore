@@ -33,6 +33,11 @@ services/**/target/
 services/**/*.iml
 .mvn/wrapper/maven-wrapper.jar
 
+# .NET and Node build artifacts
+services/**/bin/
+services/**/obj/
+services/**/node_modules/
+
 # Editor swap files
 *.swp
 *.swo
