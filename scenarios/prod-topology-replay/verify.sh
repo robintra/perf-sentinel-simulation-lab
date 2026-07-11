@@ -65,6 +65,12 @@ M_ANALYZED="$(manifest_get traces_analyzed)"
 M_TOTAL="$(manifest_get findings_total)"
 M_CLASSES="$(manifest_get expected_finding_classes)"
 case "${M_TOTAL}" in *[!0-9]*|"") die "findings_total not stamped in ${MANIFEST} - rerun fetch.sh" ;; esac
+# Anti-vacuity floor: this gate's headline is recall on real production
+# topology, so a zero-finding stamp (a binary that fired no topological
+# detector on the slice) must never re-stamp into a green T2/T3. Look
+# before restamping.
+[ "${M_TOTAL}" -gt 0 ] && [ -n "${M_CLASSES}" ] \
+  || die "manifest stamps zero findings / no classes - the topological detectors fired nothing on this slice; T2/T3 would pass vacuously (investigate before rerunning fetch.sh)"
 
 step "T4: structural guard - one request line per curated trace"
 LINES="$(grep -c "" "${SLICE}")"

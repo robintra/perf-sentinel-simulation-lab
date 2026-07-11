@@ -79,7 +79,7 @@ run_analyze() {  # $1 = input file, $2 = tag ; json to out-<tag>.json, rc passth
 
 traces_analyzed() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["analysis"]["traces_analyzed"])' "${TMP_DIR}/out-$1.json"; }
 
-finding_classes() {  # all services, dedup sorted ; findings JSON (bare or wrapped)
+finding_classes() {  # all finding types, dedup sorted ; findings JSON (bare or wrapped)
   python3 -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -133,7 +133,11 @@ for src in deg clean; do
   K50="$(stat_of "${src}-ts50" kept_traces)"
   K10="$(stat_of "${src}-ts10" kept_traces)"
   K01="$(stat_of "${src}-ts01" kept_traces)"
-  { [ "${K50}" -gt "${K10}" ] && [ "${K10}" -gt "${K01}" ] && [ "${K01}" -gt 0 ]; } \
+  # Strict decrease alone proves the transform degrades (a no-op keeps all
+  # three equal). No absolute floor on the 1% count: a valid re-captured
+  # slice may legitimately hash zero traces below 0.01, and an empty ts01
+  # variant still satisfies A1/A2/A3 (traces_analyzed=0, empty subset).
+  { [ "${K50}" -gt "${K10}" ] && [ "${K10}" -gt "${K01}" ]; } \
     || die "S0: ${src} keep counts not strictly decreasing (${K50}/${K10}/${K01}) - transform is a no-op or the fixture changed shape"
   [ "$(stat_of "${src}-sl30" dropped_spans)" -gt 0 ] \
     || die "S0: ${src} span-loss dropped nothing - transform is a no-op"

@@ -49,13 +49,35 @@ import sys
 BASE_EPOCH_MS = 1_640_995_200_000
 
 
+# Columns read in pass 2; validated once so a schema variant fails with an
+# actionable message instead of a KeyError traceback mid-conversion.
+REQUIRED_COLUMNS = (
+    "timestamp", "traceid", "service", "rpc_id", "rpctype", "um", "interface", "dm", "rt",
+)
+
+
+def num(s):
+    """Best-effort float. The dataset carries rt="None" (~0.7% of rows,
+    UNAVAILABLE edges) and field-shifted rows with a service id in a numeric
+    slot; coerce those to 0 rather than crash - this scenario validates
+    topology, and a zeroed duration keeps the edge."""
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def parent_of(rpc_id):
     return rpc_id.rsplit(".", 1)[0] if "." in rpc_id else None
 
 
 def rows(path):
     with open(path, newline="", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
+        reader = csv.DictReader(fh)
+        missing = [c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            sys.exit(f"error: input CSV missing columns {missing} - not a v2022 CallGraph file?")
+        for row in reader:
             tid, rpc = row.get("traceid", ""), row.get("rpc_id", "")
             if tid and rpc:
                 yield tid, rpc, row
@@ -66,8 +88,8 @@ def span_id(trace_id, rpc_id):
 
 
 def to_span(tid, rpc, row, rpc_ids):
-    ts_ms = int(float(row["timestamp"] or 0))
-    rt_ms = max(float(row["rt"] or 0), 0.0)
+    ts_ms = int(num(row["timestamp"]))
+    rt_ms = max(num(row["rt"]), 0.0)
     start_ns = (BASE_EPOCH_MS + ts_ms) * 1_000_000
     parent = parent_of(rpc)
     interface = row["interface"] or row["dm"]
@@ -108,10 +130,7 @@ def main():
             dup_rows += 1  # RPC recorded by both sides - first wins
             continue
         entry["ids"].add(rpc)
-        try:
-            entry["first_ts"] = min(entry["first_ts"], int(float(row["timestamp"])))
-        except ValueError:
-            pass
+        entry["first_ts"] = min(entry["first_ts"], int(num(row["timestamp"])))
 
     eligible = []
     inconsistent = 0

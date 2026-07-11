@@ -49,10 +49,17 @@ def parsed_lines(path):
             if not line:
                 continue
             try:
-                yield json.loads(line)
+                doc = json.loads(line)
             except json.JSONDecodeError:
                 # Same stance as curate.py / `analyze --input` on a rotated dump.
                 print(f"warn: skipping unparseable line {lineno}", file=sys.stderr)
+                continue
+            if not isinstance(doc, dict):
+                # A bare scalar (null/number) from a rotated dump is valid JSON
+                # but not an ExportTraceServiceRequest; skip rather than crash.
+                print(f"warn: skipping non-object line {lineno}", file=sys.stderr)
+                continue
+            yield doc
 
 
 def apply_pair(attrs, old, new, pref, mode, stats):

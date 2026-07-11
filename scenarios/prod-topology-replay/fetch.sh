@@ -27,7 +27,14 @@ command -v python3 >/dev/null 2>&1 || { echo "python3 required" >&2; exit 1; }
 mkdir -p "${ART}" "${FIXTURES}"
 
 if [ ! -s "${CSV}" ]; then
-  [ -s "${TARBALL}" ] || { echo "==> downloading CallGraph_0.tar.gz (~223 MB)"; curl -fL -o "${TARBALL}" "${URL}"; }
+  # Download to a .part file and rename only on success: an interrupted
+  # curl must not leave a non-empty tarball that the [ -s ] guard would
+  # then treat as complete and hand to tar on every retry.
+  [ -s "${TARBALL}" ] || {
+    echo "==> downloading CallGraph_0.tar.gz (~223 MB)"
+    curl -fL -o "${TARBALL}.part" "${URL}"
+    mv "${TARBALL}.part" "${TARBALL}"
+  }
   echo "==> extracting"
   tar -xzf "${TARBALL}" -C "${ART}"
 fi

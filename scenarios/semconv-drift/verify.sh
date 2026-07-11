@@ -84,7 +84,10 @@ events_processed() {  # informational only - localizes a failure to ingest vs de
   python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("analysis",{}).get("events_processed","n/a"))' "${TMP_DIR}/out-$1.json"
 }
 
-keycount() { grep -c "\"key\":\"$2\"" "$1" 2>/dev/null || true; }
+# Count key OCCURRENCES, not matching lines: the corpus is one minified
+# ExportTraceServiceRequest per line holding many spans, so `grep -c`
+# (lines) would let a partial dup transform pass the G3 equal-count guard.
+keycount() { grep -o "\"key\":\"$2\"" "$1" 2>/dev/null | wc -l | tr -d ' '; }
 
 # ── B0: baseline (die-guard) ────────────────────────────────────────────────
 step "B0: analyze the untransformed degraded slice (in-run baseline)"
@@ -94,6 +97,9 @@ run_analyze "${DEGRADED}" base || die "analyze failed on the untransformed degra
 BASE_TA="$(traces_analyzed base)"
 BASE_COUNTS="$(class_counts base)"
 [ "${BASE_TA}" -gt 0 ] || die "baseline analyzed zero traces"
+# D1-D3 assert equality against BASE_COUNTS; a zero-finding baseline makes
+# every check compare ""=="" and pass vacuously, so floor the baseline here.
+[ -n "${BASE_COUNTS}" ] || die "baseline produced zero findings - the equality gate would be vacuous (fixture or detector regression)"
 ok "baseline: traces_analyzed=${BASE_TA}, findings [${BASE_COUNTS:-none}], events=$(events_processed base)"
 
 # ── generate + G1-G3 vacuity die-guards ─────────────────────────────────────
