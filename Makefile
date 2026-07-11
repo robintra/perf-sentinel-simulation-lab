@@ -38,6 +38,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-astronomy-shop capture-astronomy-shop \
         verify-sampling-degradation verify-semconv-drift \
         verify-prod-topology-replay fetch-prod-topology \
+        verify-rpc-carrier-parity \
         verify-all-scenarios
 
 help: ## List available targets
@@ -151,6 +152,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/semconv-drift/verify.sh
 	@bash -n scenarios/prod-topology-replay/verify.sh
 	@bash -n scenarios/prod-topology-replay/fetch.sh
+	@bash -n scenarios/rpc-carrier-parity/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
 	@bash -n scenarios/template-github-actions/verify.sh
@@ -429,6 +431,9 @@ verify-prod-topology-replay: ## Real production topology: replay a committed Ali
 fetch-prod-topology: ## One-off: download 3 min of Alibaba v2022 call graphs (~223 MB), convert a consistent slice to OTLP NDJSON, stamp the manifest
 	./scenarios/prod-topology-replay/fetch.sh
 
+verify-rpc-carrier-parity: ## OTel RPC semconv ingest: the Alibaba slice rewritten onto real rpc.* keys matches the synthetic-carrier baseline; SERVER-kind twins rejected (no cluster, no Docker)
+	./scenarios/rpc-carrier-parity/verify.sh
+
 verify-intent-validator: ## disclose-time validators (75% gate + org-config required fields)
 	./scenarios/intent-validator/verify.sh
 
@@ -521,7 +526,7 @@ verify-scaphandre-mock-validation: ## Scaphandre scrape path end-to-end against 
 verify-measured-energy-chain: ## Kepler and Redfish scraper integration against the Python stdlib mocks
 	./scenarios/measured-energy-chain/verify.sh
 
-verify-all-scenarios: ## Run all 52 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 53 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -555,8 +560,9 @@ verify-all-scenarios: ## Run all 52 scenarios sequentially (see docs/SCENARIOS.m
 	@# - sampling-degradation and semconv-drift replay deterministic transforms
 	@#   of the astronomy fixtures (local binary only), so they run right after
 	@#   astronomy-shop; prod-topology-replay replays its own committed Alibaba
-	@#   slice (local binary only) and is grouped with them.
-	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@#   slice (local binary only) and is grouped with them, followed by
+	@#   rpc-carrier-parity which rewrites that same slice onto rpc.* keys.
+	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

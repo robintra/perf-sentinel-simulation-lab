@@ -65,3 +65,7 @@ make fetch-prod-topology           # one-off: download + convert + stamp (~223 M
 
 Replay needs only the local release binary and python3.
 Report: `/tmp/scenario-prod-topology-replay-report.md`.
+
+Since product 0.9.8 the ingest also admits the real OTel RPC semconv
+keys; `scenarios/rpc-carrier-parity/` rewrites this slice onto them and
+asserts parity with the synthetic carrier.
