@@ -1,0 +1,14 @@
+{
+  "dataset": "alibaba cluster-trace-microservices-v2022 CallGraph_0 (3 min of production)",
+  "converter": "convert.py (dedup + single-root consistency filter, md5 ids, synthetic http.url carrier)",
+  "traces": 300,
+  "traces_analyzed": 300,
+  "findings_total": 549,
+  "expected_finding_classes": [
+    "chatty_service",
+    "excessive_fanout",
+    "n_plus_one_http",
+    "redundant_http",
+    "serialized_calls"
+  ]
+}

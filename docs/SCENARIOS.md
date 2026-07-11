@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 51 scenarios live under `scenarios/<name>/` and each one ships a
+The 52 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -187,7 +187,7 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 51 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop). The release gate runs all 51. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 52 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface). The release gate runs all 52. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -241,7 +241,10 @@ make verify-sampling-degradation
 # Semconv-migration robustness on the astronomy fixtures (local release binary only)
 make verify-semconv-drift
 
-# All 51 (sequential, long-running-drift is the long pole)
+# Real production topology from the Alibaba v2022 call graphs (local release binary only)
+make verify-prod-topology-replay
+
+# All 52 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1136,7 +1139,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 51 scenarios, in an order
+`make verify-all-scenarios` includes all 52 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1811,3 +1814,34 @@ variants). Any drift here is precisely the ingest asymmetry the scenario
 exists to catch, with `events_processed` recorded per variant to localize
 a failure to ingest vs detection. `make verify-semconv-drift` runs it with
 the local release binary and python3 only.
+
+## prod-topology-replay real production topology
+
+Every corpus so far — the lab services, astronomy-shop, the transform
+gates — is at most demo-scale topology. `prod-topology-replay` replays the
+one thing none of them can provide: **real production call graphs**, from
+the Alibaba cluster-trace-microservices-v2022 dataset (17k+ hashed
+microservices, 20M+ call graphs over 13 days). The scenario follows the
+astronomy-shop fetch-once/replay-forever design: `make fetch-prod-topology`
+(one-off) downloads the first 3 minutes of the dataset (~223 MB) into
+gitignored `artifacts/alibaba/`, and `convert.py` turns it into a
+committed OTLP/JSON NDJSON slice — deduping the dataset's double-recorded
+RPCs `(traceid, rpc_id)` first-wins, keeping only traces whose call tree
+is consistent (exactly one root, every parent present — the cheap version
+of the CASPER reconstruction filter for the dataset's documented
+topological inconsistencies), and selecting deterministically (earliest
+timestamp, 5–300 spans, first 300 traces) with md5-derived ids and a fixed
+epoch anchor so the output is byte-stable.
+
+The scope is stated honestly in the README: the dataset carries topology
+and timing, not attributes, so every call is emitted as an HTTP client
+span with a synthetic carrier url (`http://<dm>/<interface>`) that exists
+only so ingest keeps the span. What the gate validates is the topological
+detector surface (fanout, chatty, serialized) and ingest on real-world
+trace shapes — not query-shape detection. Assertions mirror astronomy's
+contract philosophy against a stamped manifest: T1 deterministic
+`traces_analyzed`, T2 every stamped finding class still found, T3 exact
+stamped finding count (drift forces a human look; restamp deliberately by
+rerunning fetch.sh), T4 one request line per curated trace, T5 the
+dashboard renders. `make verify-prod-topology-replay` needs only the local
+release binary and python3.
