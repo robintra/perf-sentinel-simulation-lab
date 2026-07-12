@@ -640,9 +640,13 @@ jobs:
           printf '%b' "${RESULTS}"
           TOTAL=$((PASS + FAIL))
           # 128/140 preserves the original 110/120 (91.7%) proportional pass rate:
-          # the 14 stacks keep the same per-stack flakiness budget (e.g. PHP slow_sql
-          # can miss under load). Requires the pinned daemon to carry the PHP
-          # framework tagging (0.9.4+); the run-multistack matcher asserts it.
+          # the 14 stacks keep the same per-stack flakiness budget. Known deterministic
+          # misses inside that budget (issue #69): symfony slow_sql (the doctrine/pdo
+          # instrumentation puts db.statement and the query duration on different
+          # spans, so the daemon only ever sees 0ms SQL events for it), dotnet
+          # n_plus_one_http (upstream gap #23), nest redundant_sql. Requires the
+          # pinned daemon to carry the PHP framework tagging (0.9.4+); the
+          # run-multistack matcher asserts it.
           echo "Total: ${PASS}/${TOTAL} (threshold: 128/140)"
           if [ "${PASS}" -lt 128 ]; then
             echo "::error::multistack validation below threshold: ${PASS}/${TOTAL} < 128/140"
