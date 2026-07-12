@@ -16,14 +16,16 @@ ENV["OTEL_BSP_SCHEDULE_DELAY"] ||= "1000"
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = ENV.fetch("OTEL_SERVICE_NAME", "rails-svc")
-  # Rails: Rack SERVER span + ActiveRecord ORM scope + ActionPack.
-  c.use "OpenTelemetry::Instrumentation::Rails"
-  # PG: the raw connections pool-saturation opens outside the AR pool.
-  c.use "OpenTelemetry::Instrumentation::PG"
-  # Net::HTTP auto-instrumentation is intentionally NOT enabled: in every
-  # semconv mode its CLIENT spans omit `url.full`/`http.url`, and perf-sentinel
-  # classifies a span as HTTP I/O ONLY when it carries one of those
-  # (ingest/otlp.rs classify_io_event) — so its spans are dropped as
-  # MissingHttpUrl and the HTTP anti-patterns never fire. ApplicationController#http_get
-  # emits its own CLIENT span with `url.full` instead (one clean span, no dup).
+  # use_all is required: `c.use "OpenTelemetry::Instrumentation::Rails"` alone
+  # is a no-op umbrella (its install block is `install { true }`) and silently
+  # skips Rack/ActionPack/ActiveRecord — no SERVER span, every DB/HTTP span
+  # becomes its own single-span trace, and all multi-span structural findings
+  # vanish (issue #69).
+  # Net::HTTP stays opted out: in every semconv mode its CLIENT spans omit
+  # `url.full`/`http.url`, and perf-sentinel classifies a span as HTTP I/O ONLY
+  # when it carries one of those (ingest/otlp.rs classify_io_event) — so its
+  # spans are dropped as MissingHttpUrl and the HTTP anti-patterns never fire.
+  # ApplicationController#http_get emits its own CLIENT span with `url.full`
+  # instead (one clean span, no dup).
+  c.use_all("OpenTelemetry::Instrumentation::Net::HTTP" => { enabled: false })
 end
