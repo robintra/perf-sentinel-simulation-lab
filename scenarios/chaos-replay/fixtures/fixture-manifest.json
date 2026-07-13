@@ -1,0 +1,36 @@
+{
+  "demo_version": "2.2.0",
+  "otel_demo_commit": "b74a7bc7bbe66099c61951f42b24dab8b6f02d18",
+  "chaos": {
+    "flags_enabled": [
+      "paymentUnreachable",
+      "kafkaQueueProblems",
+      "adHighCpu",
+      "loadGeneratorFloodHomepage"
+    ],
+    "kill": {
+      "service": "checkout",
+      "at_offset_s": 180,
+      "down_s": 120
+    },
+    "pause": {
+      "service": "shipping",
+      "at_offset_s": 420,
+      "pause_s": 90
+    },
+    "window_minutes": 12
+  },
+  "traces": 300,
+  "traces_analyzed": 249,
+  "finding_census": {
+    "chatty_service": 32,
+    "excessive_fanout": 31,
+    "n_plus_one_http": 5,
+    "redundant_http": 279,
+    "redundant_sql": 15,
+    "serialized_calls": 9,
+    "slow_http": 2
+  },
+  "error_spans": 119,
+  "broken_parent_traces": 4
+}
