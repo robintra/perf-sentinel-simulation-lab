@@ -10,9 +10,8 @@ on:
         required: false
         default: 'latest'
         type: string
-  schedule:
-    # Daily at 02:00 UTC, catch upstream environment drift on main.
-    - cron: '0 2 * * *'
+  # No schedule: the daily 02:00 UTC cron was retired on 2026-07-13 -
+  # validation now runs only on release dispatch or manually.
 
 permissions:
   contents: read
@@ -78,10 +77,10 @@ jobs:
       - name: Patch perf-sentinel image to validated version
         run: |
           # The baseline manifest pins the image by digest for supply-chain.
-          # When validating an arbitrary upstream version (or `latest` from
-          # the daily cron) we drop the digest and revert to a tag pin: the
+          # When validating an arbitrary upstream version (or the `latest`
+          # dispatch default) we drop the digest and revert to a tag pin: the
           # validated version is the unit of interest, not the digest of a
-          # yet-untested image. Firing unconditionally also keeps the cron
+          # yet-untested image. Firing unconditionally also keeps the default
           # path working when the manifest is digest-pinned.
           sed -i -E "s|ghcr.io/robintra/perf-sentinel(@sha256:[a-f0-9]+\|:[0-9.]+)|ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}|g" \
             manifests/perf-sentinel-daemon.yaml
@@ -231,10 +230,10 @@ jobs:
         # in 0.8.5, so on an earlier daemon the positive control FAILs by design.
         # SIGKILL uses `docker exec <node> kill -9` against the k3d node containerd.
         #
-        # Gated off the floating 'latest' tag (the default for the daily cron and
-        # for workflow_dispatch without an explicit version). 'latest' can point at
+        # Gated off the floating 'latest' tag (the default for workflow_dispatch
+        # without an explicit version). 'latest' can point at
         # a pre-0.8.5 image that does not drain on SIGTERM, which would fail the
-        # positive control by design and turn the nightly run red. Explicit release
+        # positive control by design and turn the run red. Explicit release
         # validations (repository_dispatch with the released version) are always
         # >= 0.8.5, so they run.
         if: env.PERF_SENTINEL_VERSION != 'latest'

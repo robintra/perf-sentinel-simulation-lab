@@ -26,13 +26,13 @@ is no supported `make up` Flannel path anymore.
 ## Continuous validation
 
 A GitHub Actions workflow at `.github/workflows/validate-on-release.yml`
-validates the lab on every perf-sentinel release plus a daily cron on
-main. Triggers:
+validates the lab on every perf-sentinel release. Triggers:
 
 - `repository_dispatch` event `perf-sentinel-released` from the
   perf-sentinel repo on tag publication.
 - `workflow_dispatch` manually with a `perf_sentinel_version` input.
-- Daily cron at 02:00 UTC.
+
+(The daily 02:00 UTC cron was retired on 2026-07-13.)
 
 The workflow boots a minimal lab (no GitLab CE, GHA free tier RAM
 constraint) and runs 4/5 of the verification suite (assertion 4
@@ -71,8 +71,8 @@ step in the perf-sentinel release workflow:
 ```
 
 `LAB_DISPATCH_TOKEN` is a classic PAT with `repo` scope on the lab
-repo. Until that step lands, `workflow_dispatch` (manual) and the
-daily cron remain the active triggers.
+repo. Until that step lands, `workflow_dispatch` (manual) remains the
+active trigger.
 
 ## Footprint per component (S1)
 
