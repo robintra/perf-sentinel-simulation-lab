@@ -24,6 +24,7 @@ REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 rm -rf "${TMP_DIR}"
+rm -f "${REPORT}"   # a preflight die must never cat a stale prior-run verdict
 mkdir -p "${TMP_DIR}"
 
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
@@ -78,7 +79,8 @@ fi
 step "X1: analyze the chaos slice (clean degradation)"
 if "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${SLICE}" \
      --format json > "${TMP_DIR}/out.json" 2> "${TMP_DIR}/err.txt"; then
-  FINDING_STATS="$(python3 "${CENSUS}" findings "${TMP_DIR}/out.json")" || FINDING_STATS='{}'
+  FINDING_STATS="$(python3 "${CENSUS}" findings "${TMP_DIR}/out.json")" \
+    || die "chaos_census.py findings failed on ${TMP_DIR}/out.json - helper bug, not census drift"
   TA="$(jq -r '.traces_analyzed // 0' <<< "${FINDING_STATS}")"
   if grep -q "panicked at" "${TMP_DIR}/err.txt"; then
     assert_fail "X1" "a thread panicked during analyze (stderr: $(grep -m1 'panicked at' "${TMP_DIR}/err.txt"))"

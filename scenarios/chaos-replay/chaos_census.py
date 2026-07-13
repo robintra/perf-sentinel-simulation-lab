@@ -56,7 +56,7 @@ def findings_stats(path):
         return item.get("finding", item) if isinstance(item, dict) else {}
 
     census = collections.Counter(unwrap(it).get("type", "?") for it in items)
-    analyzed = doc.get("analysis", {}).get("traces_analyzed", 0) \
+    analyzed = (doc.get("analysis") or {}).get("traces_analyzed", 0) \
         if isinstance(doc, dict) else 0
     return {"traces_analyzed": analyzed, "finding_census": dict(census)}
 

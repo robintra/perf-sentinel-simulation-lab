@@ -84,18 +84,23 @@ docker ps --format '{{.Names}}' | grep -q '^k3d-' \
   && warn "k3d lab cluster is running; the demo adds ~15-20 containers - stop it (make down) if Docker memory gets tight"
 
 # The manifest drives the choreography; validate it before touching Docker.
+# Raw jq output is validated BEFORE any arithmetic touches it - $((null*60))
+# under set -u aborts with a cryptic bash error instead of this die().
 jq -e '.chaos.flags_enabled | length > 0' "${MANIFEST}" >/dev/null || die "chaos.flags_enabled empty in ${MANIFEST}"
-KILL_SVC="$(jq -r '.chaos.kill.service' "${MANIFEST}")"
+KILL_SVC="$(jq -r '.chaos.kill.service // empty' "${MANIFEST}")"
 KILL_AT="$(jq -r '.chaos.kill.at_offset_s' "${MANIFEST}")"
 KILL_DOWN="$(jq -r '.chaos.kill.down_s' "${MANIFEST}")"
-PAUSE_SVC="$(jq -r '.chaos.pause.service' "${MANIFEST}")"
+PAUSE_SVC="$(jq -r '.chaos.pause.service // empty' "${MANIFEST}")"
 PAUSE_AT="$(jq -r '.chaos.pause.at_offset_s' "${MANIFEST}")"
 PAUSE_S="$(jq -r '.chaos.pause.pause_s' "${MANIFEST}")"
-WINDOW_S="$(( $(jq -r '.chaos.window_minutes' "${MANIFEST}") * 60 ))"
+WINDOW_MIN="$(jq -r '.chaos.window_minutes' "${MANIFEST}")"
 SLICE_TRACES="$(jq -r '.traces' "${MANIFEST}")"
-for v in "${KILL_AT}" "${KILL_DOWN}" "${PAUSE_AT}" "${PAUSE_S}" "${WINDOW_S}" "${SLICE_TRACES}"; do
+[ -n "${KILL_SVC}" ] && [ -n "${PAUSE_SVC}" ] \
+  || die "chaos.kill.service / chaos.pause.service missing in ${MANIFEST}"
+for v in "${KILL_AT}" "${KILL_DOWN}" "${PAUSE_AT}" "${PAUSE_S}" "${WINDOW_MIN}" "${SLICE_TRACES}"; do
   case "${v}" in *[!0-9]*|"") die "non-numeric choreography value in ${MANIFEST}" ;; esac
 done
+WINDOW_S="$((WINDOW_MIN * 60))"
 [ "$((KILL_AT + KILL_DOWN))" -le "${PAUSE_AT}" ] || die "kill window overlaps pause window (manifest)"
 [ "$((PAUSE_AT + PAUSE_S))" -lt "${WINDOW_S}" ] || die "pause window exceeds the capture window (manifest)"
 ok "binary, docker compose, tools, ports free, choreography sane (window ${WINDOW_S}s)"
@@ -119,6 +124,15 @@ else
 fi
 OTEL_DEMO_COMMIT="$(git -C "${DEMO_DIR}" rev-parse HEAD)"
 ok "demo at ${OTEL_DEMO_COMMIT}"
+
+# Validate the manifest's flag names against the demo's flagd catalog NOW -
+# the file exists right after the clone, no need to boot the demo (10+ min)
+# to discover a typo'd flag.
+FLAGD="${DEMO_DIR}/src/flagd/demo.flagd.json"
+for f in $(jq -r '.chaos.flags_enabled[]' "${MANIFEST}"); do
+  jq -e --arg f "$f" '.flags[$f]' "${FLAGD}" >/dev/null || die "unknown flagd flag: $f"
+done
+ok "flag names exist in the ${DEMO_TAG} flagd catalog"
 
 # ── inject the file exporter ─────────────────────────────────────────────────
 step "Inject file exporter (extras config + compose volume override)"
@@ -167,9 +181,7 @@ ok "demo warm"
 
 # ── enable the chaos flags, then open a clean flagged window ─────────────────
 step "Enable chaos flags: $(jq -r '.chaos.flags_enabled | join(", ")' "${MANIFEST}")"
-FLAGD="${DEMO_DIR}/src/flagd/demo.flagd.json"
 for f in $(jq -r '.chaos.flags_enabled[]' "${MANIFEST}"); do
-  jq -e --arg f "$f" '.flags[$f]' "${FLAGD}" >/dev/null || die "unknown flagd flag: $f"
   # flagd fsnotify-watches the file: rewrite in place (cat) to keep the inode.
   jq --arg f "$f" '.flags[$f].defaultVariant = "on"' "${FLAGD}" > "${ART}/flagd.tmp"
   cat "${ART}/flagd.tmp" > "${FLAGD}"
@@ -202,7 +214,7 @@ color_yellow "    $(date +%T) unpause ${PAUSE_SVC}"
 dc unpause "${PAUSE_SVC}" || die "docker compose unpause ${PAUSE_SVC} failed"
 sleep "$((WINDOW_S - PAUSE_AT - PAUSE_S))"
 dc stop otel-collector >/dev/null 2>&1 || die "collector stop failed"
-[ -s "${DUMP}" ] || die "chaos dump empty - collector wrote nothing (docker compose logs otel-collector)"
+[ -s "${DUMP}" ] || die "chaos dump empty - collector wrote nothing (cd ${DEMO_DIR} && docker compose logs otel-collector)"
 mv "${DUMP}" "${ART}/chaos-full.ndjson"
 ok "chaos-full.ndjson: $(wc -l < "${ART}/chaos-full.ndjson" | tr -d ' ') lines"
 
