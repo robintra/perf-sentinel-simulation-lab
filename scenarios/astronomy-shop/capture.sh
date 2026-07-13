@@ -132,6 +132,12 @@ trap 'dc down -v >/dev/null 2>&1 || true' EXIT
 step "Demo up (pulls ghcr.io images on first run) + warmup ${WARMUP_SECONDS}s"
 # No --no-build: opensearch is build-only at this tag (a local config wrapper
 # image); everything else pulls its released ghcr image and is never rebuilt.
+# Pull explicitly first: `up` BUILDS any service whose image is missing
+# locally when a build: section exists (the pruned-image trap - local demo
+# builds are not expected to work here); --ignore-pull-failures lets
+# opensearch fall through to its build.
+dc pull --ignore-pull-failures > "${ART}/pull.log" 2>&1 \
+  || warn "some images did not pull (see ${ART}/pull.log) - compose may try to build them"
 dc up -d || die "docker compose up failed"
 ready=0
 for _ in $(seq 1 120); do
