@@ -1,0 +1,12 @@
+{
+  "agent": "alumet-agent v0.9.5 (2026-06-26)",
+  "deb": "alumet-agent_0.9.5-1_arm64_ubuntu_24.04.deb",
+  "deb_sha256": "f7c3b11fcd3d0c66cb1f13527dd9dd284b3c348f9cc4fd5a2276e657a17ba0d7",
+  "captured": "2026-07-16",
+  "capture_sha256": "954148670a6a046b247dbffa5f20bde375b7e59612868fbce1dad6fac1fac467",
+  "plugins": "procfs,prometheus-exporter (defaults regenerated via fresh ALUMET_CONFIG path)",
+  "exporter_defaults": { "prefix": "", "suffix": "_alumet", "port": 9091, "add_attributes_to_labels": true },
+  "discovered_metric": "memory_usage_alumet",
+  "positive_process_rows": { "memory_usage_alumet": 18, "cpu_percent_alumet": 8, "cpu_time_delta_alumet": 4 },
+  "wire_notes": "unit-suffix branch inverted upstream: unit-carrying metrics lose the unit (kernel_cpu_time_alumet, not kernel_cpu_time_ms_alumet); unitless metrics gain a trailing underscore (kernel_context_switches_alumet_)"
+}

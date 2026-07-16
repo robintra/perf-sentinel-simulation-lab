@@ -1,0 +1,319 @@
+# HELP mem_total_alumet MemTotal entry in /proc/meminfo, converted to bytes.
+# TYPE mem_total_alumet gauge
+mem_total_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 16747556864.0
+# HELP mem_free_alumet MemFree entry in /proc/meminfo, converted to bytes.
+# TYPE mem_free_alumet gauge
+mem_free_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 15662485504.0
+# HELP mem_available_alumet MemAvailable entry in /proc/meminfo, converted to bytes.
+# TYPE mem_available_alumet gauge
+mem_available_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 15914237952.0
+# HELP cached_alumet Cached entry in /proc/meminfo, converted to bytes.
+# TYPE cached_alumet gauge
+cached_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 414269440.0
+# HELP swap_cached_alumet SwapCached entry in /proc/meminfo, converted to bytes.
+# TYPE swap_cached_alumet gauge
+swap_cached_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# HELP active_alumet Active entry in /proc/meminfo, converted to bytes.
+# TYPE active_alumet gauge
+active_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 563204096.0
+# HELP inactive_alumet Inactive entry in /proc/meminfo, converted to bytes.
+# TYPE inactive_alumet gauge
+inactive_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 174120960.0
+# HELP mapped_alumet Mapped entry in /proc/meminfo, converted to bytes.
+# TYPE mapped_alumet gauge
+mapped_alumet{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 183099392.0
+# HELP memory_usage_alumet Memory usage.
+# TYPE memory_usage_alumet gauge
+memory_usage_alumet{kind="resident",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 3084288.0
+memory_usage_alumet{kind="shared",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1454080.0
+memory_usage_alumet{kind="virtual",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 2441216.0
+memory_usage_alumet{kind="resident",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1540096.0
+memory_usage_alumet{kind="virtual",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 2441216.0
+memory_usage_alumet{kind="resident",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1540096.0
+memory_usage_alumet{kind="virtual",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 2441216.0
+memory_usage_alumet{kind="shared",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 8204288.0
+memory_usage_alumet{kind="resident",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1540096.0
+memory_usage_alumet{kind="shared",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1454080.0
+memory_usage_alumet{kind="resident",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 10850304.0
+memory_usage_alumet{kind="resident",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1544192.0
+memory_usage_alumet{kind="shared",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 2834432.0
+memory_usage_alumet{kind="virtual",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4132864.0
+memory_usage_alumet{kind="virtual",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 2441216.0
+memory_usage_alumet{kind="shared",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1454080.0
+memory_usage_alumet{kind="virtual",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 514600960.0
+memory_usage_alumet{kind="shared",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1454080.0
+# HELP cpu_time_delta_alumet Time spent executing on the CPU since the previous measurement.
+# TYPE cpu_time_delta_alumet gauge
+cpu_time_delta_alumet{kind="user",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="user",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="guest",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="system",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="system",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="system",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="guest",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="system",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="user",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1010000000.0
+cpu_time_delta_alumet{kind="user",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 990000000.0
+cpu_time_delta_alumet{kind="system",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="system",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="guest",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="guest",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="user",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 1000000000.0
+cpu_time_delta_alumet{kind="guest",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_time_delta_alumet{kind="user",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 990000000.0
+cpu_time_delta_alumet{kind="guest",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+# HELP cpu_percent_alumet CPU usage percent.
+# TYPE cpu_percent_alumet gauge
+cpu_percent_alumet{kind="user",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.125296590261005
+cpu_percent_alumet{kind="user",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.208631268653788
+cpu_percent_alumet{kind="system",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="total",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.166958437096432
+cpu_percent_alumet{kind="total",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.208631268653788
+cpu_percent_alumet{kind="system",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="total",resource_consumer_id="203",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.125296590261005
+cpu_percent_alumet{kind="user",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="user",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="system",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="user",resource_consumer_id="205",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.166958437096432
+cpu_percent_alumet{kind="total",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.125394230923495
+cpu_percent_alumet{kind="system",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="system",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="total",resource_consumer_id="207",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="total",resource_consumer_id="1",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+cpu_percent_alumet{kind="user",resource_consumer_id="206",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 4.125394230923495
+cpu_percent_alumet{kind="system",resource_consumer_id="204",resource_consumer_kind="process",resource_id="",resource_kind="local_machine"} 0.0
+# HELP kernel_cpu_time_alumet busy CPU time.
+# TYPE kernel_cpu_time_alumet gauge
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 49980.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 10.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 10.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 10090.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 2500.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 10.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 2510.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 2510.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 2490.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 2530.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="4",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 2520.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 2490.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 10.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 4990.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest_nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="1",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="irq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="7",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="10",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="3",resource_kind="cpu_core"} 2530.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="11",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="2",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="guest",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="steal",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="5",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="softirq",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="6",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="user",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="9",resource_kind="cpu_core"} 0.0
+kernel_cpu_time_alumet{cpu_state="nice",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+kernel_cpu_time_alumet{cpu_state="idle",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="8",resource_kind="cpu_core"} 5000.0
+kernel_cpu_time_alumet{cpu_state="system",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="0",resource_kind="cpu_core"} 0.0
+# HELP kernel_context_switches_alumet_ number of context switches.
+# TYPE kernel_context_switches_alumet_ gauge
+# UNIT kernel_context_switches_alumet_ 
+kernel_context_switches_alumet_{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 896.0
+# HELP kernel_new_forks_alumet_ number of fork operations.
+# TYPE kernel_new_forks_alumet_ gauge
+# UNIT kernel_new_forks_alumet_ 
+kernel_new_forks_alumet_{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# HELP kernel_n_procs_running_alumet_ number of processes in a runnable state.
+# TYPE kernel_n_procs_running_alumet_ gauge
+# UNIT kernel_n_procs_running_alumet_ 
+kernel_n_procs_running_alumet_{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 7.0
+# HELP kernel_n_procs_blocked_alumet_ numbers of processes that are blocked on I/O operations.
+# TYPE kernel_n_procs_blocked_alumet_ gauge
+# UNIT kernel_n_procs_blocked_alumet_ 
+kernel_n_procs_blocked_alumet_{resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# HELP network_bytes_alumet Number of bytes (rx/tx) per interface.
+# TYPE network_bytes_alumet gauge
+network_bytes_alumet{direction="tx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="tx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_bytes_alumet{direction="rx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# HELP network_packets_alumet_ Number of packets (rx/tx) per interface.
+# TYPE network_packets_alumet_ gauge
+# UNIT network_packets_alumet_ 
+network_packets_alumet_{direction="tx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="tx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packets_alumet_{direction="rx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# HELP network_packet_drops_alumet_ Number of dropped packets (rx/tx) per interface.
+# TYPE network_packet_drops_alumet_ gauge
+# UNIT network_packet_drops_alumet_ 
+network_packet_drops_alumet_{direction="tx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="tx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_packet_drops_alumet_{direction="rx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# HELP network_errors_alumet_ Number of errors (rx/tx) per interface.
+# TYPE network_errors_alumet_ gauge
+# UNIT network_errors_alumet_ 
+network_errors_alumet_{direction="tx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="tunl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="ip_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="sit0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="lo",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="ip6_vti0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="gretap0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="erspan0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="ip6tnl0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="eth0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="tx",interface="ip6gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+network_errors_alumet_{direction="rx",interface="gre0",resource_consumer_id="",resource_consumer_kind="local_machine",resource_id="",resource_kind="local_machine"} 0.0
+# EOF

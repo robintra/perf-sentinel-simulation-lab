@@ -139,7 +139,7 @@ backends = data.get("backends")
 if not isinstance(backends, list) or not backends:
     print("BAD_SHAPE")
     sys.exit(0)
-known = {"scaphandre", "kepler", "redfish", "cloud_energy", "electricity_maps"}
+known = {"alumet", "scaphandre", "kepler", "redfish", "cloud_energy", "electricity_maps"}
 seen = {b.get("backend") for b in backends}
 if "configured" not in backends[0] or "backend" not in backends[0]:
     print("BAD_ENTRY")
