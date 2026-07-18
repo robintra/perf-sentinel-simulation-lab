@@ -250,7 +250,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 55 (sequential, long-running-drift is the long pole)
+# All 56 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 

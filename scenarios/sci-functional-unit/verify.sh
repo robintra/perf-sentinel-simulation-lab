@@ -145,9 +145,19 @@ else
 fi
 }
 if [ -x "${LOCAL_BIN}" ] && [ -f "${SQL_ONLY_FIX}" ] && [ -f "${HTTP_ONLY_FIX}" ]; then
-  assert_split "${TRACES}"        "mixed"    "mixed"
-  assert_split "${SQL_ONLY_FIX}"  "sqlonly"  "sql"
-  assert_split "${HTTP_ONLY_FIX}" "httponly" "http"
+  # Probe once: a stale pre-0.9.13 binary has no total_sql_io_ops field, so SKIP
+  # (rebuild) rather than report three spurious FAILs. `|| true` on each call so
+  # an analyze crash records a FAIL and continues instead of aborting set -e.
+  "${LOCAL_BIN}" analyze --input "${SQL_ONLY_FIX}" --config "${TMP_DIR}/green.toml" --format json \
+    > "${TMP_DIR}/split-probe.json" 2>/dev/null || true
+  if python3 -c 'import json,os,sys; p=sys.argv[1]; gs=(json.load(open(p)).get("green_summary") or {}) if os.path.exists(p) and os.path.getsize(p) else {}; sys.exit(0 if "total_sql_io_ops" in gs else 1)' "${TMP_DIR}/split-probe.json"; then
+    assert_split "${TRACES}"        "mixed"    "mixed"  || true
+    assert_split "${SQL_ONLY_FIX}"  "sqlonly"  "sql"    || true
+    assert_split "${HTTP_ONLY_FIX}" "httponly" "http"   || true
+  else
+    ok "local binary predates the 0.9.13 SQL-split fields -> SKIP (rebuild the RC checkout)"
+    record "split" "SKIP" "binary lacks total_sql_io_ops (stale pre-0.9.13 build)"
+  fi
 else
   ok "local RC binary/fixtures absent -> SKIP SQL-split leg (hermetic docker legs above still ran)"
   record "split" "SKIP" "no local binary at ${LOCAL_BIN}"

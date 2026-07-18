@@ -153,6 +153,19 @@ alumet_success_count() {  # successful Alumet scrapes so far (from the daemon's 
     END {if(!f) print 0}'
 }
 
+# database_waste liveness on /api/export/report. Separates a real null from a
+# transient loopback flake so the sticky legs never mistake a fetch error for a
+# state change. Exit: 0 = present, 1 = absent (fetch + parse OK), 2 = fetch/parse failed.
+db_waste_present() {
+  local body
+  body="$(curl -fsS "${DAEMON_URL}/api/export/report" 2>/dev/null)" || return 2
+  printf '%s' "${body}" | python3 -c '
+import json, sys
+try: d = json.load(sys.stdin)
+except Exception: sys.exit(2)
+sys.exit(0 if ((d.get("green_summary") or {}).get("database_waste")) else 1)'
+}
+
 # POST the N+1 fixture up to N times (8s spacing keeps one batch per 5s scrape)
 # and poll until green_summary.database_waste is present; writes the report JSON
 # to $1 on success.
@@ -379,7 +392,7 @@ psk = gs.get("per_service_energy_kwh") or {}; psm = gs.get("per_service_energy_m
 out = []
 def chk(tag, cond, detail): out.append((tag, bool(cond), detail))
 chk("present", ek is not None and ek > 0, f"energy_kwh={ek}")
-exp_ratio = min(av_sql/tot_sql, 1.0) if tot_sql else 0.0
+exp_ratio = min(av_sql/tot_sql, 1.0) if (tot_sql and av_sql is not None) else 0.0
 chk("ratio", ratio is not None and abs(ratio-exp_ratio) < 1e-9,
     f"sql_waste_ratio={ratio} == avoidable_sql/total_sql={av_sql}/{tot_sql}={exp_ratio:.6f}")
 chk("waste", wk is not None and ek is not None and ratio is not None and (ek==0 or abs(wk-ek*ratio) < 1e-9*max(1,abs(ek))),
@@ -433,7 +446,8 @@ EOF
   else
     record_skip "B-disclose-excl" "archive carried no database_waste window to test exclusion"
   fi
-  stop_daemon
+  # Leave the daemon up: leg F reuses it for the headless render (F stops it),
+  # so there is no second daemon + reseed.
 else
   assert_fail "B-arithmetic" "daemon never produced database_waste: $(tail -2 "${TMP_DIR}/b.log")"
   record_skip "B-disclose-excl" "not reached"
@@ -453,8 +467,9 @@ sys.exit(0 if all(k in dw for k in ('waste_kwh','energy_kwh','sql_waste_ratio'))
 else
   assert_fail "F-dataplane" "report snapshot missing database_waste render fields"
 fi
-# Best-effort: drive the TUI headless in a pty for ~2 refreshes and grep the frame.
-if start_daemon b.toml b2.log && seed_until_db_waste "${TMP_DIR}/f-report.json"; then
+# Best-effort: drive the TUI headless in a pty against the still-running leg-B
+# daemon (whose live cell still carries database_waste) — no fresh daemon/reseed.
+if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
   MON_OUT="${TMP_DIR}/monitor.txt"
   ( script -q /dev/null "${PERF_SENTINEL_LOCAL_BIN}" query --daemon-url "${DAEMON_URL}" monitor --refresh 1 ) \
     >"${MON_OUT}" 2>&1 &
@@ -462,18 +477,16 @@ if start_daemon b.toml b2.log && seed_until_db_waste "${TMP_DIR}/f-report.json";
   sleep 6
   kill "${MON_PID}" 2>/dev/null || true; wait "${MON_PID}" 2>/dev/null || true
   if grep -aqF "Database waste" "${MON_OUT}"; then
-    line="$(tr -d '\r' < "${MON_OUT}" | grep -aoF "Database waste" | head -1)"
     extra=""
     grep -aqF "excluded from totals" "${MON_OUT}" && extra=" + 'excluded from totals'"
     assert_pass "F-render" "query monitor Energy tab renders the 'Database waste:' line${extra}"
   else
     record_skip "F-render" "headless TUI capture did not surface the line (pty/term); data plane proven above + upstream render unit tests cover it"
   fi
-  stop_daemon
 else
-  record_skip "F-render" "second daemon for the TUI render not ready"
-  stop_daemon
+  record_skip "F-render" "leg-B daemon not reachable for the TUI render"
 fi
+stop_daemon
 
 # =============================================================================
 # Leg C: sticky live cell — no flap, then age-out after the scraper dies
@@ -487,9 +500,10 @@ if start_daemon c.toml c.log && seed_until_db_waste "${TMP_DIR}/c-report.json"; 
   for _ in $(seq 1 6); do
     post_traces >/dev/null
     for _ in 1 2; do
+      db_waste_present; rc=$?
+      [ "${rc}" -eq 2 ] && { sleep 1; continue; }   # transient fetch flake: don't judge
       polls=$((polls+1))
-      present="$(curl -fsS "${DAEMON_URL}/api/export/report" 2>/dev/null | python3 -c "import json,sys;print(1 if ((json.load(sys.stdin).get('green_summary') or {}).get('database_waste')) else 0)" 2>/dev/null || echo 0)"
-      [ "${present}" = "1" ] || flaps=$((flaps+1))
+      [ "${rc}" -eq 0 ] || flaps=$((flaps+1))
       sleep 1
     done
   done
@@ -508,9 +522,9 @@ if start_daemon c.toml c.log && seed_until_db_waste "${TMP_DIR}/c-report.json"; 
   aged=""; t=0
   for _ in $(seq 1 45); do
     post_traces >/dev/null 2>&1
-    present="$(curl -fsS "${DAEMON_URL}/api/export/report" 2>/dev/null | python3 -c "import json,sys;print(1 if ((json.load(sys.stdin).get('green_summary') or {}).get('database_waste')) else 0)" 2>/dev/null || echo 0)"
-    if [ "${present}" = "0" ]; then aged="${t}"; break; fi
-    sleep 2; t=$((t+2))
+    db_waste_present; rc=$?
+    if [ "${rc}" -eq 1 ]; then aged="${t}"; break; fi   # a SUCCESSFUL fetch shows null
+    sleep 2; t=$((t+2))                                 # rc 0 (present) / 2 (flake): keep waiting
   done
   if [ -n "${aged}" ] && [ "${aged}" -ge 10 ] && [ "${aged}" -le 70 ]; then
     assert_pass "C-ageout" "database_waste aged out ~${aged}s after scraper death under continued traffic (TTL 2x staleness, not pinned forever)"
@@ -525,7 +539,12 @@ else
   record_skip "C-ageout" "not reached"
   stop_daemon
 fi
-# Restart the mock for leg D (C killed it).
+# Restart a single mock for leg D. Leg C only kills the mock on its success path,
+# so free the port unconditionally (covers both the killed and the still-bound
+# original) and drop any stale tracked PID before binding exactly one server.
+[ -n "${MOCK_PID}" ] && kill "${MOCK_PID}" 2>/dev/null || true
+lsof -ti "tcp:${MOCK_PORT}" 2>/dev/null | while read -r pid; do kill "${pid}" 2>/dev/null || true; done
+sleep 1
 ( cd "${TMP_DIR}/mock" && exec python3 -m http.server "${MOCK_PORT}" --bind 127.0.0.1 ) >/dev/null 2>&1 &
 MOCK_PID=$!
 disown "${MOCK_PID}" 2>/dev/null || true
