@@ -113,6 +113,46 @@ else
   record "daemon-sci" "SKIP" "daemon port-forward unreachable"
 fi
 
+# === 3. SQL split (0.9.13): green_summary.{total,avoidable}_sql_io_ops ===
+# The docker legs above run the released image; this leg exercises the RC under
+# test through the local release binary on three protocol mixes. SKIPs cleanly
+# when no local checkout is present (steady-state CI without the product repo).
+step "3. SQL split: green_summary sql_io_ops (local binary, RC under test)"
+LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}/target/release/perf-sentinel}"
+SQL_ONLY_FIX="${SCENARIO_DIR}/../sql-backtick-redaction/fixtures/backtick.native.json"
+HTTP_ONLY_FIX="${FIXTURES_DIR}/http-only.native.json"
+assert_split() {  # $1 input ; $2 label ; $3 mode(mixed|sql|http)
+"${LOCAL_BIN}" analyze --input "$1" --config "${TMP_DIR}/green.toml" --format json \
+  > "${TMP_DIR}/split-$2.json" 2>"${TMP_DIR}/split-$2.err" \
+  || { fail "$2: analyze failed: $(tail -1 "${TMP_DIR}/split-$2.err")"; record "split-$2" "FAIL" "analyze error"; return 1; }
+if out="$(python3 - "${TMP_DIR}/split-$2.json" "$3" <<'PY'
+import json, sys
+gs = json.load(open(sys.argv[1])).get("green_summary") or {}
+mode = sys.argv[2]
+ti, ai = gs.get("total_io_ops"), gs.get("avoidable_io_ops")
+ts, asql = gs.get("total_sql_io_ops"), gs.get("avoidable_sql_io_ops")
+ok = None not in (ti, ai, ts, asql) and ts <= ti and asql <= ai and asql <= ts
+if mode == "sql":   ok = ok and ts == ti and ts > 0
+if mode == "http":  ok = ok and ts == 0 and asql == 0 and ti > 0
+if mode == "mixed": ok = ok and ts > 0 and asql > 0
+print(f"total_io={ti} avoidable_io={ai} total_sql={ts} avoidable_sql={asql}")
+sys.exit(0 if ok else 1)
+PY
+)"; then
+  ok "$2 ($3): ${out}"; record "split-$2" "PASS" "${out}"
+else
+  fail "$2 ($3): sql-split invariant failed — ${out}"; record "split-$2" "FAIL" "${out}"
+fi
+}
+if [ -x "${LOCAL_BIN}" ] && [ -f "${SQL_ONLY_FIX}" ] && [ -f "${HTTP_ONLY_FIX}" ]; then
+  assert_split "${TRACES}"        "mixed"    "mixed"
+  assert_split "${SQL_ONLY_FIX}"  "sqlonly"  "sql"
+  assert_split "${HTTP_ONLY_FIX}" "httponly" "http"
+else
+  ok "local RC binary/fixtures absent -> SKIP SQL-split leg (hermetic docker legs above still ran)"
+  record "split" "SKIP" "no local binary at ${LOCAL_BIN}"
+fi
+
 # === Summary ===
 step "Summary"
 pass=0; failc=0; skip=0

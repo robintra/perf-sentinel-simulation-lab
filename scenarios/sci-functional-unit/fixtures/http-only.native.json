@@ -1,0 +1,80 @@
+[
+  {
+    "timestamp": "2025-06-07T12:00:00.010Z",
+    "trace_id": "t00000000000000000000000000000h01",
+    "span_id": "s0000000000h01001",
+    "parent_span_id": null,
+    "service": "shop-gateway",
+    "cloud_region": "eu-west-3",
+    "type": "http_out",
+    "operation": "GET",
+    "target": "https://catalog.internal/api/items/1",
+    "duration_us": 2000,
+    "source": { "endpoint": "GET /api/cart", "method": "Handler::handle" }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.014Z",
+    "trace_id": "t00000000000000000000000000000h01",
+    "span_id": "s0000000000h01002",
+    "parent_span_id": "s0000000000h01001",
+    "service": "shop-gateway",
+    "cloud_region": "eu-west-3",
+    "type": "http_out",
+    "operation": "GET",
+    "target": "https://catalog.internal/api/items/2",
+    "duration_us": 2000,
+    "source": { "endpoint": "GET /api/cart", "method": "Handler::handle" }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.018Z",
+    "trace_id": "t00000000000000000000000000000h01",
+    "span_id": "s0000000000h01003",
+    "parent_span_id": "s0000000000h01001",
+    "service": "shop-gateway",
+    "cloud_region": "eu-west-3",
+    "type": "http_out",
+    "operation": "GET",
+    "target": "https://catalog.internal/api/items/3",
+    "duration_us": 2000,
+    "source": { "endpoint": "GET /api/cart", "method": "Handler::handle" }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.022Z",
+    "trace_id": "t00000000000000000000000000000h01",
+    "span_id": "s0000000000h01004",
+    "parent_span_id": "s0000000000h01001",
+    "service": "shop-gateway",
+    "cloud_region": "eu-west-3",
+    "type": "http_out",
+    "operation": "GET",
+    "target": "https://catalog.internal/api/items/4",
+    "duration_us": 2000,
+    "source": { "endpoint": "GET /api/cart", "method": "Handler::handle" }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.026Z",
+    "trace_id": "t00000000000000000000000000000h01",
+    "span_id": "s0000000000h01005",
+    "parent_span_id": "s0000000000h01001",
+    "service": "shop-gateway",
+    "cloud_region": "eu-west-3",
+    "type": "http_out",
+    "operation": "GET",
+    "target": "https://catalog.internal/api/items/5",
+    "duration_us": 2000,
+    "source": { "endpoint": "GET /api/cart", "method": "Handler::handle" }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.030Z",
+    "trace_id": "t00000000000000000000000000000h01",
+    "span_id": "s0000000000h01006",
+    "parent_span_id": "s0000000000h01001",
+    "service": "shop-gateway",
+    "cloud_region": "eu-west-3",
+    "type": "http_out",
+    "operation": "GET",
+    "target": "https://catalog.internal/api/items/6",
+    "duration_us": 2000,
+    "source": { "endpoint": "GET /api/cart", "method": "Handler::handle" }
+  }
+]
