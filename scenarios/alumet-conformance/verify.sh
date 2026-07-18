@@ -27,10 +27,10 @@
 #
 # Wire gotchas locked by the 2026-07-16 capture (see fixtures/):
 #   - the .deb ships /etc/alumet/alumet-config.toml WITHOUT a
-#     prometheus-exporter section, and `prefix`/`suffix` have no serde
-#     default: enabling the exporter against the shipped config fails with
-#     "missing field `prefix`". Point ALUMET_CONFIG at a fresh path so the
-#     agent regenerates defaults for the enabled plugin set.
+#     prometheus-exporter section, but enabling the exporter still works:
+#     the agent backfills the absent section from the plugin's defaults.
+#     We point ALUMET_CONFIG at a fresh path only to capture against a
+#     clean, minimal config (prefix "", suffix "_alumet", port 9091).
 #   - the packaged binary carries file capabilities
 #     (cap_sys_ptrace,cap_sys_nice,cap_perfmon=ep): inside docker the exec
 #     fails with EPERM unless those caps are added to the container.
@@ -274,8 +274,8 @@ if [ "${HAVE_AGENT}" = "1" ]; then
   step "Live agent: capture (A) + wire shape and discovery (B)"
   docker rm -f alumet-wire >/dev/null 2>&1 || true
   # Caps: the packaged binary carries file capabilities; without them exec
-  # fails EPERM inside docker. Fresh ALUMET_CONFIG: the shipped conffile has
-  # no prometheus-exporter section and `prefix` has no serde default.
+  # fails EPERM inside docker. Fresh ALUMET_CONFIG = a clean generated config;
+  # an absent prometheus-exporter section is backfilled from defaults anyway.
   docker run -d --name alumet-wire --cpus=2 \
     --cap-add SYS_PTRACE --cap-add SYS_NICE --cap-add PERFMON \
     -p "127.0.0.1:${AGENT_PORT}:9091" \

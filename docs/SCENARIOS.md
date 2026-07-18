@@ -1927,6 +1927,7 @@ matching Scaphandre (`alumet_rapl`), both warn latches fire exactly
 once, and `/api/energy` returns 6 rows with alumet first (breaking
 change vs 0.9.11). Docker is optional: the live legs SKIP cleanly
 without it, the frozen legs always gate. Container gotchas are locked
-in the scenario README (file capabilities on the packaged binary, the
-shipped conffile lacking the prometheus-exporter section with `prefix`
-having no serde default).
+in the scenario README (file capabilities on the packaged binary, and the
+shipped conffile lacking the prometheus-exporter section, which the agent
+backfills from defaults, so we use a fresh ALUMET_CONFIG only for a clean
+capture).

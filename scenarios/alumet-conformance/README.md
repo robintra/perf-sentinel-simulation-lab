@@ -47,11 +47,11 @@ frozen file (verified to machine epsilon during development).
 ## Hard-won wire facts (locked by the 2026-07-16 capture)
 
 - The `.deb` ships `/etc/alumet/alumet-config.toml` **without** a
-  `prometheus-exporter` section, and the plugin's `prefix`/`suffix` fields
-  have no serde default: enabling the exporter against the shipped config
-  fails with ``missing field `prefix` ``. Fix: point `ALUMET_CONFIG` at a
-  fresh path so the agent regenerates defaults for the enabled plugin set
-  (`prefix = ""`, `suffix = "_alumet"`, `port = 9091`).
+  `prometheus-exporter` section, but enabling the exporter still works: the
+  agent backfills the absent section from the plugin's defaults
+  (`prefix = ""`, `suffix = "_alumet"`, `port = 9091`). We point
+  `ALUMET_CONFIG` at a fresh path only to capture against a clean, minimal
+  config instead of the shipped one.
 - The packaged binary carries file capabilities
   (`cap_sys_ptrace,cap_sys_nice,cap_perfmon=ep`); inside docker the exec
   fails EPERM unless the container adds those caps.
