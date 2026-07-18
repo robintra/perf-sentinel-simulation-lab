@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 55 scenarios live under `scenarios/<name>/` and each one ships a
+The 56 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -187,7 +187,7 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 55 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census). The release gate runs all 55. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 56 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census). The release gate runs all 56. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -1145,7 +1145,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 55 scenarios, in an order
+`make verify-all-scenarios` includes all 56 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1931,3 +1931,39 @@ in the scenario README (file capabilities on the packaged binary, and the
 shipped conffile lacking the prometheus-exporter section, which the agent
 backfills from defaults, so we use a fresh ALUMET_CONFIG only for a clean
 capture).
+
+## alumet-db-waste Alumet DB-cgroup energy x SQL waste ratio
+
+The 0.9.13 gate for the database-waste feature, built directly on the
+0.9.12 Alumet backend. It reuses the `alumet-conformance` harness — a
+local daemon on loopback scraping a `python3 -m http.server` — but
+augments the committed frozen capture with **one synthetic
+database-cgroup series** (`resource_consumer_kind="pg-cgroup"`, a known
+`72000 J/poll`, so every figure is checkable; the label is deliberately
+distinct from any `service_mappings` value, since a collision is a config
+error). `[green.alumet.database]` declares that cgroup, and each scored
+window the daemon reports `green_summary.database_waste = { energy_kwh,
+waste_kwh, waste_gco2, region, sql_waste_ratio }`, where `sql_waste_ratio
+= min(avoidable_sql_io_ops / total_sql_io_ops, 1.0)` and `waste_kwh =
+energy_kwh x sql_waste_ratio` — a CPU-only lower bound, **excluded** from
+the top-level `energy_kwh`, from `co2`, and from the public `disclose`
+output. Five legs: **B** recomputes the arithmetic and proves the
+exclusion (the DB label never enters the per-service energy maps, the
+top-level `energy_kwh` equals the pure service sum, and `disclose` strips
+`database_waste` even though the per-window archive carries it); **C**
+locks the review-hardened sticky live cell — no flapping to `null`
+between scrapes, then ageing out within the TTL (`2 x staleness = 6 x
+scrape interval`) once the scraper dies under continued traffic, not
+pinned forever; **D** floods a 1-deep analysis queue and a 20-trace
+window (the `daemon-analysis-shedding` recipe) to shed whole batches and
+checks that the DB energy summed across the archived NDJSON windows
+equals the measured `scrape_total x per-scrape` (quantized to whole
+scrapes; the carry-over signature is one window absorbing the energy that
+accumulated while scoring around it was shed) with the daemon **shedding
+instead of OOMing**; **E** validates the config surface (collision,
+typo'd subsection, missing endpoint, and the `deny_unknown_fields`
+compat-break are rejected at load; an unknown-but-charset-valid region
+only warns and drops `waste_gco2`); and **F** confirms the
+`/api/export/report` snapshot backing the `query monitor` "Database
+waste:" line. Self-contained: local binary, no cluster, Docker not
+required.

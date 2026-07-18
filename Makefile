@@ -41,6 +41,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-rpc-carrier-parity \
         verify-chaos-replay capture-chaos-replay \
         verify-alumet-conformance \
+        verify-alumet-db-waste \
         verify-all-scenarios
 
 help: ## List available targets
@@ -158,6 +159,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/chaos-replay/verify.sh
 	@bash -n scenarios/chaos-replay/capture.sh
 	@bash -n scenarios/alumet-conformance/verify.sh
+	@bash -n scenarios/alumet-db-waste/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
 	@bash -n scenarios/template-github-actions/verify.sh
@@ -540,7 +542,10 @@ verify-measured-energy-chain: ## Kepler and Redfish scraper integration against 
 verify-alumet-conformance: ## 0.9.12 green: Alumet 6th measured backend vs the real agent (wire conformance, summed-label math, desync x5, precedence over Scaphandre, warn latches; local binary, Docker optional)
 	./scenarios/alumet-conformance/verify.sh
 
-verify-all-scenarios: ## Run all 55 scenarios sequentially (see docs/SCENARIOS.md)
+verify-alumet-db-waste: ## 0.9.13 green: Alumet DB-cgroup energy x SQL waste ratio (database_waste arithmetic + exclusion + disclose absence, sticky/staleness, carry-over under shedding, config validation, monitor line; local binary, no cluster)
+	./scenarios/alumet-db-waste/verify.sh
+
+verify-all-scenarios: ## Run all 56 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -578,7 +583,7 @@ verify-all-scenarios: ## Run all 55 scenarios sequentially (see docs/SCENARIOS.m
 	@#   rpc-carrier-parity which rewrites that same slice onto rpc.* keys.
 	@# - chaos-replay replays its committed chaos slice of the OTel demo
 	@#   (local binary only, no Docker) and closes the replay group.
-	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
