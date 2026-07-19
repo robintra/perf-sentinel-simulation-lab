@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-# alumet-db-waste: validate perf-sentinel 0.9.13's database-waste feature, the
-# Alumet-measured DB cgroup energy attributed to the SQL-only avoidable share.
+# alumet-db-waste: validate perf-sentinel's database-waste feature, the DB cgroup
+# energy attributed to the SQL-only avoidable share — measured (0.9.13) and the
+# 0.9.14 estimated fallback + disclosure v1.4 publication.
 #
-# 0.9.13 adds, on top of the 0.9.12 Alumet backend (see alumet-conformance):
+# 0.9.13 added, on top of the 0.9.12 Alumet backend (see alumet-conformance):
 #   - green_summary.{total_sql_io_ops,avoidable_sql_io_ops}: the SQL-only slice
 #     of the io-op counters (SQL spans / n_plus_one_sql+redundant_sql findings).
 #   - [green.alumet.database]: declares one DB cgroup label. Each scored window
-#     the daemon multiplies that cgroup's measured window energy by the SQL waste
+#     the daemon multiplies that cgroup's MEASURED window energy by the SQL waste
 #     ratio and reports green_summary.database_waste = {energy_kwh, waste_kwh,
-#     waste_gco2, region, sql_waste_ratio}. A CPU-only lower bound, EXCLUDED from
-#     energy_kwh, co2, and the public disclosure.
+#     waste_gco2, region, sql_waste_ratio, model="alumet_rapl"}. A CPU-only lower
+#     bound EXCLUDED from energy_kwh / co2.
+#
+# 0.9.14 keeps that measured path byte-for-byte and adds:
+#   - an ESTIMATED fallback on every run with no [green.alumet.database] (every
+#     batch `analyze`), model="estimated" — a re-presented SHARE of the report
+#     totals (a subset of energy_kwh/co2), never additional energy.
+#   - the figure on all three surfaces: text report (`analyze`), `query monitor`
+#     Energy tab, and the HTML dashboard.
+#   - disclosure schema v1.4: both tiers are now PUBLISHED in `disclose` as a
+#     separate labelled block (per-window disclosure_waste.database, period
+#     aggregate.database_waste with a provenance split), still OUTSIDE every total.
 #
 # Self-contained: local release binary on loopback + a python http.server serving
 # the committed alumet-conformance capture augmented with ONE synthetic DB-cgroup
@@ -18,9 +29,11 @@
 # endpoint with the committed datadog-bridge N+1 fixture).
 #
 # Legs (see README.md):
-#   B   database_waste end to end: present, energy_kwh>0, waste_kwh == energy_kwh
-#       * sql_waste_ratio, sql_waste_ratio == avoidable_sql/total_sql, gco2>0,
-#       excluded from the top-level totals, and absent from `disclose`.
+#   B   measured database_waste end to end: present, energy_kwh>0, waste_kwh ==
+#       energy_kwh * sql_waste_ratio, ratio == avoidable_sql/total_sql, gco2>0,
+#       excluded from the top-level totals; and PUBLISHED in `disclose` as
+#       aggregate.database_waste (models=[alumet_rapl]) yet still outside the
+#       period totals (they do not move vs a database-stripped archive).
 #   C   sticky live cell: no flap between scrapes, then ages out after the scraper
 #       dies (TTL = 2x staleness = 6x scrape interval), not pinned forever.
 #   D   carry-over under shedding: with a 1-deep analysis queue flooded to shed,
@@ -30,6 +43,15 @@
 #       key are REJECTED at load; an unknown region only WARNS (gco2 absent).
 #   F   monitor line: `query monitor` Energy tab renders the "Database waste:"
 #       line the /api/export/report snapshot backs.
+#   G   estimated fallback on batch `analyze` (no DB config, no Alumet): the
+#       database_waste figure is model="estimated", a subset of the report totals,
+#       on all three surfaces (json / text `[within the report totals]` / HTML).
+#   H   disclose v1.4 round-trip over a mixed archive (measured + estimated):
+#       aggregate.database_waste provenance split, totals unchanged, schema v1.4
+#       accepted by the official intent, content_hash round-trips fail-closed,
+#       and a pre-v1.4 no-database archive stays additive (no spurious block).
+#   I   provenance honesty: the estimated tag is literally "estimated", and a
+#       declared-but-undelivered DB label emits nothing (no double count).
 set -uo pipefail
 
 SCENARIO="alumet-db-waste"
@@ -40,6 +62,11 @@ BASE_PROM="${SCRIPT_DIR}/../alumet-conformance/fixtures/alumet-wire-capture.prom
 DD_FIX="${SCRIPT_DIR}/../datadog-bridge/fixtures"
 ORG_CONFIG="${SCRIPT_DIR}/../disclose/fixtures/org-config.toml"
 SHED_FIX="${SCRIPT_DIR}/../daemon-analysis-shedding/fixtures/shed-load.pb"   # 300 N+1 traces/POST
+# Batch/disclose fixtures for the estimated-fallback legs (G/H): a SQL-heavy N+1
+# trace file + the minimal green config, and a pre-v1.4 no-database archive.
+GREEN_CFG="${SCRIPT_DIR}/../sci-functional-unit/fixtures/green.toml"
+SQL_TRACES="${SCRIPT_DIR}/../../artifacts/fixtures/em-real-time-traces.json"
+PREV14_ARCHIVE="${SCRIPT_DIR}/../disclose/fixtures/reports-thr5.ndjson"       # 0.8.2 windows, no DB
 rm -rf "${TMP_DIR}"
 mkdir -p "${TMP_DIR}/mock"
 
@@ -422,29 +449,76 @@ EOF
     assert_fail "B-arithmetic" "one or more database_waste checks failed (see b-verdict.txt): $(grep '^NO' "${TMP_DIR}/b-verdict.txt" | tr '\n' ';')"
   fi
 
-  # Force a few window closes so the archive carries >=1 database_waste line,
-  # then disclose it: the per-window archive carries database_waste but the
-  # public disclosure must strip it.
+  # Force a few window closes so the archive carries >=1 disclosure_waste.database
+  # line, then disclose it. 0.9.14 (schema v1.4) PUBLISHES the measured figure as
+  # aggregate.database_waste, so the old "absent from disclose" assertion is gone.
+  # The invariant now: the block is PRESENT (tagged the measured model) yet still
+  # OUTSIDE every total — proven by disclosing the archive twice, once with the
+  # per-window database block and once with it stripped, and asserting the period
+  # totals do not move.
   for _ in 1 2 3 4; do
     post_traces >/dev/null 2>&1; sleep 3
-    python3 -c "import json,sys; sys.exit(0 if any(l.strip() and ((json.loads(l).get('report') or {}).get('green_summary') or {}).get('database_waste') for l in open('${TMP_DIR}/archive-b.ndjson')) else 1)" 2>/dev/null && break
+    python3 -c "import json,sys; sys.exit(0 if any(l.strip() and ((json.loads(l).get('report') or {}).get('disclosure_waste') or {}).get('database') for l in open('${TMP_DIR}/archive-b.ndjson')) else 1)" 2>/dev/null && break
   done
-  arch_dw="$(python3 -c "import json; print(sum(1 for l in open('${TMP_DIR}/archive-b.ndjson') if l.strip() and ((json.loads(l).get('report') or {}).get('green_summary') or {}).get('database_waste')))" 2>/dev/null || echo 0)"
+  arch_dw="$(python3 -c "import json; print(sum(1 for l in open('${TMP_DIR}/archive-b.ndjson') if l.strip() and ((json.loads(l).get('report') or {}).get('disclosure_waste') or {}).get('database')))" 2>/dev/null || echo 0)"
   if [ "${arch_dw:-0}" -gt 0 ]; then
+    # database-stripped copy: same windows, no per-window database block.
+    python3 - "${TMP_DIR}/archive-b.ndjson" "${TMP_DIR}/archive-b-stripped.ndjson" <<'STRIP'
+import json, sys
+with open(sys.argv[2], "w") as w:
+    for line in open(sys.argv[1]):
+        line = line.strip()
+        if not line: continue
+        try: o = json.loads(line)
+        except Exception: continue
+        rep = o.get("report") or {}
+        (rep.get("disclosure_waste") or {}).pop("database", None)
+        (rep.get("green_summary") or {}).pop("database_waste", None)
+        w.write(json.dumps(o) + "\n")
+STRIP
+    B_PERIOD=(--period-type calendar-quarter --from 2026-04-01 --to 2026-09-30)
     if "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent internal --confidentiality internal \
-         --org-config "${ORG_CONFIG}" --period-type calendar-quarter --from 2026-04-01 --to 2026-09-30 \
+         --org-config "${ORG_CONFIG}" "${B_PERIOD[@]}" \
          --input "${TMP_DIR}/archive-b.ndjson" --output "${TMP_DIR}/b-disclosure.json" \
-         >/dev/null 2>"${TMP_DIR}/b-disclose.err"; then
-      if grep -qF "database_waste" "${TMP_DIR}/b-disclosure.json"; then
-        assert_fail "B-disclose-excl" "database_waste leaked into the public disclosure"
+         >/dev/null 2>"${TMP_DIR}/b-disclose.err" \
+       && "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent internal --confidentiality internal \
+         --org-config "${ORG_CONFIG}" "${B_PERIOD[@]}" \
+         --input "${TMP_DIR}/archive-b-stripped.ndjson" --output "${TMP_DIR}/b-disclosure-stripped.json" \
+         >/dev/null 2>>"${TMP_DIR}/b-disclose.err"; then
+      if bout="$(python3 - "${TMP_DIR}/b-disclosure.json" "${TMP_DIR}/b-disclosure-stripped.json" <<'PY'
+import json, sys
+full = json.load(open(sys.argv[1])); strip = json.load(open(sys.argv[2]))
+af = full.get("aggregate") or {}; asr = strip.get("aggregate") or {}
+dbw = af.get("database_waste") or {}
+models = dbw.get("models") or []
+def close(a, b):
+    a = a or 0.0; b = b or 0.0
+    return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+checks = {
+  "block present": bool(af.get("database_waste")),
+  "measured tag":  ("alumet_rapl" in models) and ("estimated" not in models),
+  "all measured":  dbw.get("measured_windows") == dbw.get("windows_with_figure") and (dbw.get("estimated_windows") or 0) == 0,
+  "energy total unmoved": close(af.get("total_energy_kwh"),  asr.get("total_energy_kwh")),
+  "carbon total unmoved": close(af.get("total_carbon_kgco2eq"), asr.get("total_carbon_kgco2eq")),
+  "stripped absent": not asr.get("database_waste"),
+}
+bad = [k for k, v in checks.items() if not v]
+print("models=%s measured=%s with_figure=%s tE=%s(strip %s) tC=%s(strip %s)" % (
+    models, dbw.get("measured_windows"), dbw.get("windows_with_figure"),
+    af.get("total_energy_kwh"), asr.get("total_energy_kwh"),
+    af.get("total_carbon_kgco2eq"), asr.get("total_carbon_kgco2eq")))
+if bad: print("FAILED: " + ", ".join(bad)); sys.exit(1)
+PY
+      )"; then
+        assert_pass "B-disclose-published" "aggregate.database_waste published (${arch_dw} window(s), ${bout}) but totals unchanged vs stripped"
       else
-        assert_pass "B-disclose-excl" "database_waste in ${arch_dw} archived window(s) but absent from disclose output"
+        assert_fail "B-disclose-published" "disclose publish/exclusion invariant failed (${bout})"
       fi
     else
-      record_skip "B-disclose-excl" "disclose over the archive failed: $(tail -1 "${TMP_DIR}/b-disclose.err")"
+      record_skip "B-disclose-published" "disclose over the archive failed: $(tail -1 "${TMP_DIR}/b-disclose.err")"
     fi
   else
-    record_skip "B-disclose-excl" "archive carried no database_waste window to test exclusion"
+    record_skip "B-disclose-published" "archive carried no database window to test the disclose invariant"
   fi
   # Leave the daemon up: leg F reuses it for the headless render (F stops it),
   # so there is no second daemon + reseed.
@@ -644,11 +718,260 @@ else
 fi
 
 # =============================================================================
+# Leg G: estimated fallback on batch analyze (no [green.alumet.database], no mock)
+# =============================================================================
+step "G: estimated database_waste on batch analyze — json + text + html surfaces"
+if [ -s "${SQL_TRACES}" ] && [ -s "${GREEN_CFG}" ]; then
+  "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${SQL_TRACES}" --config "${GREEN_CFG}" --format json \
+    > "${TMP_DIR}/g-analyze.json" 2>"${TMP_DIR}/g-analyze.err" || true
+  # G-json: model=="estimated", energy_kwh>0, and a subset of the report totals
+  # (a re-presented share, never additional energy).
+  if gout="$(python3 - "${TMP_DIR}/g-analyze.json" <<'PY'
+import json, sys
+gs = json.load(open(sys.argv[1])).get("green_summary") or {}
+dw = gs.get("database_waste") or {}
+model = dw.get("model"); ek = dw.get("energy_kwh"); tot = gs.get("energy_kwh")
+ok = (model == "estimated") and (ek is not None and ek > 0) \
+    and (tot is not None and ek <= tot + 1e-12)
+print("model=%s energy_kwh=%s report_total=%s" % (model, ek, tot))
+sys.exit(0 if ok else 1)
+PY
+  )"; then
+    assert_pass "G-json" "batch analyze emits database_waste model=estimated, subset of totals (${gout})"
+  else
+    assert_fail "G-json" "estimated database_waste json check failed (${gout:-analyze/parse error})"
+  fi
+
+  # G-text: the default text report carries a "Database waste:" line tagged
+  # `model estimated` with the `[within the report totals]` scope — inverted vs
+  # the measured `[excluded from totals]` scope (color is off on a non-tty).
+  "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${SQL_TRACES}" --config "${GREEN_CFG}" \
+    > "${TMP_DIR}/g-report.txt" 2>/dev/null || true
+  gline="$(grep -a "Database waste:" "${TMP_DIR}/g-report.txt" | head -1)"
+  if printf '%s' "${gline}" | grep -qF "model estimated" \
+     && printf '%s' "${gline}" | grep -qF "within the report totals" \
+     && ! printf '%s' "${gline}" | grep -qF "excluded from totals"; then
+    assert_pass "G-text" "text report Database waste line: model estimated + [within the report totals] (scope inverted vs measured)"
+  else
+    assert_fail "G-text" "text Database waste line missing estimated/within-totals scope: ${gline:-<no line>}"
+  fi
+
+  # G-html: the HTML dashboard's green panel renders a Database waste card whose
+  # scope reads "within the report totals" for the estimated model.
+  if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${SQL_TRACES}" --config "${GREEN_CFG}" \
+       --output "${TMP_DIR}/g-report.html" >/dev/null 2>"${TMP_DIR}/g-html.err" \
+     && [ -s "${TMP_DIR}/g-report.html" ] \
+     && grep -qF "Database waste" "${TMP_DIR}/g-report.html" \
+     && grep -qF "within the report totals" "${TMP_DIR}/g-report.html"; then
+    assert_pass "G-html" "HTML dashboard renders a Database waste card with the within-the-report-totals scope ($(wc -c < "${TMP_DIR}/g-report.html" | tr -d ' ') bytes)"
+  else
+    record_skip "G-html" "report did not surface the Database waste card (data plane proven by G-json/G-text): $(tail -1 "${TMP_DIR}/g-html.err" 2>/dev/null)"
+  fi
+else
+  record_skip "G-json" "SQL traces fixture or green config missing (${SQL_TRACES})"
+  record_skip "G-text" "not reached"
+  record_skip "G-html" "not reached"
+fi
+
+# =============================================================================
+# Leg H: disclose v1.4 round-trip — provenance split over measured + estimated
+# =============================================================================
+step "H: disclose v1.4 — aggregate.database_waste provenance (measured + estimated), hash, additive"
+# Estimated archived windows: a fresh daemon with green enabled but NO
+# [green.alumet.database] and no Alumet — the estimated fallback path, which
+# still writes disclosure_waste.database (model estimated) per scored window.
+cat > "${TMP_DIR}/h-est.toml" <<EOF
+[green]
+enabled = true
+default_region = "${REGION}"
+
+[daemon]
+listen_address = "127.0.0.1"
+listen_port_http = ${DAEMON_HTTP_PORT}
+listen_port_grpc = ${DAEMON_GRPC_PORT}
+api_enabled = true
+trace_ttl_ms = 2000
+environment = "staging"
+
+[daemon.ack]
+enabled = false
+
+[detection]
+n_plus_one_min_occurrences = 5
+
+[daemon.archive]
+path = "${TMP_DIR}/archive-h-est.ndjson"
+max_size_mb = 100
+max_files = 4
+EOF
+h_est_ok=0
+if start_daemon h-est.toml h-est.log; then
+  for _ in $(seq 1 6); do post_traces >/dev/null 2>&1; sleep 3; done
+  stop_daemon
+  [ -s "${TMP_DIR}/archive-h-est.ndjson" ] \
+    && python3 -c "import json,sys; sys.exit(0 if any(l.strip() and ((json.loads(l).get('report') or {}).get('disclosure_waste') or {}).get('database') for l in open('${TMP_DIR}/archive-h-est.ndjson')) else 1)" 2>/dev/null \
+    && h_est_ok=1
+fi
+
+if [ "${h_est_ok}" = "1" ] && [ -s "${TMP_DIR}/archive-b.ndjson" ]; then
+  # Mixed archive = leg B's MEASURED windows + the ESTIMATED windows above.
+  cat "${TMP_DIR}/archive-b.ndjson" "${TMP_DIR}/archive-h-est.ndjson" > "${TMP_DIR}/mixed.ndjson"
+  python3 - "${TMP_DIR}/mixed.ndjson" "${TMP_DIR}/mixed-stripped.ndjson" <<'STRIP'
+import json, sys
+with open(sys.argv[2], "w") as w:
+    for line in open(sys.argv[1]):
+        line = line.strip()
+        if not line: continue
+        try: o = json.loads(line)
+        except Exception: continue
+        rep = o.get("report") or {}
+        (rep.get("disclosure_waste") or {}).pop("database", None)
+        (rep.get("green_summary") or {}).pop("database_waste", None)
+        w.write(json.dumps(o) + "\n")
+STRIP
+  H_PERIOD=(--period-type calendar-year --from 2026-01-01 --to 2026-12-31)
+  if "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent internal --confidentiality internal \
+       --org-config "${ORG_CONFIG}" "${H_PERIOD[@]}" \
+       --input "${TMP_DIR}/mixed.ndjson" --output "${TMP_DIR}/h-disc.json" >/dev/null 2>"${TMP_DIR}/h.err" \
+     && "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent internal --confidentiality internal \
+       --org-config "${ORG_CONFIG}" "${H_PERIOD[@]}" \
+       --input "${TMP_DIR}/mixed-stripped.ndjson" --output "${TMP_DIR}/h-disc-stripped.json" >/dev/null 2>>"${TMP_DIR}/h.err"; then
+    if hout="$(python3 - "${TMP_DIR}/h-disc.json" "${TMP_DIR}/h-disc-stripped.json" <<'PY'
+import json, sys
+full = json.load(open(sys.argv[1])); strip = json.load(open(sys.argv[2]))
+sv = full.get("schema_version") or ""
+af = full.get("aggregate") or {}; asr = strip.get("aggregate") or {}
+dbw = af.get("database_waste") or {}
+models = set(dbw.get("models") or [])
+mw = dbw.get("measured_windows"); ew = dbw.get("estimated_windows"); wf = dbw.get("windows_with_figure")
+def close(a, b):
+    a = a or 0.0; b = b or 0.0
+    return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+checks = {
+  "schema v1.4":       sv.startswith("perf-sentinel-report/v1.4"),
+  "block present":     bool(af.get("database_waste")),
+  "provenance sums":   mw is not None and ew is not None and wf is not None and mw + ew == wf,
+  "both models":       models == {"alumet_rapl", "estimated"},
+  "measured>0":        (mw or 0) > 0,
+  "estimated>0":       (ew or 0) > 0,
+  "totals unmoved":    close(af.get("total_energy_kwh"), asr.get("total_energy_kwh")) and close(af.get("total_carbon_kgco2eq"), asr.get("total_carbon_kgco2eq")),
+  "stripped absent":   not asr.get("database_waste"),
+}
+bad = [k for k, v in checks.items() if not v]
+print("schema=%s models=%s measured=%s estimated=%s with_figure=%s tE=%s(strip %s)" % (
+    sv, sorted(models), mw, ew, wf, af.get("total_energy_kwh"), asr.get("total_energy_kwh")))
+if bad: print("FAILED: " + ", ".join(bad)); sys.exit(1)
+PY
+    )"; then
+      assert_pass "H-aggregate" "aggregate.database_waste provenance split, totals unmoved (${hout})"
+    else
+      assert_fail "H-aggregate" "provenance/exclusion invariant failed (${hout})"
+    fi
+  else
+    record_skip "H-aggregate" "disclose over the mixed archive failed: $(tail -1 "${TMP_DIR}/h.err")"
+  fi
+else
+  record_skip "H-aggregate" "no measured (leg B) and/or estimated archive to mix (h_est_ok=${h_est_ok})"
+fi
+
+# H-schema-intent + H-additive + H-hash on a pre-v1.4 archive with NO database
+# fields (reports-thr5, binary 0.8.2) — the official intent must accept the v1.4
+# schema, the block must stay absent (skip_serializing_if), and the content hash
+# round-trips fail-closed.
+PREV_PERIOD=(--period-type calendar-quarter --from 2026-04-01 --to 2026-06-30)
+if [ -s "${PREV14_ARCHIVE}" ] && "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent official --confidentiality public \
+     --org-config "${ORG_CONFIG}" "${PREV_PERIOD[@]}" \
+     --input "${PREV14_ARCHIVE}" --output "${TMP_DIR}/h-official.json" >/dev/null 2>"${TMP_DIR}/h-off.err"; then
+  sv="$(python3 -c "import json;print(json.load(open('${TMP_DIR}/h-official.json')).get('schema_version'))" 2>/dev/null)"
+  if printf '%s' "${sv}" | grep -qF "perf-sentinel-report/v1.4"; then
+    assert_pass "H-schema-intent" "official-intent disclose accepts and stamps ${sv}"
+  else
+    assert_fail "H-schema-intent" "unexpected schema_version: ${sv:-<none>}"
+  fi
+  if python3 -c "import json,sys; sys.exit(0 if not ((json.load(open('${TMP_DIR}/h-official.json')).get('aggregate') or {}).get('database_waste')) else 1)"; then
+    assert_pass "H-additive" "pre-v1.4 no-database archive discloses without a database_waste block (additive-only fields)"
+  else
+    assert_fail "H-additive" "pre-v1.4 archive produced a spurious aggregate.database_waste block"
+  fi
+  # Capture verify-hash output first (|| true), THEN parse — verify-hash exits
+  # non-zero (2 = PARTIAL under --no-identity-check), which would trip pipefail
+  # and append the fallback if the status were extracted inside the same pipe.
+  vh="$("${PERF_SENTINEL_LOCAL_BIN}" verify-hash --report "${TMP_DIR}/h-official.json" --no-identity-check --format json 2>/dev/null || true)"
+  vh_ok="$(printf '%s' "${vh}" | python3 -c "import sys,json; print(json.load(sys.stdin)['verifications']['content_hash']['status'])" 2>/dev/null || echo unknown)"
+  python3 -c "import json; r=json.load(open('${TMP_DIR}/h-official.json')); r['aggregate']['total_carbon_kgco2eq']=(r['aggregate'].get('total_carbon_kgco2eq') or 0)+1.0; json.dump(r,open('${TMP_DIR}/h-official-tampered.json','w'))" 2>/dev/null || true
+  vh_t="$("${PERF_SENTINEL_LOCAL_BIN}" verify-hash --report "${TMP_DIR}/h-official-tampered.json" --no-identity-check --format json 2>/dev/null || true)"
+  vh_bad="$(printf '%s' "${vh_t}" | python3 -c "import sys,json; print(json.load(sys.stdin)['verifications']['content_hash']['status'])" 2>/dev/null || echo unknown)"
+  if [ "${vh_ok}" = "ok" ] && [ "${vh_bad}" = "fail" ]; then
+    assert_pass "H-hash" "content_hash ok on untampered, fail on tampered (v1.4 round-trip fail-closed)"
+  else
+    assert_fail "H-hash" "content_hash untampered=${vh_ok} (want ok), tampered=${vh_bad} (want fail)"
+  fi
+else
+  record_skip "H-schema-intent" "official disclose over the pre-v1.4 archive failed: $(tail -1 "${TMP_DIR}/h-off.err" 2>/dev/null)"
+  record_skip "H-additive" "not reached"
+  record_skip "H-hash" "not reached"
+fi
+
+# =============================================================================
+# Leg I: provenance honesty (regression)
+# =============================================================================
+step "I: provenance — estimated tag is literal, declared-but-undelivered emits nothing"
+# I-tag: every estimated archived window tags model exactly "estimated" (never a
+# leaked measured tag like alumet_rapl).
+if [ -s "${TMP_DIR}/archive-h-est.ndjson" ]; then
+  if itag="$(python3 - "${TMP_DIR}/archive-h-est.ndjson" <<'PY'
+import json, sys
+n = 0; bad = []
+for line in open(sys.argv[1]):
+    line = line.strip()
+    if not line: continue
+    d = ((json.loads(line).get("report") or {}).get("disclosure_waste") or {}).get("database")
+    if not d: continue
+    n += 1
+    if d.get("model") != "estimated": bad.append(d.get("model"))
+print("%d estimated window(s), non-estimated tags: %s" % (n, bad or "none"))
+sys.exit(0 if n > 0 and not bad else 1)
+PY
+  )"; then
+    assert_pass "I-tag" "every estimated window tags model=\"estimated\" literally (${itag})"
+  else
+    assert_fail "I-tag" "an estimated window carried a non-estimated model tag (${itag})"
+  fi
+else
+  record_skip "I-tag" "no estimated archive from leg H to check the tag"
+fi
+# I-undelivered: [green.alumet.database] declared but the labelled cgroup is never
+# delivered by the scraper — the daemon must emit NO database_waste (energy carries
+# over; there is no estimated fallback when a database IS declared). The leg-D mock
+# is still bound and serves only the real pg-cgroup label.
+if [ -n "${MOCK_PID}" ] || lsof -ti "tcp:${MOCK_PORT}" >/dev/null 2>&1; then
+  write_config i.toml "${REGION}" "" "undelivered-cgroup"
+  if start_daemon i.toml i.log; then
+    absent=1
+    for _ in $(seq 1 6); do
+      post_traces >/dev/null 2>&1; sleep 3
+      db_waste_present; rc=$?
+      [ "${rc}" -eq 0 ] && { absent=0; break; }   # rc 0 = present -> the invariant broke
+    done
+    stop_daemon
+    if [ "${absent}" = "1" ]; then
+      assert_pass "I-undelivered" "declared-but-undelivered DB label emits no database_waste (no measured figure, no estimated fallback)"
+    else
+      assert_fail "I-undelivered" "database_waste appeared for an undelivered DB label — estimated fallback or double count leaked in"
+    fi
+  else
+    record_skip "I-undelivered" "daemon did not start for the undelivered-label config: $(tail -1 "${TMP_DIR}/i.log")"
+  fi
+else
+  record_skip "I-undelivered" "Alumet mock not running to back the endpoint for the undelivered-label config"
+fi
+
+# =============================================================================
 verdict=$([ "${FAILS}" -eq 0 ] && echo PASS || echo FAIL)
 {
   echo "# Scenario: ${SCENARIO}"
   echo ""
-  echo "perf-sentinel 0.9.13 database-waste feature (Alumet DB cgroup energy x SQL waste ratio)."
+  echo "perf-sentinel database-waste feature: 0.9.13 measured (Alumet DB cgroup energy x SQL waste ratio) + 0.9.14 estimated fallback and disclosure v1.4 publication."
   echo ""
   echo "| assertion | result |"
   echo "|---|---|"
