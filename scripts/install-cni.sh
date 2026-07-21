@@ -19,7 +19,7 @@ cd "${REPO_ROOT}"
 
 CNI="${1:-cilium}"
 CNI_MARKER="${REPO_ROOT}/cluster/.cni-active"
-CILIUM_VERSION="1.19.5"
+CILIUM_VERSION="1.19.6"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
