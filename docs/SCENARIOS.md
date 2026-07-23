@@ -250,7 +250,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 56 (sequential, long-running-drift is the long pole)
+# All 57 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1991,5 +1991,8 @@ post-bake — a post-sign field, so the content hash still validates — and
 asserts the PARTIAL cap (exit 2) with the new `--verify-binary <path>`
 hint (the flag does not exist in 0.9.14; note the exit code alone is not
 a discriminator, an unsigned report is PARTIAL on both versions); **E**
-binds `0.0.0.0` and asserts the widened non-loopback advisory is logged
-while the daemon still serves. Ports 14406-14409 on loopback.
+binds `0.0.0.0` and asserts the non-loopback advisory is logged while the
+daemon still serves, then pins the 0.9.15 matcher widening with a second bind
+on `[::1]` that must stay silent (the 0.9.14 string-compare matcher warned on
+it). Ports 14406-14407 on loopback; leg E binds 14408-14409 on all
+interfaces, then on `[::1]`.

@@ -52,7 +52,8 @@ DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 # Default to the manifest's current daemon pin so the drain contract is
 # re-proven on the version under validation, not frozen on 0.8.5 (the first
 # version carrying it). Override SIGTERM_DRAIN_IMAGE for the 0.8.4 counter-check.
-MANIFEST_IMAGE="$(awk '$1 == "image:" {print $2; exit}' "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")"
+MANIFEST_IMAGE="$(awk '/- name: perf-sentinel$/ {c=1; next} c && $1 == "image:" {print $2; exit}' "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")"
+[ -n "${MANIFEST_IMAGE}" ] || { echo "error: could not scrape the perf-sentinel container image from the manifest" >&2; exit 1; }
 SIGTERM_DRAIN_IMAGE="${SIGTERM_DRAIN_IMAGE:-${MANIFEST_IMAGE}}"
 ARCHIVE_PATH="/var/lib/perf-sentinel/${SCENARIO}-archive.ndjson"
 INJECT_IMAGE="${INJECT_IMAGE:-curlimages/curl:8.11.1}"
@@ -326,6 +327,10 @@ kubectl -n "${OBS_NS}" create configmap perf-sentinel-daemon-config \
   --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "${OBS_NS}" set image deploy/"${DEPLOY}" perf-sentinel="${SIGTERM_DRAIN_IMAGE}" >/dev/null
 scale_daemon 1
+# set image is a no-op when SIGTERM_DRAIN_IMAGE equals the manifest pin (the
+# default since the pin became the default): force a rollout so the pod picks
+# up the scoped ConfigMap either way.
+kubectl -n "${OBS_NS}" rollout restart deploy/"${DEPLOY}" >/dev/null
 kubectl -n "${OBS_NS}" rollout status deploy/"${DEPLOY}" --timeout=180s >/dev/null || die "daemon rollout failed on ${SIGTERM_DRAIN_IMAGE}"
 pf_restart || die "daemon unreachable after reconfigure"
 DAEMON_VERSION="$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("version","?"))')"

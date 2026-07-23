@@ -28,6 +28,8 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FIX="${SCRIPT_DIR}/fixtures"
 ORG_CONFIG="${REPO_ROOT}/scenarios/disclose/fixtures/org-config.toml"
 mkdir -p "${TMP_DIR}"
+# A stale PASS report from a previous run must not survive a failing re-run.
+rm -f "${REPORT}"
 
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
 PERF_SENTINEL_LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel}"
@@ -70,14 +72,18 @@ step "A. batch analyze: query/fragment/userinfo stripped from source_endpoint"
   > "${TMP_DIR}/analyze.json" 2>/dev/null || die "analyze failed"
 ENDPOINTS="$(jq -r '.findings[].source_endpoint' "${TMP_DIR}/analyze.json")"
 SIGS="$(jq -r '.findings[].signature' "${TMP_DIR}/analyze.json")"
-a_ok=1
-echo "${ENDPOINTS}" | grep -qx 'http://shop-svc/api/orders' || { a_ok=0; die "stripped endpoint absent, got: ${ENDPOINTS}"; }
-printf '%s\n%s\n' "${ENDPOINTS}" "${SIGS}" | grep -q '[?#]' && { a_ok=0; die "query/fragment leaked into an endpoint or signature"; }
-printf '%s\n%s\n' "${ENDPOINTS}" "${SIGS}" | grep -q 'user:pass@' && { a_ok=0; die "userinfo leaked into an endpoint or signature"; }
-echo "${ENDPOINTS}" | grep -qx '/users/a@b.example/orders' || { a_ok=0; die "'@' inside a path was wrongly stripped"; }
-echo "${ENDPOINTS}" | grep -qx 'GET /api/orders/{id}'      || { a_ok=0; die "route template was altered"; }
+# Positive anchor first: signatures must exist and be inspectable, otherwise
+# the leak greps below pass vacuously (field renamed/dropped upstream).
+echo "${SIGS}" | grep -q '^n_plus_one_sql:' || die "no usable finding signature (field renamed?): ${SIGS}"
+echo "${ENDPOINTS}" | grep -qx 'http://shop-svc/api/orders' || die "stripped endpoint absent, got: ${ENDPOINTS}"
+printf '%s\n%s\n' "${ENDPOINTS}" "${SIGS}" | grep -q '[?#]' && die "query/fragment delimiter leaked into an endpoint or signature"
+# Also hunt the secret material itself: a redactor that drops delimiters but
+# keeps the query/userinfo text would pass the delimiter grep above.
+printf '%s\n%s\n' "${ENDPOINTS}" "${SIGS}" | grep -qE 'SECRET|token=|frag|user:pass' && die "secret material leaked into an endpoint or signature"
+echo "${ENDPOINTS}" | grep -qx '/users/a@b.example/orders' || die "'@' inside a path was wrongly stripped"
+echo "${ENDPOINTS}" | grep -qx 'GET /api/orders/{id}'      || die "route template was altered"
 CRIT_SEV="$(jq -r '.findings[] | select(.source_endpoint=="http://shop-svc/api/orders") | .severity' "${TMP_DIR}/analyze.json")"
-[ "${CRIT_SEV}" = "critical" ] || die "expected the 12-occurrence N+1 to be critical, got ${CRIT_SEV}"
+echo "${CRIT_SEV}" | grep -qx 'critical' || die "expected the 12-occurrence N+1 to be critical, got ${CRIT_SEV}"
 record "A-redaction" "PASS" "stripped endpoint + signature, path-@ and route template preserved"
 ok "endpoint stripped to http://shop-svc/api/orders (critical), path-@ and template intact"
 
@@ -107,14 +113,23 @@ EOF
 
 start_daemon() {  # $1... = env wrapper command prefix (env -u VAR | env VAR=x)
   [ -n "${DAEMON_PID}" ] && kill "${DAEMON_PID}" 2>/dev/null || true
+  # The ports are fixed: wait until nothing serves them anymore, then require
+  # silence before spawning, so the daemon that later answers readiness is OURS
+  # (a leftover from an aborted run would otherwise pass with a stale binary).
+  for _ in $(seq 1 20); do
+    curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 \
+    && die "something already serves ${DAEMON_URL} - leftover daemon from a previous run?"
   rm -f "${SOCK}"
-  sleep 1
   "$@" "${PERF_SENTINEL_LOCAL_BIN}" watch --config "${TMP_DIR}/daemon.toml" > "${TMP_DIR}/daemon.log" 2>&1 &
   DAEMON_PID=$!
   for _ in $(seq 1 40); do
     curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 && break
     sleep 0.5
   done
+  kill -0 "${DAEMON_PID}" 2>/dev/null || die "spawned daemon died: $(tail -3 "${TMP_DIR}/daemon.log")"
   curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 || die "daemon not ready: $(tail -3 "${TMP_DIR}/daemon.log")"
 }
 
@@ -129,8 +144,10 @@ acks_code() {  # $1 = optional api key ("" = no header)
 step "B1/B2. ack key from TOML: GET /api/acks 401 bare, 200 with the key"
 write_daemon_toml "127.0.0.1" "${DAEMON_HTTP_PORT}" "${DAEMON_GRPC_PORT}" "${SOCK}"
 start_daemon env -u PERF_SENTINEL_ACK_API_KEY
-[ "$(acks_code "")" = "401" ]            || die "expected 401 without X-API-Key, got $(acks_code "")"
-[ "$(acks_code "${TOML_KEY}")" = "200" ] || die "expected 200 with the TOML key"
+code="$(acks_code "")"
+[ "${code}" = "401" ] || die "expected 401 without X-API-Key, got ${code}"
+code="$(acks_code "${TOML_KEY}")"
+[ "${code}" = "200" ] || die "expected 200 with the TOML key, got ${code}"
 record "B-toml-key" "PASS" "401 bare / 200 with X-API-Key (0.9.14 served bare GET)"
 ok "GET /api/acks gated by the TOML key"
 
@@ -150,8 +167,14 @@ ev=[{'timestamp':'2025-06-07T12:00:00.%03dZ'%(i*4),'trace_id':'tqg','span_id':'s
 s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect('${SOCK}')
 s.sendall((json.dumps(ev)+'\n').encode()); s.close()
 "
-sleep 3
-GATE="$(curl -fsS "${DAEMON_URL}/api/export/report" | jq -c '.quality_gate')"
+# Poll instead of a fixed sleep: the trace finalizes at trace_ttl_ms=1500 and
+# the async analysis worker publishes the finding some time after that.
+GATE=""
+for _ in $(seq 1 20); do
+  GATE="$(curl -fsS "${DAEMON_URL}/api/export/report" | jq -c '.quality_gate')"
+  echo "${GATE}" | jq -e '.passed == false' >/dev/null 2>&1 && break
+  sleep 1
+done
 echo "${GATE}" | jq -e '.passed == false' >/dev/null || die "expected passed:false, got ${GATE}"
 echo "${GATE}" | jq -e '.rules[] | select(.rule=="n_plus_one_sql_critical_max" and .passed==false and .actual>=1)' >/dev/null \
   || die "n_plus_one_sql_critical_max rule did not trip: ${GATE}"
@@ -160,8 +183,10 @@ ok "live findings flip the exported gate to passed:false"
 
 step "B3/B4. PERF_SENTINEL_ACK_API_KEY overrides the TOML key"
 start_daemon env "PERF_SENTINEL_ACK_API_KEY=${ENV_KEY}"
-[ "$(acks_code "${TOML_KEY}")" = "401" ] || die "TOML key still accepted, env override lost"
-[ "$(acks_code "${ENV_KEY}")" = "200" ]  || die "env key rejected"
+code="$(acks_code "${TOML_KEY}")"
+[ "${code}" = "401" ] || die "TOML key still accepted (got ${code}), env override lost"
+code="$(acks_code "${ENV_KEY}")"
+[ "${code}" = "200" ] || die "env key rejected, got ${code}"
 record "B-env-key" "PASS" "env var beats the TOML key (Secret-friendly)"
 ok "env key wins over the TOML key"
 kill "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""
@@ -210,8 +235,17 @@ write_daemon_toml "0.0.0.0" "${BIND_HTTP_PORT}" "${BIND_GRPC_PORT}" "${SOCK}e"
 DAEMON_URL="http://127.0.0.1:${BIND_HTTP_PORT}"
 start_daemon env -u PERF_SENTINEL_ACK_API_KEY
 grep -q "non-loopback" "${TMP_DIR}/daemon.log" || die "non-loopback advisory absent from the daemon log"
-record "E-bind-warns" "PASS" "0.0.0.0 bind warns but serves (no CrashLoop regression)"
-ok "0.0.0.0 bind: advisory present, /api/status answers"
+kill "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""
+
+# Discriminator for the 0.9.15 WIDENING: "[::1]" is loopback to the new
+# range-parsing matcher but not to the old two-spelling string compare, so the
+# advisory must be ABSENT here (0.9.14 logs it on this exact bind).
+write_daemon_toml "[::1]" "${BIND_HTTP_PORT}" "${BIND_GRPC_PORT}" "${SOCK}e"
+DAEMON_URL="http://[::1]:${BIND_HTTP_PORT}"
+start_daemon env -u PERF_SENTINEL_ACK_API_KEY
+grep -q "non-loopback" "${TMP_DIR}/daemon.log" && die "widened matcher regressed: advisory fired on [::1]"
+record "E-bind-warns" "PASS" "0.0.0.0 warns+serves; [::1] silent (widened-matcher discriminator)"
+ok "0.0.0.0 warns, [::1] silent - the widening is pinned"
 kill "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""
 
 # =============================================================================
