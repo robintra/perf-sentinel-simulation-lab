@@ -1,0 +1,386 @@
+[
+  {
+    "timestamp": "2025-06-07T12:00:00.004Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100001",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 1",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.008Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100002",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 2",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.012Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100003",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 3",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.016Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100004",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 4",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.020Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100005",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 5",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.024Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100006",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 6",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.028Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100007",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 7",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.032Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100008",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 8",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.036Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100009",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 9",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.040Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100010",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 10",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.044Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100011",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 11",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.048Z",
+    "trace_id": "t00000000000000000000000000000a1",
+    "span_id": "sa100012",
+    "parent_span_id": "sa100000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 12",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "http://user:pass@shop-svc/api/orders?token=SECRET#frag",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.104Z",
+    "trace_id": "t00000000000000000000000000000a2",
+    "span_id": "sa200001",
+    "parent_span_id": "sa200000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 1",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "/users/a@b.example/orders",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.108Z",
+    "trace_id": "t00000000000000000000000000000a2",
+    "span_id": "sa200002",
+    "parent_span_id": "sa200000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 2",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "/users/a@b.example/orders",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.112Z",
+    "trace_id": "t00000000000000000000000000000a2",
+    "span_id": "sa200003",
+    "parent_span_id": "sa200000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 3",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "/users/a@b.example/orders",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.116Z",
+    "trace_id": "t00000000000000000000000000000a2",
+    "span_id": "sa200004",
+    "parent_span_id": "sa200000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 4",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "/users/a@b.example/orders",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.120Z",
+    "trace_id": "t00000000000000000000000000000a2",
+    "span_id": "sa200005",
+    "parent_span_id": "sa200000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 5",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "/users/a@b.example/orders",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.124Z",
+    "trace_id": "t00000000000000000000000000000a2",
+    "span_id": "sa200006",
+    "parent_span_id": "sa200000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 6",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "/users/a@b.example/orders",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.204Z",
+    "trace_id": "t00000000000000000000000000000a3",
+    "span_id": "sa300001",
+    "parent_span_id": "sa300000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 1",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/orders/{id}",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.208Z",
+    "trace_id": "t00000000000000000000000000000a3",
+    "span_id": "sa300002",
+    "parent_span_id": "sa300000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 2",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/orders/{id}",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.212Z",
+    "trace_id": "t00000000000000000000000000000a3",
+    "span_id": "sa300003",
+    "parent_span_id": "sa300000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 3",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/orders/{id}",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.216Z",
+    "trace_id": "t00000000000000000000000000000a3",
+    "span_id": "sa300004",
+    "parent_span_id": "sa300000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 4",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/orders/{id}",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.220Z",
+    "trace_id": "t00000000000000000000000000000a3",
+    "span_id": "sa300005",
+    "parent_span_id": "sa300000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 5",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/orders/{id}",
+      "method": "Handler::handle"
+    }
+  },
+  {
+    "timestamp": "2025-06-07T12:00:00.224Z",
+    "trace_id": "t00000000000000000000000000000a3",
+    "span_id": "sa300006",
+    "parent_span_id": "sa300000",
+    "service": "appsec-svc",
+    "cloud_region": "eu-west-3",
+    "type": "sql",
+    "operation": "SELECT",
+    "target": "SELECT * FROM orders WHERE id = 6",
+    "duration_us": 2000,
+    "source": {
+      "endpoint": "GET /api/orders/{id}",
+      "method": "Handler::handle"
+    }
+  }
+]
