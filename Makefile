@@ -565,9 +565,9 @@ verify-all-scenarios: ## Run all 57 scenarios sequentially (see docs/SCENARIOS.m
 	@#   shared backends to 0, and apply temporary NetworkPolicies.
 	@#   Running them after the rest avoids polluting earlier scenarios.
 	@# - daemon-sigterm-drain swaps the daemon image to the image under test
-	@#   (SIGTERM_DRAIN_IMAGE, default ghcr.io/robintra/perf-sentinel:0.8.5) and
-	@#   restores the committed image on cleanup; on a pre-0.8.5 image it FAILs
-	@#   the positive control by design.
+	@#   (SIGTERM_DRAIN_IMAGE, default = the manifest's current pin, i.e. the
+	@#   version under validation) and restores the manifest image on cleanup;
+	@#   on a pre-0.8.5 image it FAILs the positive control by design.
 	@# - sql-backtick-redaction / non-sql-datastore-* / ruby-activerecord-suggestion
 	@#   are self-contained 0.9.2 checks (local release binary + throwaway loopback
 	@#   daemon, no cluster); grouped with the CLI-heavy batch scenarios.

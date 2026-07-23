@@ -79,7 +79,7 @@ cleanup   re-apply committed manifest (image+config+grace) ; rm archive ; drop n
 
 | Variable              | Default                   | Notes                                                            |
 |-----------------------|---------------------------|------------------------------------------------------------------|
-| `SIGTERM_DRAIN_IMAGE` | `ghcr.io/robintra/perf-sentinel:0.8.5` | daemon image under test; set a 0.8.4 image for the counter-check |
+| `SIGTERM_DRAIN_IMAGE` | the manifest's current daemon pin | daemon image under test (defaults to the version under validation); set a 0.8.4 image for the counter-check |
 | `DAEMON_LOCAL_PORT`   | `14318`                   | host port from `scripts/port-forward.sh`                         |
 | `INJECT_IMAGE`        | `curlimages/curl:8.11.1`  | in-cluster OTLP/protobuf POSTer                                  |
 | `PVC_UTIL_IMAGE`      | `busybox:1.37`            | archive reset / reader pod image                                 |
@@ -110,9 +110,9 @@ SIGTERM_DRAIN_IMAGE=ghcr.io/robintra/perf-sentinel@sha256:<0.8.4-digest> \
 ## Runtime prerequisites
 
 - Lab bootstrap done: `make up-cni && make seed-services`.
-- A `0.8.5+` daemon image. The default `ghcr.io/robintra/perf-sentinel:0.8.5` is
-  pulled by the daemon. For a not-yet-published RC, build it from the upstream
-  checkout and `k3d image import perf-sentinel:0.8.5-lab -c perf-sentinel-lab`,
-  then pass `SIGTERM_DRAIN_IMAGE=perf-sentinel:0.8.5-lab` (see `scripts/k3d-image.sh`).
+- A `0.8.5+` daemon image. By default the scenario scrapes the current pin from
+  `manifests/perf-sentinel-daemon.yaml`, so it exercises the version under
+  validation (including a `make seed-daemon-local` pre-release pin) with no
+  extra setup. Pass `SIGTERM_DRAIN_IMAGE` explicitly to target another image.
 - `docker` CLI access to the k3d nodes (used for the node-level `SIGKILL`).
 - Daemon port-forward handled by the scenario via `scripts/port-forward.sh`.

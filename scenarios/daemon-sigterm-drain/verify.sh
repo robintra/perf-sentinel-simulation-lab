@@ -49,10 +49,11 @@ FIX_DIR="$(cd "$(dirname "$0")" && pwd)/fixtures"
 mkdir -p "${TMP_DIR}"
 
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
-# Image under test. Default: the published 0.8.5 image. Override with a 0.8.4
-# image for the counter-check, or a local build (perf-sentinel:0.8.5-lab) before
-# the official digest is published.
-SIGTERM_DRAIN_IMAGE="${SIGTERM_DRAIN_IMAGE:-ghcr.io/robintra/perf-sentinel:0.8.5}"
+# Default to the manifest's current daemon pin so the drain contract is
+# re-proven on the version under validation, not frozen on 0.8.5 (the first
+# version carrying it). Override SIGTERM_DRAIN_IMAGE for the 0.8.4 counter-check.
+MANIFEST_IMAGE="$(awk '$1 == "image:" {print $2; exit}' "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")"
+SIGTERM_DRAIN_IMAGE="${SIGTERM_DRAIN_IMAGE:-${MANIFEST_IMAGE}}"
 ARCHIVE_PATH="/var/lib/perf-sentinel/${SCENARIO}-archive.ndjson"
 INJECT_IMAGE="${INJECT_IMAGE:-curlimages/curl:8.11.1}"
 PVC_UTIL_IMAGE="${PVC_UTIL_IMAGE:-busybox:1.37}"
