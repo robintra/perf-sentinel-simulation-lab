@@ -516,16 +516,16 @@ verify-limit-batch-volume: ## Large-input batch CLI (50k+ traces x 3 formats, no
 verify-limit-trace-shapes: ## Adversarial trace shapes (1500-span traces, 400-deep chains, 1200-wide fanout, dup ids, 70KB SQL)
 	./scenarios/limit-trace-shapes/verify.sh
 
-verify-limit-service-cardinality: ## 1500+ services vs the 1024 metering cap (overflow counter, /metrics envelope)
+verify-limit-service-cardinality: seed-tracegen ## 1500+ services vs the 1024 metering cap (overflow counter, /metrics envelope)
 	./scenarios/limit-service-cardinality/verify.sh
 
-verify-limit-saturation-curve: ## Ramp tps until shed; emits the saturation table (max clean throughput at 256Mi/500m)
+verify-limit-saturation-curve: seed-tracegen ## Ramp tps until shed; emits the saturation table (max clean throughput at 256Mi/500m)
 	./scenarios/limit-saturation-curve/verify.sh
 
-verify-limit-multi-source: ## OTLP gRPC + HTTP + NDJSON socket + tempo batch reader, concurrently
+verify-limit-multi-source: seed-tracegen ## OTLP gRPC + HTTP + NDJSON socket + tempo batch reader, concurrently
 	./scenarios/limit-multi-source/verify.sh
 
-verify-limit-prod-window-soak: ## Production window config (ttl 30s) under sustained mixed load
+verify-limit-prod-window-soak: seed-tracegen ## Production window config (ttl 30s) under sustained mixed load
 	./scenarios/limit-prod-window-soak/verify.sh
 
 verify-failure-mode-backend-down: ## OTel collector / Tempo / Postgres scaled to 0 in turn
@@ -560,7 +560,7 @@ verify-appsec-hardening: ## 0.9.15 AppSec: source_endpoint redaction, ack API ke
 verify-endpoint-resolution: ## 0.9.22 source.endpoint: ancestor walk to the inbound route, CLIENT skip, outermost code frame, one spelling per origin (local binary, no cluster)
 	./scenarios/endpoint-resolution/verify.sh
 
-verify-all-scenarios: ## Run all 59 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: seed-tracegen ## Run all 59 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
