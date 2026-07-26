@@ -41,7 +41,17 @@ DAEMON_URL="http://127.0.0.1:${DAEMON_HTTP_PORT}"
 DD_PORT="${DD_PORT:-8127}"
 # Same contrib pin as datadog-bridge (the datadogreceiver is alpha).
 COLLECTOR_IMAGE="${COLLECTOR_IMAGE:-otel/opentelemetry-collector-contrib:0.155.0}"
-OTEL_CHART_VERSION="${OTEL_CHART_VERSION:-0.160.0}"   # keep in sync with scripts/bootstrap.sh
+# Version of the ALREADY-INSTALLED collector release. A `helm upgrade` naming a
+# different version silently up- or downgrades the cluster collector for every
+# later scenario, and the three hardcoded pins had drifted apart (0.153.0 in
+# multiformat-input, 0.160.0 in batch-otlp-file, 0.165.0 in scripts/bootstrap.sh).
+# Resolved lazily so a run with no cluster still reaches its SKIP path.
+otel_chart_version() {
+  local v
+  v="$(helm -n observability get metadata otel-collector 2>/dev/null | awk '/^VERSION:/{print $2}')"
+  [ -n "${v}" ] || { echo "cannot read the installed otel-collector chart version" >&2; return 1; }
+  printf '%s' "${v}"
+}
 DUMP="${TMP_DIR}/dump/otlp-dump.ndjson"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
@@ -70,7 +80,7 @@ cleanup() {
     # Revert the cluster collector to the base values (drops file/dump + the
     # hostPath mount). Same idempotent pattern as multiformat-input.
     helm upgrade otel-collector open-telemetry/opentelemetry-collector \
-      --version "${OTEL_CHART_VERSION}" -n observability \
+      --version "$(otel_chart_version)" -n observability \
       -f "${REPO_ROOT}/helm/values/otel-collector.yaml" >/dev/null 2>&1 || true
   fi
 }
@@ -221,7 +231,7 @@ if kubectl -n observability get ds >/dev/null 2>&1; then
   # (a non-atomic helm upgrade has no rollback of its own).
   CLUSTER_OVERLAY_APPLIED=1
   helm upgrade otel-collector open-telemetry/opentelemetry-collector \
-    --version "${OTEL_CHART_VERSION}" -n observability \
+    --version "$(otel_chart_version)" -n observability \
     -f "${REPO_ROOT}/helm/values/otel-collector.yaml" \
     -f "${SCRIPT_DIR}/collector-overlay.yaml" > "${TMP_DIR}/helm.log" 2>&1 \
     || die "helm upgrade with file-exporter overlay failed: $(tail -3 "${TMP_DIR}/helm.log")"

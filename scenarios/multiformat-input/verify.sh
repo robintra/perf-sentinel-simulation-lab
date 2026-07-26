@@ -27,6 +27,18 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; clean
 PF_JAEGER_PID=""
 PF_ZIPKIN_PID=""
 PF_ORDER_PID=""
+# Version of the ALREADY-INSTALLED collector release. A `helm upgrade` naming a
+# different version silently up- or downgrades the cluster collector for every
+# later scenario, and the three hardcoded pins had drifted apart (0.153.0 in
+# multiformat-input, 0.160.0 in batch-otlp-file, 0.165.0 in scripts/bootstrap.sh).
+# Resolved lazily so a run with no cluster still reaches its SKIP path.
+otel_chart_version() {
+  local v
+  v="$(helm -n observability get metadata otel-collector 2>/dev/null | awk '/^VERSION:/{print $2}')"
+  [ -n "${v}" ] || { echo "cannot read the installed otel-collector chart version" >&2; return 1; }
+  printf '%s' "${v}"
+}
+
 cleanup() {
   for pid in "${PF_JAEGER_PID}" "${PF_ZIPKIN_PID}" "${PF_ORDER_PID}"; do
     if [ -n "${pid}" ]; then kill "${pid}" 2>/dev/null || true; fi
@@ -37,7 +49,7 @@ cleanup() {
   if [ "${KEEP_BACKENDS:-yes}" = "no" ]; then
     kubectl -n observability delete -f "${SCENARIO_DIR}/manifests.yaml" --ignore-not-found --wait=false >/dev/null 2>&1 || true
     helm upgrade otel-collector open-telemetry/opentelemetry-collector \
-      --version 0.153.0 \
+      --version "$(otel_chart_version)" \
       -n observability \
       -f "${REPO_ROOT}/helm/values/otel-collector.yaml" >/dev/null 2>&1 || true
   fi
@@ -57,7 +69,7 @@ ok "manifests applied"
 
 step "Helm upgrade OTel Collector with multi-export overlay"
 helm upgrade otel-collector open-telemetry/opentelemetry-collector \
-  --version 0.153.0 \
+  --version "$(otel_chart_version)" \
   -n observability \
   -f "${REPO_ROOT}/helm/values/otel-collector.yaml" \
   -f "${SCENARIO_DIR}/collector-overlay.yaml" \
