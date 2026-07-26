@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 57 scenarios live under `scenarios/<name>/` and each one ships a
+The 59 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -187,7 +187,7 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 58 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory). The release gate runs all 58. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 59 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `endpoint-resolution` gate (the 0.9.22 `source.endpoint` ancestor walk: the inbound route resolved through ancestors rather than the direct parent, the CLIENT skip that stops an outbound URL naming a finding, the outermost-not-nearest code frame, and the per-language spelling parity that keeps one origin on one acknowledgment signature), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory). The release gate runs all 59. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -250,7 +250,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 57 (sequential, long-running-drift is the long pole)
+# All 59 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1145,7 +1145,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 57 scenarios, in an order
+`make verify-all-scenarios` includes all 59 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 ### Ack workflow walkthrough
@@ -1996,3 +1996,52 @@ daemon still serves, then pins the 0.9.15 matcher widening with a second bind
 on `[::1]` that must stay silent (the 0.9.14 string-compare matcher warned on
 it). Ports 14406-14407 on loopback; leg E binds 14408-14409 on all
 interfaces, then on `[::1]`.
+
+## endpoint-resolution (0.9.22 `source.endpoint`)
+
+`make verify-endpoint-resolution` — self-contained: a local release binary,
+two committed OTLP/JSON fixtures, no cluster and no daemon. Requires product
+**>= 0.9.22**.
+
+Pins how `source.endpoint` is resolved at OTLP ingestion. 0.9.22 replaced the
+direct-parent lookup with one bounded walk up the parent chain
+(`CODE_ATTRS_MAX_DEPTH = 8`) resolving, in order, the nearest inbound HTTP route
+(`http.route` on any kind, `http.url`/`url.full` on any kind **except** CLIENT,
+blank values skipped), then the **outermost** usable `code.*` frame, then
+`"unknown"`. Since the acknowledgment signature is
+`type : service : endpoint : hash(template)`, each of those rules decides which
+findings share an ack — acknowledging one silently hides every other finding
+resolving to the same endpoint. That makes this an ack-correctness gate, not a
+display one.
+
+Thirty assertions in four groups: **A** the walk (a route two levels above the
+leaf, a route outranking the frames below it, the depth bound honoured on both
+sides, a blank `http.route` skipped rather than adopted — 0.9.17 turned a
+whitespace-only route into a whitespace-only endpoint); **B** the CLIENT skip
+(an outbound `url.full` no longer names the finding, while SERVER and
+kind-unspecified spans stay eligible and `http.route` counts on any kind);
+**C** outermost-not-nearest (two entry points over one shared DAO keep distinct
+endpoints, and the documented cost — a framework layer carrying `code.*` of its
+own wins and collapses both onto itself, frozen here because no agent in this
+lab emits framework frames: under the OTel javaagent only 5 of 5216
+`order-service` spans carry `code.*`, all of them the `@Scheduled` method);
+**D** spelling parity (the legacy `code.namespace` + `code.function` pair and
+the stable `code.function.name` must produce one endpoint string per origin,
+plus the frames the resolver must refuse rather than mangle — `?`, `@`, a bare
+unqualified name, a blank namespace — and `#` rewritten to `.`).
+
+The frames in `agent-frames.ndjson` are read out of real agent output, never
+invented: the PHP ones from the committed astronomy `quote` service (Slim +
+PHP-DI under the PHP OTel SDK), the Java ones from the astronomy `ad` service
+and from this lab's `order-service` scheduled jobs captured off the Collector
+file exporter. `fixtures/generate.py` regenerates both files.
+
+Discrimination: 28/30 on `feature/0.9.22`, 18/30 on 0.9.17.
+
+**Known red at `1160c183`: D1 and D2.** PHP qualifies namespaces with `\` but
+methods with `::`, and `frame_separator()` picks `\` for any namespace holding
+one, so `code.function.name = Slim\App::handle` resolves to `Slim\App::handle`
+while the legacy pair `Slim\App` + `handle` resolves to `Slim\App\handle`. Two
+spellings of one origin, two ack signatures — the exact re-keying the separator
+rule was written to prevent, on the exact language it was written for. Reported
+upstream; the gate stays red until the fix lands.
