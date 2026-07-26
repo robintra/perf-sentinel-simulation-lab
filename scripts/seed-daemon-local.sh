@@ -14,10 +14,28 @@ MANIFEST="${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"
 [ -d "${PERF_SENTINEL_REPO_PATH}" ] || { echo "error: no perf-sentinel checkout at ${PERF_SENTINEL_REPO_PATH}" >&2; exit 1; }
 
 VERSION="$(grep -m1 '^version' "${PERF_SENTINEL_REPO_PATH}/Cargo.toml" | sed 's/.*"\(.*\)"/\1/')"
-TAG="perf-sentinel:${VERSION}-local"
+REV="${PERF_SENTINEL_REV:-HEAD}"
+SHA="$(git -C "${PERF_SENTINEL_REPO_PATH}" rev-parse --short "${REV}")"
+# The tag carries the SHA, not just the version: a release branch often keeps
+# the previous version in Cargo.toml until tag time, so two builds of DIFFERENT
+# revisions would otherwise collide on one tag and silently A/B against itself.
+TAG="perf-sentinel:${VERSION}-${SHA}"
 
-echo "==> building ${TAG} from ${PERF_SENTINEL_REPO_PATH} (musl static, FROM scratch)"
-docker build -q -f "${REPO_ROOT}/tools/daemon-image/Dockerfile" -t "${TAG}" "${PERF_SENTINEL_REPO_PATH}"
+if ! git -C "${PERF_SENTINEL_REPO_PATH}" diff --quiet "${REV}" -- crates Cargo.toml Cargo.lock 2>/dev/null; then
+  echo "warning: working tree differs from ${REV}; the image is built from the COMMITTED revision" >&2
+fi
+
+# Build from a `git archive` context, not from the checkout directory: the
+# product repo carries a .dockerignore scoped to its own release Dockerfile
+# (build/ only), which empties the context this multistage build compiles from,
+# and its target/ directory is several GB of build cache Docker would upload.
+CTX_DIR="$(mktemp -d)"
+trap 'rm -rf "${CTX_DIR}"' EXIT
+git -C "${PERF_SENTINEL_REPO_PATH}" archive "${REV}" | tar -x -C "${CTX_DIR}"
+rm -f "${CTX_DIR}/.dockerignore"
+
+echo "==> building ${TAG} from ${PERF_SENTINEL_REPO_PATH}@${SHA} (musl static, FROM scratch)"
+docker build -q -f "${REPO_ROOT}/tools/daemon-image/Dockerfile" -t "${TAG}" "${CTX_DIR}"
 
 echo "==> importing ${TAG} into k3d cluster ${CLUSTER_NAME}"
 k3d image import "${TAG}" -c "${CLUSTER_NAME}"
@@ -30,7 +48,10 @@ import sys
 path, tag = sys.argv[1], sys.argv[2]
 src = open(path).read()
 out, n = re.subn(
-    r"image: ghcr\.io/robintra/perf-sentinel@sha256:[0-9a-f]+(\s*#.*)?",
+    # Either the committed GHCR digest pin, or a local pin left by a previous
+    # run: re-pinning to a second revision is the whole point of an A/B.
+    r"image: (?:ghcr\.io/robintra/perf-sentinel@sha256:[0-9a-f]+"
+    r"|perf-sentinel:[0-9A-Za-z._-]+)(\s*#.*)?",
     f"image: {tag}  # local pre-release build, replace with the GHCR digest at release",
     src,
 )
