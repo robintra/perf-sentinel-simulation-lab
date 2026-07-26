@@ -160,7 +160,7 @@ GEM
       racc (~> 1.4)
     nokogiri (1.19.4-x86_64-linux-musl)
       racc (~> 1.4)
-    opentelemetry-api (1.10.1)
+    opentelemetry-api (1.11.0)
       logger
     opentelemetry-common (0.25.1)
       opentelemetry-api (~> 1.0)
@@ -215,7 +215,7 @@ GEM
       opentelemetry-instrumentation-concurrent_ruby (~> 0.25)
     opentelemetry-registry (0.6.3)
       opentelemetry-api (~> 1.1)
-    opentelemetry-sdk (1.12.1)
+    opentelemetry-sdk (1.13.0)
       logger
       opentelemetry-api (~> 1.1)
       opentelemetry-common (~> 0.20)
@@ -377,7 +377,7 @@ CHECKSUMS
   nokogiri (1.19.4-x86_64-darwin) sha256=7fd17057d3e1f00e9954a74b3cd76595d3d4a5ef233b7ed9599047c204f70551
   nokogiri (1.19.4-x86_64-linux-gnu) sha256=379fae440b28915e3f19d752ce2dcf8465ed2b2fbefd2a7ca0dd497bc981a06a
   nokogiri (1.19.4-x86_64-linux-musl) sha256=17dfb7c1fa194ae02fbf7c51a7afc8d278045ab3fdacfd86f91d02d7b274470b
-  opentelemetry-api (1.10.1) sha256=5db9535a8aa9e569808518aa103b2cfac44728672a1799e1dd217fe6d9c5642e
+  opentelemetry-api (1.11.0) sha256=218c840170fa473974756668b32b6989570de07c7d3864627960209f189247e2
   opentelemetry-common (0.25.1) sha256=38fe87c751e4e13fcd47a8290b4ad67bbedf76c4ed89aeced5ea5c620e66bfb1
   opentelemetry-exporter-otlp (0.34.1) sha256=4697d81e03aff80ea6fbcc741b1c3c700d3624eddea14b453602ee23275450ca
   opentelemetry-helpers-sql (0.4.0) sha256=b10e8c3a2cca28a98af951bbb3e4efdc59e68b25ba0825e055574af543420afb
@@ -396,7 +396,7 @@ CHECKSUMS
   opentelemetry-instrumentation-rack (0.31.1) sha256=29a9c145ce6d3fa2938f30334209787c29b581a51fdb472e2098a1d69e15536a
   opentelemetry-instrumentation-rails (0.42.0) sha256=5ea3808373ca73ee9fa4ecf337471bad1c28e98ea64460b89ab225f5b6eaf8b3
   opentelemetry-registry (0.6.3) sha256=568fa8eaea94394f29f4fce3f0339ab10c3bf6d6c8beed6b3cfee6fd37fcc608
-  opentelemetry-sdk (1.12.1) sha256=d706be6d7fa0e15b5b36916f65ca6397562b48ad05d4f9b18426d030600525ea
+  opentelemetry-sdk (1.13.0) sha256=eea4ab625eb901ecfe1083049862d4853fd16d94029f3cdd16526c81332f0fff
   opentelemetry-semantic_conventions (1.43.0) sha256=d96eb7da3bc89335786ea676b448701f566cf241a7ca56ae1e814b83816922af
   pg (1.6.3) sha256=1388d0563e13d2758c1089e35e973a3249e955c659592d10e5b77c468f628a99
   pg (1.6.3-aarch64-linux) sha256=0698ad563e02383c27510b76bf7d4cd2de19cd1d16a5013f375dd473e4be72ea
