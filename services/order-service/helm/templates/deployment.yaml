@@ -68,6 +68,10 @@ spec:
               value: "none"
             - name: OTEL_METRICS_EXPORTER
               value: "none"
+            # Off by default: the scheduled jobs are the lab's only non-HTTP
+            # entry point and would otherwise shift every scenario's baseline.
+            - name: PERFSIM_SCHEDULEDJOBS_ENABLED
+              value: {{ .Values.scheduledJobs.enabled | quote }}
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           securityContext:

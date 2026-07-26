@@ -18,6 +18,12 @@ otel:
   cloudRegion: eu-west-3
   cloudProvider: aws
 
+# The only non-HTTP entry point in the lab: two @Scheduled jobs issuing one
+# shared statement, for validating endpoint resolution outside an inbound
+# request. Enable with `--set scheduledJobs.enabled=true`.
+scheduledJobs:
+  enabled: false
+
 resources:
   requests:
     cpu: 100m
