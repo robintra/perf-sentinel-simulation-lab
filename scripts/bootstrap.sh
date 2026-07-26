@@ -143,6 +143,15 @@ deploy_postgres() {
   kubectl apply -f "${REPO_ROOT}/manifests/postgres.yaml"
   wait_for_statefulset db postgres 180s
   ok "postgres ready"
+  # postgres-init-schemas only covers the three core services, and it runs
+  # through docker-entrypoint-initdb.d, i.e. at first boot only. Without this
+  # idempotent Job every `make seed-<stack>-svc` on a from-zero cluster dies on
+  # `password authentication failed for user "<stack>_user"`.
+  step "Creating multistack schemas and roles"
+  kubectl delete job -n db postgres-multistack-schemas --ignore-not-found >/dev/null
+  kubectl apply -f "${REPO_ROOT}/manifests/postgres-multistack-schemas.yaml"
+  kubectl -n db wait --for=condition=complete job/postgres-multistack-schemas --timeout=180s
+  ok "multistack schemas ready"
 }
 
 deploy_kube_prometheus_stack() {
