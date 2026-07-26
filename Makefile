@@ -43,6 +43,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-alumet-conformance \
         verify-alumet-db-waste \
         verify-appsec-hardening \
+        verify-chart-disclose-persistence \
         verify-all-scenarios
 
 help: ## List available targets
@@ -162,6 +163,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/alumet-conformance/verify.sh
 	@bash -n scenarios/alumet-db-waste/verify.sh
 	@bash -n scenarios/appsec-hardening/verify.sh
+	@bash -n scenarios/chart-disclose-persistence/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
 	@bash -n scenarios/template-github-actions/verify.sh
@@ -473,6 +475,9 @@ verify-verify-hash-fail-closed: ## 0.8.13 R2: verify-hash fail-closed on a signe
 verify-chart-prometheusrule-pdb: ## 0.8.13 Phase A: chart PrometheusRule + PodDisruptionBudget (render + kubeconform + promtool)
 	./scenarios/chart-prometheusrule-pdb/verify.sh
 
+verify-chart-disclose-persistence: ## Real helm install (StatefulSet+persistence): archive survives a pod restart, feeds disclose
+	./scenarios/chart-disclose-persistence/verify.sh
+
 verify-template-gitlab-ci: ## Validate upstream gitlab-ci.yml template via GitLab CE in-cluster
 	./scenarios/template-gitlab-ci/verify.sh
 
@@ -550,7 +555,7 @@ verify-alumet-db-waste: ## 0.9.13 green: Alumet DB-cgroup energy x SQL waste rat
 verify-appsec-hardening: ## 0.9.15 AppSec: source_endpoint redaction, ack API key + env override, real export quality gate, verify-hash attestation PARTIAL cap, non-loopback bind advisory (local binary, no cluster)
 	./scenarios/appsec-hardening/verify.sh
 
-verify-all-scenarios: ## Run all 57 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: ## Run all 58 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -591,7 +596,12 @@ verify-all-scenarios: ## Run all 57 scenarios sequentially (see docs/SCENARIOS.m
 	@# - appsec-hardening is the self-contained 0.9.15 check (local binary +
 	@#   throwaway loopback daemon, no cluster); grouped with the other
 	@#   local-binary batch scenarios after the alumet pair.
-	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@# - chart-disclose-persistence installs its own daemon via a real
+	@#   `helm install` into a scratch namespace/release (StatefulSet +
+	@#   persistence), fully isolated from the shared observability daemon;
+	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
+	@#   touches the real chart.
+	@for s in limit-batch-volume sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
