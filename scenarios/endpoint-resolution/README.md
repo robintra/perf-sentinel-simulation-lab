@@ -42,12 +42,12 @@ resolver picked.
 
 ### A — the ancestor walk
 
-| id | assertion | 0.9.22 | 0.9.17 baseline |
-|---|---|---|---|
-| A1 | route two levels above the leaf | `/api/orders` | `unknown` |
-| A2 | a route outranks the code frames below it | `/api/orders` | `unknown` |
-| A3 | a route at the depth bound is still found | `/api/at-limit` | `unknown` |
-| A4 | a route past the depth bound is not | `unknown` | `unknown` |
+| id | assertion                                    | 0.9.22                  | 0.9.17 baseline                |
+|----|----------------------------------------------|-------------------------|--------------------------------|
+| A1 | route two levels above the leaf              | `/api/orders`           | `unknown`                      |
+| A2 | a route outranks the code frames below it    | `/api/orders`           | `unknown`                      |
+| A3 | a route at the depth bound is still found    | `/api/at-limit`         | `unknown`                      |
+| A4 | a route past the depth bound is not          | `unknown`               | `unknown`                      |
 | A5 | a blank `http.route` is skipped, not adopted | `com.shop.PurgeJob.run` | `'   '` (three literal spaces) |
 
 A1 is the layout the 0.9.22 CHANGELOG names as the common case
@@ -56,13 +56,13 @@ route became a whitespace-only endpoint.
 
 ### B — the CLIENT skip
 
-| id | assertion | 0.9.22 | 0.9.17 baseline |
-|---|---|---|---|
-| B1 | `url.full` on a CLIENT ancestor is not an inbound route | `unknown` | `https://third-party.example/v1/rates` |
-| B2 | `url.full` on a SERVER ancestor still counts | the URL | the URL |
-| B3 | `url.full` on an unspecified kind still counts | the URL | the URL |
-| B4 | a route above a CLIENT ancestor wins | `/api/checkout` | the third-party URL |
-| B5 | `http.route` counts on any kind, CLIENT included | `/api/orders` | `/api/orders` |
+| id | assertion                                               | 0.9.22          | 0.9.17 baseline                        |
+|----|---------------------------------------------------------|-----------------|----------------------------------------|
+| B1 | `url.full` on a CLIENT ancestor is not an inbound route | `unknown`       | `https://third-party.example/v1/rates` |
+| B2 | `url.full` on a SERVER ancestor still counts            | the URL         | the URL                                |
+| B3 | `url.full` on an unspecified kind still counts          | the URL         | the URL                                |
+| B4 | a route above a CLIENT ancestor wins                    | `/api/checkout` | the third-party URL                    |
+| B5 | `http.route` counts on any kind, CLIENT included        | `/api/orders`   | `/api/orders`                          |
 
 B1 and B4 are the fix: before, an outbound call's URL up to eight levels away
 could name the finding, attributing it to a third party. B2 and B3 pin the
@@ -72,25 +72,28 @@ eligible.
 
 ### C — outermost, not nearest
 
-| id | assertion | 0.9.22 |
-|---|---|---|
-| C1/C2 | each entry point names itself, not the DAO they share | `com.shop.OrderService.listOrders` / `com.shop.ReportService.monthlyReport` |
-| C3 | two entry points over one statement stay distinct | true |
-| C4 | a framework frame above the entry point wins the endpoint | `org.apache.catalina.core.StandardWrapper.invoke` |
-| C5 | and both entry points then collide on it | true |
+| id    | assertion                                                | 0.9.22                                                                      |
+|-------|----------------------------------------------------------|-----------------------------------------------------------------------------|
+| C1/C2 | each entry point names itself, not the DAO they share    | `com.shop.OrderService.listOrders` / `com.shop.ReportService.monthlyReport` |
+| C3    | two entry points over one statement stay distinct        | true                                                                        |
+| C4    | a framework frame above the entry point is skipped       | `com.shop.OrderService.listOrders`                                          |
+| C5    | two entry points under one framework layer stay distinct | true                                                                        |
 
 C1–C3 are the point of keeping the outermost frame rather than the nearest: the
 nearest is the DAO every caller shares, which collides in the ack signature
 exactly as `"unknown"` did.
 
-**C4 and C5 pin a documented cost, not a defect.** "Outermost" means the
-outermost *usable* frame, application code or not. If a framework layer carries
-`code.*` of its own, it wins and every entry point in the service collapses onto
-it. Measured on this lab's real agent output, that does not happen: under the
-OTel javaagent only 5 of 5216 `order-service` spans carry `code.*` at all, and
-all five are the `@Scheduled` method — Tomcat, the dispatcher and the JDBC layer
-carry none. C4/C5 freeze the behaviour so a future agent that does stamp
-framework frames is noticed here rather than in a dashboard.
+**C4 and C5 pin the framework-frame rule.** "Outermost" means the outermost
+usable *application* frame. A framework layer carrying `code.*` of its own is
+skipped, so the entry point below it names the finding and two entry points
+under one framework layer stay distinct.
+
+That rule exists because of a measured collapse: before it, every code-frame
+endpoint on the two PHP stacks resolved to a single framework kernel — 1799
+`symfony-svc` findings on `Symfony\Component\HttpKernel\HttpKernel::handle`
+and 1617 `laravel-svc` findings on `Illuminate\Foundation\Http\Kernel::handle`.
+An endpoint that looks resolved while colliding in the ack signature exactly as
+`"unknown"` did is worse than `"unknown"`, because nothing signals it.
 
 ### D — code-frame spelling
 
@@ -106,22 +109,22 @@ the first `/`, so an accepted `Order.valid?` would reach the ack signature as
 rewritten to `.` for the same reason, and a bare unqualified name like `execute`
 is refused because it collides exactly as `"unknown"` did.
 
-### Known failure at 0.9.22 (`1160c183`): D1 and D2
+### E — framework frames name no origin
 
-**D1 and D2 fail on the branch as measured.** PHP qualifies namespaces with `\`
-but methods with `::`, and the frames PHP instrumentation actually emits are
-`Namespace\Class::method`. `frame_separator()` picks `\` for any namespace
-containing a `\`, so:
+E1-E7 assert that a framework frame is refused rather than adopted: the Symfony
+and Laravel HTTP kernels, Doctrine's DBAL statement, `PDOStatement`, Spring's
+`DispatcherServlet`, Slim's `App` and the PHP-DI controller invoker.
 
-| spelling | endpoint |
-|---|---|
-| `code.function.name = Slim\App::handle` | `Slim\App::handle` |
-| `code.namespace = Slim\App` + `code.function = handle` | `Slim\App\handle` |
+E8-E10 assert the list matches on a **prefix**, never a substring. Three
+application-owned frames that merely resemble a framework namespace must
+survive: `com.myshop.springboard.OrderJob.run`,
+`com.apachecorp.billing.Invoicer.emit` and
+`IlluminateMetrics\Collector::gather`. A substring match would swallow all
+three, which is the failure mode a rejection list invites.
 
-Two spellings of one origin, therefore two ack signatures — the exact failure
-the separator rule was written to prevent, on the exact language it was written
-for. Reported upstream against `crates/sentinel-core/src/ingest/mod.rs`. This
-gate is red until that lands; it is not lab breakage.
+### Discrimination
+
+39/39 on the fixed branch, 23/39 on 0.9.17.
 
 ## Fixtures
 
@@ -134,9 +137,9 @@ demand.
 
 `agent-frames.ndjson` — the spelling matrix. Every frame string is real:
 
-| frame | source |
-|---|---|
+| frame                                                            | source                                                                                                       |
+|------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
 | `Slim\App::handle`, `DI\Bridge\Slim\ControllerInvoker::__invoke` | `scenarios/astronomy-shop/fixtures/degraded-slice.ndjson`, the `quote` service (PHP OTel SDK, Slim + PHP-DI) |
-| `oteldemo.AdService` + `getAdsByCategory` | the same slice, the `ad` service (Java) |
-| `com.perfsim.order.job.ScheduledJobs` + `reconcileOrders` | this lab's `order-service` under the OTel javaagent, captured from the Collector file exporter |
-| Go, .NET, Python, Node, Rust rows | each ecosystem's documented qualified-name spelling |
+| `oteldemo.AdService` + `getAdsByCategory`                        | the same slice, the `ad` service (Java)                                                                      |
+| `com.perfsim.order.job.ScheduledJobs` + `reconcileOrders`        | this lab's `order-service` under the OTel javaagent, captured from the Collector file exporter               |
+| Go, .NET, Python, Node, Rust rows                                | each ecosystem's documented qualified-name spelling                                                          |

@@ -123,6 +123,12 @@ SHAPES = {
 
 # name -> code attributes on a single entry-point span carrying no HTTP attribute
 FRAMES = {
+    # PHP application frame, both spellings of one origin. The Slim/DI frames
+    # below are framework-owned and are rejected outright since 0.9.22, so they
+    # can no longer carry the separator assertion -- this pair does.
+    "php-app-stable": {"code.function.name": "App\\Service\\OrderReporter::monthly"},
+    "php-app-legacy": {"code.namespace": "App\\Service\\OrderReporter",
+                       "code.function": "monthly"},
     # PHP: real frames, both spellings of one origin
     "php-slim-stable": {"code.function.name": "Slim\\App::handle"},
     "php-slim-legacy": {"code.namespace": "Slim\\App", "code.function": "handle"},
@@ -159,6 +165,23 @@ FRAMES = {
     "hash-qualified": {"code.function.name": "MyClass#method"},
     "bare-function": {"code.function": "execute"},
     "blank-namespace": {"code.namespace": "   ", "code.function": "execute"},
+    # framework frames the resolver must refuse since 0.9.22: keeping them made
+    # every finding in a PHP service collapse onto one kernel frame
+    "fw-symfony-kernel": {
+        "code.function.name": "Symfony\\Component\\HttpKernel\\HttpKernel::handle"},
+    "fw-laravel-kernel": {
+        "code.function.name": "Illuminate\\Foundation\\Http\\Kernel::handle"},
+    "fw-doctrine-stmt": {
+        "code.function.name": "Doctrine\\DBAL\\Driver\\PDO\\Statement::execute"},
+    "fw-pdo-statement": {"code.function.name": "PDOStatement::execute"},
+    "fw-spring-dispatcher": {
+        "code.namespace": "org.springframework.web.servlet.DispatcherServlet",
+        "code.function": "doDispatch"},
+    # near-misses: the list must match on a PREFIX, never a substring, or these
+    # application frames would be swallowed with the frameworks
+    "near-springboard": {"code.function.name": "com.myshop.springboard.OrderJob.run"},
+    "near-apachecorp": {"code.function.name": "com.apachecorp.billing.Invoicer.emit"},
+    "near-illuminate": {"code.function.name": "IlluminateMetrics\\Collector::gather"},
 }
 
 

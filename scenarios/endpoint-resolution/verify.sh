@@ -126,17 +126,15 @@ check("C2", "entry point B names itself, not the shared DAO",
       shapes.get("app-entry-b"), "com.shop.ReportService.monthlyReport")
 check("C3", "two entry points over one statement stay distinct",
       shapes.get("app-entry-a") != shapes.get("app-entry-b"), True)
-# Documented consequence, not a defect: "outermost" means outermost USABLE
-# frame, application or not. No agent in this lab stamps code.* on a framework
-# layer (measured: 5 of 5216 order-service spans carry code.*, all of them the
-# @Scheduled method), so this shape does not occur in practice -- but if an
-# agent ever did, every entry point in the service would collapse onto it.
-# Frozen here so that change is noticed rather than discovered in a dashboard.
-check("C4", "a framework frame above the entry point wins the endpoint",
-      shapes.get("framework-above-entry-a"),
-      "org.apache.catalina.core.StandardWrapper.invoke")
-check("C5", "and both entry points then collide on it (documented cost)",
-      shapes.get("framework-above-entry-a") == shapes.get("framework-above-entry-b"),
+# "Outermost" means outermost usable APPLICATION frame. A framework layer that
+# carries code.* of its own (Tomcat here) is skipped, so the entry point below
+# it names the finding. Before that rule existed every entry point in a service
+# collapsed onto the framework frame -- measured at 1799 Symfony and 1617
+# Laravel findings sharing one kernel frame each.
+check("C4", "a framework frame above the entry point is skipped",
+      shapes.get("framework-above-entry-a"), "com.shop.OrderService.listOrders")
+check("C5", "two entry points under one framework layer stay distinct",
+      shapes.get("framework-above-entry-a") != shapes.get("framework-above-entry-b"),
       True)
 
 # --- D. code-frame spelling -------------------------------------------------
@@ -144,9 +142,8 @@ check("C5", "and both entry points then collide on it (documented cost)",
 # ack signature hashes it, so a difference re-keys every acknowledgment
 # recorded against that frame the day the agent is upgraded.
 SPELLING_PAIRS = [
-    ("D1", "PHP Slim\\App::handle", "php-slim-legacy", "php-slim-stable"),
-    ("D2", "PHP DI\\Bridge\\Slim\\ControllerInvoker::__invoke",
-     "php-invoker-legacy", "php-invoker-stable"),
+    ("D1", "PHP App\\Service\\OrderReporter::monthly",
+     "php-app-legacy", "php-app-stable"),
     ("D3", "Java oteldemo.AdService.getAdsByCategory",
      "java-ad-legacy", "java-ad-stable"),
     ("D4", "Java com.perfsim.order.job.ScheduledJobs.reconcileOrders",
@@ -178,6 +175,32 @@ check("D14", "a bare unqualified function name yields unknown",
       frames.get("bare-function"), "unknown")
 check("D15", "a blank namespace yields unknown, not a leading dot",
       frames.get("blank-namespace"), "unknown")
+
+# --- E. framework frames name no origin ---------------------------------------
+# A framework frame is not an entry point: adopting it produced an endpoint that
+# looked resolved while colliding in the ack signature exactly as "unknown" did.
+for tid, desc, key in [
+    ("E1", "Symfony HttpKernel", "fw-symfony-kernel"),
+    ("E2", "Laravel HTTP Kernel", "fw-laravel-kernel"),
+    ("E3", "Doctrine DBAL statement", "fw-doctrine-stmt"),
+    ("E4", "PDOStatement", "fw-pdo-statement"),
+    ("E5", "Spring DispatcherServlet", "fw-spring-dispatcher"),
+    ("E6", "Slim App", "php-slim-stable"),
+    ("E7", "PHP-DI controller invoker", "php-invoker-stable"),
+]:
+    check(tid, f"{desc} is refused, not adopted", frames.get(key), "unknown")
+
+# The list must anchor on a PREFIX. Substring matching would swallow these
+# application-owned frames along with the frameworks they merely resemble.
+for tid, desc, key, want in [
+    ("E8", "an app package containing 'spring'", "near-springboard",
+     "com.myshop.springboard.OrderJob.run"),
+    ("E9", "an app package containing 'apache'", "near-apachecorp",
+     "com.apachecorp.billing.Invoicer.emit"),
+    ("E10", "a namespace starting with Illuminate but not the framework one",
+     "near-illuminate", "IlluminateMetrics\\Collector::gather"),
+]:
+    check(tid, f"{desc} survives the prefix list", frames.get(key), want)
 
 with open(report_path, "w", encoding="utf-8") as fh:
     fh.write("# Scenario report: endpoint-resolution\n\n")
