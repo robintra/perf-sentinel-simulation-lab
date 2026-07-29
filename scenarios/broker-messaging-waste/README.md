@@ -30,8 +30,9 @@ That is precisely the limit. Those tests never meet a scraper that
 - can **die and come back**.
 
 This scenario is the only place the three coexist. The arbitration was rewritten
-three times in review, each correction revealing the next, so legs A1–A6 map 1:1
-onto the four rules the current code rests on.
+three times in review, each correction revealing the next, and then twice more
+during this validation — legs A1–A7 map onto the rules the current code rests on,
+and A7 exists because a fix to A4's path reopened it once already.
 
 ## What it asserts
 
@@ -82,13 +83,16 @@ Four details that are deliberate rather than incidental:
   declaration bills legitimately — that is what A6 asserts — so A1 counts
   declared windows only from the first measured window onwards. Reading the boot
   transient as a rule-1 violation would fail the leg for being right.
-- **The batch cadence is load-bearing in A4 and A7, not incidental.** The
-  declared source refuses to bill a gap below `MIN_BILLABLE_MS` (1 s), and the
-  outage marker is a consuming `swap(false)`. A stale tick spaced under a second
-  can therefore consume the marker without re-setting it. Continuous traffic
-  against `trace_ttl_ms = 1000` produces exactly that spacing, which is why
-  these legs run the seeder at 0.4 s: spacing the windows above 1 s makes both
-  legs pass on a binary that is nonetheless wrong.
+- **The batch cadence is load-bearing in A4 and A7, and it is a regression
+  guard.** The declared source refuses to bill a gap below `MIN_BILLABLE_MS`
+  (1 s). A past revision consumed the outage marker on every stale tick, so a
+  tick spaced under a second erased it without re-setting it — and the recovery
+  delta was then billed twice. That is fixed (the marker is read-only on the
+  stale branch now), but continuous traffic against `trace_ttl_ms = 1000`
+  produces exactly the sub-second spacing that exposed it, which is why these
+  legs run the seeder at 0.4 s. Spacing the windows above 1 s made both legs pass
+  on a binary that was demonstrably wrong, so do not "fix" a future failure that
+  way.
 
 ## Run
 
