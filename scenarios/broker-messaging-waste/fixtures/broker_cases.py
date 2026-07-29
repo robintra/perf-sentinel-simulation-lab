@@ -25,12 +25,21 @@ rule that produced it.
   or an agent `process` span) that is itself the sibling of the `receive`, so
   resolution has to retry at each level of the ancestor chain rather than only
   at the analyzable span's own.
+- `e-early-handler` the handler started BEFORE the delivery and its I/O child
+  after it. The guard has to judge the attributed node, not the leaf, so the
+  handler shields its whole subtree.
+- `f-two-receives` two deliveries under one parent: the work belongs to the last
+  that arrived before it.
 
-These are **crafted probes, not corpus evidence.** `c-nontriggered` and
-`d-handler` do not occur anywhere in the committed astronomy capture (checked:
-0 occurrences of either across both slices), so the real-emitter proof lives in
-the F1/F2 rates measured on that capture, and these two only answer "does the
-rule hold when the shape does show up".
+`shapes-reversed` re-emits `shapes` with every span array reversed and nothing
+else changed, so comparing the two answers one question: does payload order
+influence the resolved link? It must not.
+
+These are **crafted probes, not corpus evidence.** None of `c-nontriggered`,
+`d-handler`, `e-early-handler` or `f-two-receives` occurs anywhere in the
+committed astronomy capture, so the real-emitter proof lives in the F1/F2 rates
+measured on that capture, and the probes only answer "does the rule hold when the
+shape does show up".
 
 Deterministic: fixed ids and timestamps, no clock and no randomness, so the
 corpora are byte-stable across runs and a diff means a real edit.
@@ -42,6 +51,8 @@ import sys
 # relative to "now" for batch `analyze --input`.
 BASE_NS = 1783677955689000000
 PRODUCER_TRACE = "61398e4b7d55f81867771ae8fd640579"
+# A second producer, so the two-receive case can name which one won.
+PRODUCER_TRACE_2 = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
 
 # id, messaging.system, messaging.destination.name, span name, per-occurrence extra
 CASES = [
@@ -162,13 +173,57 @@ def build_shapes():
         span(trace, f"{53:016x}", handler, "postgresql", CLIENT, BASE_NS + 2000, 1300,
              sql_attrs("order")),
     ]))
+
+    # e-early-handler: the handler starts BEFORE the delivery, its I/O child
+    # after it. The guard must judge the node whose subtree is attributed — the
+    # handler — not the leaf, so a handler already running when the message
+    # landed shields everything below it however late its own I/O fires.
+    trace, root = f"{15:032x}", f"{15:016x}"
+    handler = f"{61:016x}"
+    out.append(request("accounting-e-early-handler", [
+        span(trace, root, "", "order-consumed", INTERNAL, BASE_NS, 9000),
+        span(trace, handler, root, "ScheduledFlush.run", INTERNAL, BASE_NS + 100, 8000),
+        span(trace, f"{62:016x}", root, "orders receive", CONSUMER, BASE_NS + 2000, 800,
+             MESSAGING, [PRODUCER_TRACE]),
+        # Starts after the receive, but its parent did not: no link.
+        span(trace, f"{63:016x}", handler, "postgresql", CLIENT, BASE_NS + 3000, 1300,
+             sql_attrs("outbox_flush")),
+    ]))
+
+    # f-two-receives: a consumer loop handling two deliveries under one parent.
+    # The work belongs to the LAST message that arrived before it, so the second
+    # receive's producer wins — and which one wins must not depend on the order
+    # the exporter serialised them in (see the `reversed` mode).
+    trace, root = f"{16:032x}", f"{16:016x}"
+    out.append(request("accounting-f-two-receives", [
+        span(trace, root, "", "order-consumed", INTERNAL, BASE_NS, 9000),
+        span(trace, f"{71:016x}", root, "orders receive", CONSUMER, BASE_NS + 1000, 500,
+             MESSAGING, [PRODUCER_TRACE]),
+        span(trace, f"{72:016x}", root, "orders receive", CONSUMER, BASE_NS + 2000, 500,
+             MESSAGING, [PRODUCER_TRACE_2]),
+        span(trace, f"{73:016x}", root, "postgresql", CLIENT, BASE_NS + 3000, 1300,
+             sql_attrs("order")),
+    ]))
     return out
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[1] not in ("cases", "shapes"):
-        sys.exit("usage: broker_cases.py {cases|shapes} <out.ndjson>")
-    payload = build_cases() if sys.argv[1] == "cases" else build_shapes()
+    modes = ("cases", "shapes", "shapes-reversed")
+    if len(sys.argv) != 3 or sys.argv[1] not in modes:
+        sys.exit(f"usage: broker_cases.py {{{'|'.join(modes)}}} <out.ndjson>")
+    if sys.argv[1] == "cases":
+        payload = build_cases()
+    else:
+        payload = build_shapes()
+        if sys.argv[1] == "shapes-reversed":
+            # Same spans, same ids, same trace ids — only the order the exporter
+            # serialised them in. Every resolved link must be identical to the
+            # forward corpus: which receive explains a span is a question about
+            # start times, and payload order must not answer it.
+            for req in payload:
+                for rs in req["resourceSpans"]:
+                    for ss in rs["scopeSpans"]:
+                        ss["spans"].reverse()
     with open(sys.argv[2], "w") as fh:
         for req in payload:
             fh.write(json.dumps(req) + "\n")

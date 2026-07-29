@@ -1228,11 +1228,51 @@ f3_case 0000000000000000000000000000000b "sibling receive (the shape the real ag
 f3_case 0000000000000000000000000000000c "ancestor receive (must not regress)"             yes '"order"'
 f3_case 0000000000000000000000000000000d "sibling started BEFORE the receive"              no  '"outbox_flush"'
 f3_case 0000000000000000000000000000000d "sibling started after the receive"               yes '"order"'
-f3_case 0000000000000000000000000000000e "work under an intermediate handler"               yes '"order"'
-if [ "${F3_FAILS}" -eq 0 ]; then
-  assert_pass "F3" "5/5 crafted topologies: sibling and ancestor both resolve, the pre-receive sibling stays unlinked, and an intermediate handler does not break the walk"
+f3_case 0000000000000000000000000000000e "work under an intermediate handler"              yes '"order"'
+# The guard has to judge the node whose subtree is attributed, not the leaf: a
+# handler already running when the delivery landed shields its children however
+# late their own I/O fires.
+f3_case 0000000000000000000000000000000f "I/O under a handler that PREDATES the receive"   no  '"outbox_flush"'
+# Two deliveries under one parent: the nearest preceding receive wins, so the
+# link must name the SECOND producer, never the first.
+F3_TWO="$(explain_tree_links "${TMP_DIR}/shapes.ndjson" 00000000000000000000000000000010 \
+  | awk -F'\t' 'index($1,"\"order\"")>0 {print $2; exit}')"
+if [ "${F3_TWO}" = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2" ]; then
+  ok "F3 two receives under one parent: the nearest preceding one wins"
 else
-  assert_fail "F3" "${F3_FAILS} crafted topology case(s) wrong"
+  color_red "    FAIL: F3 two receives: expected the second producer, got '${F3_TWO:-<none>}'"
+  F3_FAILS=$((F3_FAILS + 1))
+fi
+
+# Order invariance: the same spans, same ids, same start times, only the order
+# the exporter serialised them in. Which receive explains a span is a question
+# about start times, so payload order must not answer it. Compared as a set of
+# template -> link pairs, because the tree's own node order legitimately follows
+# the payload.
+python3 "${CASES_GEN}" shapes-reversed "${TMP_DIR}/shapes-reversed.ndjson" >/dev/null 2>&1 \
+  || die "reversed shape generator failed"
+F3_ORDER_DIFFS=0
+for tid in 0000000000000000000000000000000b 0000000000000000000000000000000c \
+           0000000000000000000000000000000d 0000000000000000000000000000000e \
+           0000000000000000000000000000000f 00000000000000000000000000000010; do
+  if ! diff -q <(explain_tree_links "${TMP_DIR}/shapes.ndjson" "${tid}" | sort) \
+                <(explain_tree_links "${TMP_DIR}/shapes-reversed.ndjson" "${tid}" | sort) >/dev/null 2>&1; then
+    color_red "    FAIL: F3 order invariance broken on ${tid}"
+    note "F3 ${tid} forward:  $(explain_tree_links "${TMP_DIR}/shapes.ndjson" "${tid}" | tr '\n' ';')"
+    note "F3 ${tid} reversed: $(explain_tree_links "${TMP_DIR}/shapes-reversed.ndjson" "${tid}" | tr '\n' ';')"
+    F3_ORDER_DIFFS=$((F3_ORDER_DIFFS + 1))
+  fi
+done
+if [ "${F3_ORDER_DIFFS}" -eq 0 ]; then
+  ok "F3 order invariance: all 6 shapes resolve identically with the payload reversed"
+else
+  F3_FAILS=$((F3_FAILS + F3_ORDER_DIFFS))
+fi
+
+if [ "${F3_FAILS}" -eq 0 ]; then
+  assert_pass "F3" "7/7 crafted topologies plus order invariance on all 6 shapes: sibling and ancestor resolve, a pre-receive sibling and a pre-receive handler both stay unlinked, an intermediate handler does not break the walk, and the nearest preceding receive wins regardless of payload order"
+else
+  assert_fail "F3" "${F3_FAILS} crafted topology / order-invariance case(s) wrong"
 fi
 
 # ── F1/F2: the real capture ─────────────────────────────────────────────────
