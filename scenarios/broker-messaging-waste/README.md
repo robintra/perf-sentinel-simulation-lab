@@ -103,6 +103,28 @@ Prerequisites: a local release build of the product
 `PERF_SENTINEL_LOCAL_BIN`) and `python3`. Report at
 `/tmp/scenario-broker-messaging-waste-report.md`.
 
+### A/B-ing a suspected regression
+
+`PERF_SENTINEL_LOCAL_BIN` is the whole harness needed to attribute a failure to a
+revision rather than to the test. Build both revisions aside, then run the same
+scenario against each — one variable, nothing else touched:
+
+```bash
+cd "$PERF_SENTINEL_REPO_PATH"
+git checkout <suspect> && cargo build --release -p perf-sentinel && cp target/release/perf-sentinel /tmp/ps-suspect
+git checkout <known-good> && cargo build --release -p perf-sentinel && cp target/release/perf-sentinel /tmp/ps-good
+cd -
+for rev in good suspect; do
+  PERF_SENTINEL_LOCAL_BIN=/tmp/ps-$rev ./scenarios/broker-messaging-waste/verify.sh
+done
+```
+
+The second variable worth sweeping, once a revision is implicated, is the batch
+cadence: `start_seeding` takes an interval, and moving it across the declared
+source's 1 s `MIN_BILLABLE_MS` boundary is what separated "the product is wrong"
+from "the test is wrong" when the outage marker regressed. Sweep one at a time;
+a harness that changes both proves nothing.
+
 ## Known state and caveats
 
 - **Leg F fails on the current branch, and the failure is the point.**
