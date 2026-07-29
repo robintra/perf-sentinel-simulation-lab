@@ -16,8 +16,21 @@ CLUSTER_NAME="perf-sentinel-lab"
 # (`...perf-sentinel@sha256:abc...`); the manifest switched to digest in 0.5.18.
 PERF_SENTINEL_IMAGE=$(awk '/^[[:space:]]*image:[[:space:]]*ghcr\.io\/robintra\/perf-sentinel[:@]/ { print $2; exit }' \
   "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml")
-[ -n "${PERF_SENTINEL_IMAGE}" ] || {
+# A pre-release validation leaves a LOCAL pin behind (`image: perf-sentinel:<ver>-<sha>`,
+# see scripts/seed-daemon-local.sh), and that is a legitimate working-tree state.
+# There is nothing to pre-pull or pre-import then: seed-daemon-local builds and
+# imports the image itself, after the cluster exists. Dying here instead made
+# `make up` impossible until the pin was reverted by hand, with an error that did
+# not say so.
+if [ -z "${PERF_SENTINEL_IMAGE}" ] \
+   && grep -qE '^[[:space:]]*image:[[:space:]]*perf-sentinel:' \
+        "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"; then
+  PERF_SENTINEL_IMAGE=""
+  PERF_SENTINEL_LOCAL_PIN=1
+fi
+[ -n "${PERF_SENTINEL_IMAGE}" ] || [ "${PERF_SENTINEL_LOCAL_PIN:-0}" = "1" ] || {
   printf "\033[31m    error: failed to extract perf-sentinel image from manifests/perf-sentinel-daemon.yaml\033[0m\n" >&2
+  printf "\033[31m           expected a ghcr.io/robintra/perf-sentinel tag or digest, or a local perf-sentinel:<ver>-<sha> pin\033[0m\n" >&2
   exit 1
 }
 KPS_CHART_VERSION="87.19.2"
@@ -51,6 +64,11 @@ check_prereqs() {
 }
 
 pull_perf_sentinel_image() {
+  if [ "${PERF_SENTINEL_LOCAL_PIN:-0}" = "1" ]; then
+    step "Skipping perf-sentinel pre-pull"
+    ok "manifest carries a local pre-release pin; seed-daemon-local builds and imports it"
+    return
+  fi
   step "Pulling perf-sentinel image ${PERF_SENTINEL_IMAGE}"
   # GHCR reads flake on hosted CI (transient DNS i/o timeouts). Retry with
   # back-off before giving up, same reflex as the k3d image import below.
@@ -75,6 +93,11 @@ create_cluster() {
 }
 
 import_image() {
+  if [ "${PERF_SENTINEL_LOCAL_PIN:-0}" = "1" ]; then
+    step "Skipping perf-sentinel image import"
+    ok "manifest carries a local pre-release pin; seed-daemon-local imports it"
+    return
+  fi
   step "Importing perf-sentinel image into k3d (best effort)"
   # k3d image import has been flaky on Docker Desktop in some setups
   # (failed digest lookups). The manifest references the GHCR image
@@ -226,6 +249,13 @@ deploy_measured_energy_mocks() {
 deploy_perf_sentinel_daemon() {
   step "Deploying perf-sentinel daemon"
   kubectl apply -f "${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"
+  if [ "${PERF_SENTINEL_LOCAL_PIN:-0}" = "1" ]; then
+    # The pinned image does not exist in a fresh cluster yet, so waiting for the
+    # rollout would time out for a reason that is not a fault. seed-daemon-local
+    # builds, imports and rolls it.
+    ok "manifest applied; rollout deferred to \`make seed-daemon-local\` (local pre-release pin)"
+    return
+  fi
   wait_for_deployment observability perf-sentinel-daemon 180s
   ok "perf-sentinel daemon ready"
 }
