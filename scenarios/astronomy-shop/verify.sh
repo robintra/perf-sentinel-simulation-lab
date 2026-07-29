@@ -133,6 +133,46 @@ else
   assert_fail "F1" "analyze exited non-zero on the clean slice: $(tail -2 "${TMP_DIR}/err.txt")"
 fi
 
+# ── M1: real broker spans are ingested as messaging I/O ─────────────────────
+# The demo's checkout service publishes to Kafka and accounting /
+# fraud-detection consume from it, so these slices carry PRODUCER spans from
+# canonical, community-maintained instrumentation we did not author. Until the
+# messaging block landed they were dropped as `not_io`; the count is what proves
+# a real emitter reaches the detector, not a fixture built on our assumptions.
+#
+# Counted, not merely non-zero: the slices are frozen, so the number is a
+# contract like fp_budget. Findings are NOT asserted here — the demo publishes
+# one message per checkout, so there is no messaging anti-pattern to find, and
+# claiming otherwise would be asserting nothing.
+step "M1: real Kafka PRODUCER spans are counted as messaging I/O ops"
+M1_FAILS=0
+for slice_name in clean degraded; do
+  case "${slice_name}" in
+    clean) slice_path="${CLEAN}"; want=13 ;;
+    *)     slice_path="${DEGRADED}"; want=10 ;;
+  esac
+  if run_analyze "${slice_path}"; then
+    got="$(python3 -c "
+import json
+g = json.load(open('${TMP_DIR}/out.json')).get('green_summary') or {}
+print(g.get('total_messaging_io_ops') or 0)" 2>/dev/null || echo 0)"
+    if [ "${got}" = "${want}" ]; then
+      ok "${slice_name}: total_messaging_io_ops=${got} (matches the PRODUCER span count in the slice)"
+    else
+      color_red "    FAIL: ${slice_name}: total_messaging_io_ops=${got}, expected ${want}"
+      M1_FAILS=$((M1_FAILS + 1))
+    fi
+  else
+    color_red "    FAIL: analyze exited non-zero on the ${slice_name} slice"
+    M1_FAILS=$((M1_FAILS + 1))
+  fi
+done
+if [ "${M1_FAILS}" -eq 0 ]; then
+  assert_pass "M1" "both slices ingest their real Kafka publishes as messaging I/O (13 clean / 10 degraded)"
+else
+  assert_fail "M1" "${M1_FAILS} slice(s) did not ingest the expected messaging op count"
+fi
+
 # ── F2: report on the clean slice ───────────────────────────────────────────
 step "F2: report --input <clean slice> renders a usable dashboard"
 if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${CLEAN}" \

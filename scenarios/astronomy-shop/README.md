@@ -16,6 +16,7 @@ one controller).
 |----|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | R1 | `analyze --input degraded-slice.ndjson`: exit 0, `traces_analyzed > 0`, and the finding classes intersect the manifest's `expected_finding_classes` (>= 1 common class - loose ground truth, we do not control Astronomy Shop internals)      |
 | F1 | `analyze --input clean-slice.ndjson`: exit 0, `traces_analyzed > 0`, and the TOTAL finding count is `<= fp_budget` from the manifest; the actual classes are emitted into the report even on PASS so a class shift under budget stays visible |
+| M1 | `total_messaging_io_ops` equals the PRODUCER span count in each slice (13 clean / 10 degraded): the demo's checkout service publishes to Kafka, so these are real broker spans from instrumentation we did not author, and they must reach the detector rather than be dropped as `not_io`. Findings are deliberately not asserted - the demo publishes once per checkout, so there is no messaging anti-pattern to find |
 | F2 | `report --input clean-slice.ndjson` renders a usable dashboard                                                                                                                                                                                |
 
 ## How it works
@@ -46,6 +47,18 @@ deployed into the lab k3d cluster:
   human look; restamping is a deliberate, reviewable act (rerun capture.sh).
 - R1 and F1 run under the same default detection config: the FP budget is
   only meaningful measured under the config that produced the recall.
+
+### Budget history
+
+`fp_budget` also moves when the product widens what counts as I/O, with the
+corpus untouched. Those restamps are edited in place rather than recaptured
+(recapturing would change the corpus and destroy the comparison), and each one
+records what moved and why:
+
+| budget | when | why |
+|--------|------|-----|
+| 322 | 0.9.8 | RPC semconv keys admitted at ingest |
+| 326 | messaging block (post-0.9.22) | broker publishes became I/O ops. The four extra findings are **all `serialized_calls`** (21 -> 25) - no messaging finding appears on either slice. The publishes themselves add no finding; they add I/O spans to traces, and a topological detector that counts spans per trace crossed its threshold four more times. Worth knowing: the widening documented upstream is about `total_io_ops` and IIS, and this second-order effect on a topological detector was not among the predictions |
 
 ## Run
 
