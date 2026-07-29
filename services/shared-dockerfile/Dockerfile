@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Shared multistage Dockerfile for the three Spring Boot services.
 # Build with: docker build -f services/shared-dockerfile/Dockerfile \
 #   --build-arg SERVICE_NAME=order-service \
@@ -24,7 +25,13 @@ COPY shared-config shared-config
 COPY order-service order-service
 COPY payment-service payment-service
 COPY notification-service notification-service
-RUN chmod +x mvnw \
+# The .m2 cache mount is what keeps this from re-downloading the whole
+# dependency tree on every build. Without it each of the three services pays a
+# full cold resolve, because SERVICE_NAME is a build arg and therefore changes
+# this layer's cache key: three services, three cold downloads. `sharing=locked`
+# so two concurrent builds cannot corrupt the local repository.
+RUN --mount=type=cache,target=/root/.m2,sharing=locked \
+    chmod +x mvnw \
  && ./mvnw -B -DskipTests -pl ${SERVICE_NAME} -am package
 RUN cp ${SERVICE_NAME}/target/${SERVICE_NAME}-*.jar /build/app.jar
 
