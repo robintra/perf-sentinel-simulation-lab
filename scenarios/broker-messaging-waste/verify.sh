@@ -46,6 +46,10 @@
 #   A6   daemon booted with Alumet unreachable: the declaration bills from the
 #        first windows. A never-scraped state must not read "fresh" during the
 #        first staleness window.
+#   A7   a late scrape banks a delta covering a hole the declaration already
+#        billed, with NO scoring window running while that sample is fresh. The
+#        path A4 cannot reach, and the one that needs the outage marker consulted
+#        on the banked-delivery branch too.
 #   B    disclosure v1.5: aggregate.messaging_waste with its three provenance
 #        buckets and the invariant measured + declared + estimated ==
 #        windows_with_figure; a broker_static-only period gives
@@ -57,10 +61,13 @@
 #   E    destination spellings the lab has no emitter for: RabbitMQ named and
 #        default exchange, a Pulsar topic URL, an AMQP URI carrying credentials,
 #        an IBM MQ / JMS queue, a routing-key glob.
-#   F    the producer link on the REAL capture: the astronomy-shop slices carry
-#        genuine Kafka CONSUMER spans with links, and the two crafted shapes
-#        isolate whether the `receive` span sits as an ancestor or a sibling of
-#        the work it triggered.
+#   F3   the four crafted topologies, which localise any F1/F2 failure: receive
+#        as sibling, as ancestor, a sibling that started BEFORE the receive (must
+#        stay unlinked -- a false link is worse than none), and work under an
+#        intermediate handler.
+#   F1/2 the producer link on the REAL capture, per slice. Rate is over the
+#        traces that are ANALYZABLE: half the linked consumer traces here are
+#        CONSUMER-only and never enter the analysis at all.
 #
 # Self-contained: local release binary on loopback plus a python http.server
 # serving the committed alumet-conformance capture of the REAL agent, augmented
@@ -161,10 +168,23 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required"
 # http.server re-reads the file per request, so one inflated value followed by a
 # revert reproduces the catch-up without a dynamic server.
 set_broker_joules() {  # $1 = joules per energy_interval to serve
-  python3 - "${TMP_DIR}/mock/alumet-broker.prom" "${METRIC}" "${BROKER_LABEL}" "$1" <<'PY'
-import re, sys
-path, metric, label, joules = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-rows = [l for l in open(path) if f'resource_consumer_kind="{label}"' not in l]
+  set_broker_row "${BROKER_LABEL}" "$1"
+}
+
+# Rename the label the broker row carries, so the endpoint keeps answering while
+# the configured series stops existing — a cgroup rename in production, and the
+# only way to make a series go stale without taking the endpoint down.
+set_broker_joules_label() {  # $1 = label to serve the row under
+  set_broker_row "$1" "${BROKER_JOULES}"
+}
+
+set_broker_row() {  # $1 = label_value, $2 = joules
+  python3 - "${TMP_DIR}/mock/alumet-broker.prom" "${METRIC}" "${BROKER_LABEL}" "$1" "$2" <<'PY'
+import sys
+path, metric, configured, label, joules = sys.argv[1:6]
+# Drop any row this helper previously wrote, under whatever label, so repeated
+# calls never leave two competing series behind.
+rows = [l for l in open(path) if 'resource_consumer_id="kafkacg"' not in l]
 rows.append(f'{metric}{{kind="resident",resource_consumer_id="kafkacg",'
             f'resource_consumer_kind="{label}",resource_id="",'
             f'resource_kind="local_machine"}} {float(joules)}\n')
@@ -443,9 +463,7 @@ PY
 )"
 [ -n "${METRIC}" ] || die "no per-process _alumet metric discoverable in ${BASE_PROM}"
 
-cat >> "${TMP_DIR}/mock/alumet-broker.prom" <<EOF
-${METRIC}{kind="resident",resource_consumer_id="kafkacg",resource_consumer_kind="${BROKER_LABEL}",resource_id="",resource_kind="local_machine"} ${BROKER_JOULES}.0
-EOF
+set_broker_joules "${BROKER_JOULES}"
 start_mock || die "mock not serving on :${MOCK_PORT}"
 note "metric ${METRIC}; broker cgroup ${BROKER_LABEL}=${BROKER_JOULES} J/poll -> ${KWH_PER_SEC} kWh per second of measured wall clock"
 note "scrape ${SCRAPE_SECS}s > batch cadence (trace_ttl_ms=1000): staleness window ${STALENESS_SECS}s"
@@ -730,6 +748,13 @@ PY
     assert_pass "A4" "recovery added ${A4_GAIN} kWh (honest window ~${A4_CAP}); the outage's own ${A4_OUTAGE_KWH} kWh was not re-delivered on top of the declaration"
   else
     assert_fail "A4" "recovery added ${A4_GAIN} kWh, at or above the outage's own ${A4_OUTAGE_KWH} kWh — the retroactive delta was billed twice"
+    # A4 and A7 share one root cause when both fail: the outage marker is a
+    # consuming swap, and a stale tick spaced below the declared source's
+    # MIN_BILLABLE_MS (1s) consumes it without re-setting it, because
+    # take_window_kwh returned None so mark_outage_billed never ran. The batch
+    # cadence is therefore load-bearing in this leg, not incidental: spacing the
+    # windows above 1s makes both legs pass on the same binary.
+    note "A4/A7: if both fail, suspect the outage marker being consumed by a sub-second stale tick, not two separate defects"
   fi
 else
   assert_fail "A3" "daemon did not start (see ${TMP_DIR}/a34.log)"
@@ -806,6 +831,89 @@ if start_daemon a6.toml a6.log; then
   fi
 else
   assert_fail "A6" "daemon did not start (see ${TMP_DIR}/a6.log)"
+fi
+
+# =============================================================================
+# Leg A7: a late scrape banking a delta over a hole the declaration already billed
+# =============================================================================
+# The path A4 does not reach. A4 has a scoring window run while the catch-up
+# sample is fresh, so the measurement legitimately owns that window. Here NO
+# scoring window runs while it is fresh — which is what happens when traffic is
+# quiet or batches are shed — so the banked delta is still pending when the
+# series goes stale again. The branch that delivers banked joules must consult
+# `billed_during_outage`: the declaration already paid for that wall clock.
+#
+# Step 5 ("no scoring window runs") is the hard part, and it is why this leg
+# stops the seeder rather than trusting timing: with no traces there is no batch,
+# so there is no scored window. Asserted, not assumed — the leg fails loudly if
+# windows kept appearing during the quiet stretch.
+step "A7: label returns for one inflated scrape while no window scores, then goes stale"
+start_mock >/dev/null 2>&1 || true
+set_broker_joules "${BROKER_JOULES}"
+write_config a7.toml "${BROKER_LABEL}" "
+[daemon.archive]
+path = \"${TMP_DIR}/archive-a7.ndjson\"
+max_size_mb = 100
+max_files = 4" ""
+if start_daemon a7.toml a7.log; then
+  start_seeding 0.4
+  # 1. measured regime
+  for _ in $(seq 1 20); do
+    [ "$(msg_waste_model)" = "alumet_rapl" ] && break
+    sleep 1
+  done
+  A7_STEP1="$(msg_waste_model)"
+
+  # 2/3. the label disappears while the endpoint stays healthy -> the
+  #      declaration bills the hole (this is case 5's mechanism, known good).
+  set_broker_joules_label "gone-cgroup"
+  HOLE_START=${SECONDS}
+  sleep $((STALENESS_SECS + SCRAPE_SECS * 2))
+  A7_DECL_BEFORE="$(model_field "${TMP_DIR}/archive-a7.ndjson" broker_specpower 1)"
+  A7_MEAS_SUM_BEFORE="$(model_field "${TMP_DIR}/archive-a7.ndjson" alumet_rapl 2)"
+
+  # 4/5. stop scoring FIRST, then let the label return for exactly one inflated
+  #      scrape. No traffic -> no batch -> no window while the sample is fresh.
+  [ -n "${SEED_PID}" ] && kill "${SEED_PID}" 2>/dev/null || true
+  SEED_PID=""
+  sleep 2
+  A7_WINDOWS_AT_QUIESCE="$(wc -l < "${TMP_DIR}/archive-a7.ndjson" 2>/dev/null | tr -d ' ')"
+  A7_HOLE_SECS=$((SECONDS - HOLE_START))
+  A7_CATCHUP="$(python3 -c "print(${BROKER_JOULES} * ${A7_HOLE_SECS} / ${SCRAPE_SECS})")"
+  A7_SCRAPES_BEFORE="$(alumet_success_count)"
+  set_broker_joules "${A7_CATCHUP}"          # label back, inflated, one scrape
+  for _ in $(seq 1 $((SCRAPE_SECS * 10))); do
+    [ "$(alumet_success_count)" -gt "${A7_SCRAPES_BEFORE}" ] && break
+    sleep 0.5
+  done
+  set_broker_joules_label "gone-cgroup"      # 6. straight back to stale
+  A7_WINDOWS_AFTER_QUIESCE="$(wc -l < "${TMP_DIR}/archive-a7.ndjson" 2>/dev/null | tr -d ' ')"
+  sleep $((STALENESS_SECS + 1))
+
+  # then a scoring window runs again
+  start_seeding 0.4
+  sleep $((SCRAPE_SECS * 3))
+  stop_daemon
+  A7_MEAS_SUM_AFTER="$(model_field "${TMP_DIR}/archive-a7.ndjson" alumet_rapl 2)"
+  A7_GAIN="$(python3 -c "print(${A7_MEAS_SUM_AFTER} - ${A7_MEAS_SUM_BEFORE})")"
+  A7_HOLE_KWH="$(python3 -c "print(${A7_HOLE_SECS} * ${KWH_PER_SEC})")"
+  note "A7: step1 model=${A7_STEP1}, hole ${A7_HOLE_SECS}s billed over ${A7_DECL_BEFORE} declared windows, catch-up ${A7_CATCHUP} J/poll"
+  note "A7: archive windows ${A7_WINDOWS_AT_QUIESCE} -> ${A7_WINDOWS_AFTER_QUIESCE} during the quiet stretch (must not grow)"
+  note "A7: alumet_rapl sum ${A7_MEAS_SUM_BEFORE} -> ${A7_MEAS_SUM_AFTER} (gain ${A7_GAIN}, the hole itself is worth ${A7_HOLE_KWH})"
+
+  if [ "${A7_STEP1}" != "alumet_rapl" ]; then
+    assert_fail "A7" "never reached the measured regime (model=${A7_STEP1:-<none>}), so the sequence never started"
+  elif [ "${A7_DECL_BEFORE}" -eq 0 ]; then
+    assert_fail "A7" "the declaration never billed the hole, so there is nothing for the late delta to double-bill"
+  elif [ "${A7_WINDOWS_AFTER_QUIESCE}" != "${A7_WINDOWS_AT_QUIESCE}" ]; then
+    record_skip "A7" "a window scored during the quiet stretch (${A7_WINDOWS_AT_QUIESCE} -> ${A7_WINDOWS_AFTER_QUIESCE}), so step 5 did not hold and this leg proves nothing — covered upstream by a deterministic unit test"
+  elif python3 -c "import sys; sys.exit(0 if ${A7_GAIN} < ${A7_HOLE_KWH} * 0.25 else 1)"; then
+    assert_pass "A7" "the banked delta was discarded: alumet_rapl gained ${A7_GAIN} kWh across the resume, against ${A7_HOLE_KWH} kWh the declaration already billed"
+  else
+    assert_fail "A7" "alumet_rapl gained ${A7_GAIN} kWh across the resume, at or near the ${A7_HOLE_KWH} kWh the declaration already billed — the banked delta was published as a measurement"
+  fi
+else
+  assert_fail "A7" "daemon did not start (see ${TMP_DIR}/a7.log)"
 fi
 
 # =============================================================================
@@ -1076,23 +1184,72 @@ step "F: producer link — real astronomy capture, then the two crafted shapes"
 python3 "${CASES_GEN}" shapes "${TMP_DIR}/shapes.ndjson" >/dev/null 2>&1 \
   || die "shape generator failed"
 
-explain_link() {  # $1 = corpus, $2 = trace id ; prints the link or ""
+# Whole explain tree flattened to "<template>\t<link or empty>" per node, so a
+# per-span verdict is checkable and not just "some node somewhere has a link".
+explain_tree_links() {  # $1 = corpus, $2 = trace id
   "${PERF_SENTINEL_LOCAL_BIN}" explain --input "$1" --trace-id "$2" --format json 2>/dev/null \
     | python3 -c '
 import json, sys
-try: d = json.load(sys.stdin)
-except Exception: print(""); sys.exit()
-print(next((r.get("link_trace_id") for r in d.get("roots", []) if r.get("link_trace_id")), ""))'
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit()
+def walk(n):
+    # Plain concatenation, not an f-string: the expression part would need
+    # escaped quotes, which python 3.9 rejects inside an f-string.
+    print((n.get("template") or "?") + "\t" + (n.get("link_trace_id") or ""))
+    for c in n.get("children") or []:
+        walk(c)
+for r in d.get("roots") or []:
+    walk(r)'
 }
 
-F_SIB="$(explain_link "${TMP_DIR}/shapes.ndjson" 0000000000000000000000000000000b)"
-F_ANC="$(explain_link "${TMP_DIR}/shapes.ndjson" 0000000000000000000000000000000c)"
-note "F crafted shapes: sibling receive -> '${F_SIB:-<none>}' ; ancestor receive -> '${F_ANC:-<none>}'"
+# Does any node in the tree carry a link? Empty output (trace absent from the
+# analysis) counts as no.
+explain_has_link() {  # $1 = corpus, $2 = trace id
+  explain_tree_links "$1" "$2" | awk -F'\t' '$2 != "" {found=1} END {exit found?0:1}'
+}
 
-if [ -s "${ASTRO_FIX}/clean-slice.ndjson" ]; then
-  # Every trace in the real capture that carries a CONSUMER span with a link,
-  # and how many of them actually surface it.
-  python3 - "${ASTRO_FIX}/clean-slice.ndjson" > "${TMP_DIR}/f-traces.txt" <<'PY'
+# ── F3 first: the crafted shapes, which localise any F1/F2 failure ───────────
+F3_FAILS=0
+f3_case() {  # $1 = trace id, $2 = label, $3 = expect-link (yes|no), $4 = template filter
+  local got
+  got="$(explain_tree_links "${TMP_DIR}/shapes.ndjson" "$1" | awk -F'\t' -v f="$4" 'index($1,f)>0 {print $2; exit}')"
+  if [ "$3" = "yes" ] && [ -n "${got}" ]; then
+    ok "F3 $2: link resolved"
+  elif [ "$3" = "no" ] && [ -z "${got}" ]; then
+    ok "F3 $2: no link, as required"
+  else
+    color_red "    FAIL: F3 $2: expected link=$3, got '${got:-<none>}'"
+    F3_FAILS=$((F3_FAILS + 1))
+  fi
+}
+f3_case 0000000000000000000000000000000b "sibling receive (the shape the real agents emit)" yes '"order"'
+f3_case 0000000000000000000000000000000c "ancestor receive (must not regress)"             yes '"order"'
+f3_case 0000000000000000000000000000000d "sibling started BEFORE the receive"              no  '"outbox_flush"'
+f3_case 0000000000000000000000000000000d "sibling started after the receive"               yes '"order"'
+f3_case 0000000000000000000000000000000e "work under an intermediate handler"               yes '"order"'
+if [ "${F3_FAILS}" -eq 0 ]; then
+  assert_pass "F3" "5/5 crafted topologies: sibling and ancestor both resolve, the pre-receive sibling stays unlinked, and an intermediate handler does not break the walk"
+else
+  assert_fail "F3" "${F3_FAILS} crafted topology case(s) wrong"
+fi
+
+# ── F1/F2: the real capture ─────────────────────────────────────────────────
+# Denominator note. Half the linked consumer traces in this capture are two-span
+# traces whose only spans are messaging CONSUMER ones, and messaging
+# classification admits PRODUCER only, so those traces carry no analyzable event
+# and do not exist in the analysis at all. `explain` cannot annotate what was
+# never ingested, so the rate is over the traces that ARE analyzable. Both
+# numbers are reported: a drop in either is a regression.
+for slice_name in clean degraded; do
+  slice_path="${ASTRO_FIX}/${slice_name}-slice.ndjson"
+  leg=$([ "${slice_name}" = "clean" ] && echo F1 || echo F2)
+  if [ ! -s "${slice_path}" ]; then
+    record_skip "${leg}" "astronomy-shop ${slice_name} fixture absent"
+    continue
+  fi
+  python3 - "${slice_path}" > "${TMP_DIR}/f-traces-${slice_name}.txt" <<'PY'
 import json, sys
 out = set()
 for line in open(sys.argv[1]):
@@ -1104,26 +1261,23 @@ for line in open(sys.argv[1]):
                     out.add(sp["traceId"])
 print("\n".join(sorted(out)))
 PY
-  F_TOTAL=0
-  F_HIT=0
+  F_TOTAL=0; F_ANALYZABLE=0; F_HIT=0
   while IFS= read -r tr; do
     [ -n "${tr}" ] || continue
     F_TOTAL=$((F_TOTAL + 1))
-    [ -n "$(explain_link "${ASTRO_FIX}/clean-slice.ndjson" "${tr}")" ] && F_HIT=$((F_HIT + 1))
-  done < "${TMP_DIR}/f-traces.txt"
-  note "F real capture: ${F_HIT}/${F_TOTAL} linked consumer traces surface the producer link"
-  if [ "${F_TOTAL}" -eq 0 ]; then
-    record_skip "F" "the committed capture carries no linked CONSUMER span"
-  elif [ "${F_HIT}" -gt 0 ]; then
-    assert_pass "F" "${F_HIT}/${F_TOTAL} linked consumer traces in the real capture surface the producer link"
-  elif [ -n "${F_ANC}" ] && [ -z "${F_SIB}" ]; then
-    assert_fail "F" "0/${F_TOTAL} real linked traces surface the link; the crafted pair isolates the cause — resolution walks ANCESTORS only, and the real agents emit the CONSUMER receive span as a SIBLING of the work it triggered"
+    [ -n "$(explain_tree_links "${slice_path}" "${tr}")" ] || continue
+    F_ANALYZABLE=$((F_ANALYZABLE + 1))
+    explain_has_link "${slice_path}" "${tr}" && F_HIT=$((F_HIT + 1))
+  done < "${TMP_DIR}/f-traces-${slice_name}.txt"
+  note "${leg} ${slice_name}: ${F_TOTAL} traces with a linked CONSUMER span, ${F_ANALYZABLE} of them analyzable, ${F_HIT} surface the link"
+  if [ "${F_ANALYZABLE}" -eq 0 ]; then
+    assert_fail "${leg}" "${F_TOTAL} linked consumer traces but none analyzable — the corpus or the ingest changed shape"
+  elif [ "${F_HIT}" -eq "${F_ANALYZABLE}" ]; then
+    assert_pass "${leg}" "${F_HIT}/${F_ANALYZABLE} analyzable linked consumer traces resolve the producer link on the real capture (${F_TOTAL} carry a link; the rest are CONSUMER-only and never enter the analysis)"
   else
-    assert_fail "F" "0/${F_TOTAL} real linked traces surface the link, and the crafted ancestor shape does not either (sibling='${F_SIB}' ancestor='${F_ANC}')"
+    assert_fail "${leg}" "only ${F_HIT}/${F_ANALYZABLE} analyzable linked consumer traces resolve the link — see F3 for which topology rule broke"
   fi
-else
-  record_skip "F" "astronomy-shop fixtures absent"
-fi
+done
 
 # =============================================================================
 # Report
