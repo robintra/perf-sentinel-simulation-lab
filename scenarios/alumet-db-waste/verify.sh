@@ -46,8 +46,9 @@
 #   G   estimated fallback on batch `analyze` (no DB config, no Alumet): the
 #       database_waste figure is model="estimated", a subset of the report totals,
 #       on all three surfaces (json / text `[within the report totals]` / HTML).
-#   H   disclose v1.4 round-trip over a mixed archive (measured + estimated):
-#       aggregate.database_waste provenance split, totals unchanged, schema v1.4
+#   H   disclose round-trip over a mixed archive (measured + estimated):
+#       aggregate.database_waste provenance split, totals unchanged, schema >= v1.4
+#       (additive by contract, so the assertion is a floor and not an exact pin)
 #       accepted by the official intent, content_hash round-trips fail-closed,
 #       and a pre-v1.4 no-database archive stays additive (no spurious block).
 #   I   provenance honesty: the estimated tag is literally "estimated", and a
@@ -105,6 +106,24 @@ note()   { NOTES+=("$1"); }
 assert_pass() { ok "$2"; record "$1" "PASS — $2"; }
 assert_fail() { color_red "    FAIL: $2"; FAILS=$((FAILS + 1)); record "$1" "FAIL — $2"; }
 record_skip() { skip "$2"; record "$1" "SKIP — $2"; }
+
+# Is a `perf-sentinel-report/vX.Y` string at least the given floor?
+#
+# The disclosure schema is additive by contract, so leg H's intent is "at least
+# the version that introduced the database block", never "exactly that version".
+# Pinning the exact string made this scenario fail the moment the product bumped
+# to v1.5, which is a lab staleness rather than a product defect — the release
+# gate caught it on the messaging lot.
+schema_at_least() {  # $1 = schema_version string, $2 = floor like 1.4
+  python3 - "$1" "$2" <<'PY'
+import re, sys
+m = re.search(r'/v(\d+)\.(\d+)', sys.argv[1] or "")
+if not m:
+    sys.exit(1)
+floor = tuple(int(x) for x in sys.argv[2].split("."))
+sys.exit(0 if (int(m.group(1)), int(m.group(2))) >= floor else 1)
+PY
+}
 
 DAEMON_PID=""
 MOCK_PID=""
@@ -820,7 +839,7 @@ fi
 # =============================================================================
 # Leg H: disclose v1.4 round-trip — provenance split over measured + estimated
 # =============================================================================
-step "H: disclose v1.4 — aggregate.database_waste provenance (measured + estimated), hash, additive"
+step "H: disclose >= v1.4 — aggregate.database_waste provenance (measured + estimated), hash, additive"
 # Estimated archived windows: a fresh daemon with green enabled but NO
 # [green.alumet.database] and no Alumet — the estimated fallback path, which
 # still writes disclosure_waste.database (model estimated) per scored window.
@@ -884,8 +903,13 @@ mw = dbw.get("measured_windows"); ew = dbw.get("estimated_windows"); wf = dbw.ge
 def close(a, b):
     if a is None or b is None: return False
     return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+def _schema_at_least(v, floor):
+    import re
+    m = re.search(r"/v(\d+)\.(\d+)", v or "")
+    return bool(m) and (int(m.group(1)), int(m.group(2))) >= floor
 checks = {
-  "schema v1.4":       sv.startswith("perf-sentinel-report/v1.4"),
+  # Additive by contract, so the floor is what matters, not the exact string.
+  "schema >= v1.4":    _schema_at_least(sv, (1, 4)),
   "block present":     bool(af.get("database_waste")),
   "provenance sums":   mw is not None and ew is not None and wf is not None and mw + ew == wf,
   "both models":       models == {"alumet_rapl", "estimated"},
@@ -920,10 +944,10 @@ if [ -s "${PREV14_ARCHIVE}" ] && "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent 
      --org-config "${ORG_CONFIG}" "${PREV_PERIOD[@]}" \
      --input "${PREV14_ARCHIVE}" --output "${TMP_DIR}/h-official.json" >/dev/null 2>"${TMP_DIR}/h-off.err"; then
   sv="$(python3 -c "import json;print(json.load(open('${TMP_DIR}/h-official.json')).get('schema_version'))" 2>/dev/null)"
-  if printf '%s' "${sv}" | grep -qF "perf-sentinel-report/v1.4"; then
-    assert_pass "H-schema-intent" "official-intent disclose accepts and stamps ${sv}"
+  if schema_at_least "${sv}" 1.4; then
+    assert_pass "H-schema-intent" "official-intent disclose accepts and stamps ${sv} (>= v1.4, the floor that introduced the database block)"
   else
-    assert_fail "H-schema-intent" "unexpected schema_version: ${sv:-<none>}"
+    assert_fail "H-schema-intent" "schema_version ${sv:-<none>} is below the v1.4 floor"
   fi
   if python3 -c "import json,sys; sys.exit(0 if not ((json.load(open('${TMP_DIR}/h-official.json')).get('aggregate') or {}).get('database_waste')) else 1)"; then
     assert_pass "H-additive" "pre-v1.4 no-database archive discloses without a database_waste block (additive-only fields)"
