@@ -151,11 +151,18 @@ code="$(acks_code "${TOML_KEY}")"
 record "B-toml-key" "PASS" "401 bare / 200 with X-API-Key (0.9.14 served bare GET)"
 ok "GET /api/acks gated by the TOML key"
 
-step "C1. cold export: three real quality-gate rules, passed=true"
-COLD="$(curl -fsS "${DAEMON_URL}/api/export/report" | jq -c '.quality_gate | {passed, rules: (.rules|length)}')"
-[ "${COLD}" = '{"passed":true,"rules":3}' ] || die "cold quality_gate=${COLD}, expected passed:true rules:3 (0.9.14 returns rules:0)"
-record "C-cold-rules" "PASS" "rules:3 evaluated on the cold envelope (0.9.14: rules:[])"
-ok "cold envelope carries the three evaluated rules"
+step "C1. cold export: real quality-gate rules evaluated, passed=true"
+# The point is that the cold envelope carries REAL evaluated rules rather than an
+# empty list (0.9.14 returned rules:0), so the assertion is a floor plus the
+# observed count, not an exact match. Pinning the exact number broke the moment
+# the product added a fourth rule, which is a legitimate addition.
+COLD_PASSED="$(curl -fsS "${DAEMON_URL}/api/export/report" | jq -r '.quality_gate.passed')"
+COLD_RULES="$(curl -fsS "${DAEMON_URL}/api/export/report" | jq -r '.quality_gate.rules | length')"
+[ "${COLD_PASSED}" = "true" ] || die "cold quality_gate.passed=${COLD_PASSED}, expected true"
+[ "${COLD_RULES}" -ge 3 ] 2>/dev/null \
+  || die "cold quality_gate carries ${COLD_RULES} rule(s), expected at least 3 (0.9.14 returns 0)"
+record "C-cold-rules" "PASS" "${COLD_RULES} rules evaluated on the cold envelope (>= 3; 0.9.14: rules:[])"
+ok "cold envelope carries ${COLD_RULES} evaluated rules, passed=true"
 
 step "C2. critical N+1 SQL vs n_plus_one_sql_critical_max=0: passed=false"
 python3 -c "
