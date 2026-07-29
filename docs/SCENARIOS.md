@@ -1037,7 +1037,12 @@ visible in Grafana :
 
 ## CI/CD integration scenarios
 
-5 scenarios that validate the perf-sentinel 0.5.17 integration in CI/CD
+5 scenarios that validate the perf-sentinel integration in CI/CD. `ci-shift-left` and
+`output-formats-coverage` derive their CLI image from `manifests/perf-sentinel-daemon.yaml`,
+so they track the version under validation; override with `PERF_SENTINEL_VERSION` (a GHCR
+tag). The three template scenarios still fetch the upstream templates at a pinned git tag
+(`UPSTREAM_VERSION`, default 0.5.17) because the fetch is by tag and a newer one only
+exists once the release is published
 pipelines: the canonical ack workflow (regression to ack via PR to
 green pipeline), the 3 upstream templates (GitLab CI, Jenkinsfile,
 GitHub Actions), and the output formats / diff / cap loader coverage.
