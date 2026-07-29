@@ -27,8 +27,9 @@
 #
 # Legs (see README.md):
 #   D    config: half-declared [green.broker_static], provider typo, cgroup
-#        collisions (service_mappings and the database declaration), and an
-#        error on a [green.alumet.broker] field naming THAT section.
+#        collisions (service_mappings and the database declaration), a broker
+#        without an endpoint, and the two rejections that go through the
+#        validator broker and database SHARE -- each naming THAT section.
 #   A1   nominal, Alumet live and labelled: model is always alumet_rapl and
 #        NEVER broker_specpower -- the declaration bills no measured window.
 #   A2   energy sum over the window is the cgroup's own, not the declared
@@ -452,7 +453,7 @@ note "scrape ${SCRAPE_SECS}s > batch cadence (trace_ttl_ms=1000): staleness wind
 # =============================================================================
 # Leg D: config validation (fast, no traffic needed)
 # =============================================================================
-step "D: the four configuration refusals happen at load"
+step "D: the seven configuration refusals happen at load, plus one acceptance"
 D_FAILS=0
 d_case() {  # $1 = label, $2 = config file, $3 = grep pattern the error must match
   if expect_config_reject "$2" "$2.log"; then
@@ -524,6 +525,42 @@ else
   D_FAILS=$((D_FAILS + 1))
 fi
 
+# d7: the section-naming proof that goes through the validator broker and
+# database SHARE (`validate_workload_fields`), which is where a mix-up would
+# actually happen. An invalid region charset is one of the two things that
+# validator rejects; the other is a control char in label_value. Note that a
+# label_value with spaces or '!' is deliberately ACCEPTED — cgroup names carry
+# odd characters, so only length and control chars are bounded there.
+write_config d7.toml "${BROKER_LABEL}" "" ""
+sed -i.bak "s/^region = \"${REGION}\"$/region = \"eu west 3!!\"/" "${TMP_DIR}/d7.toml"
+if expect_config_reject d7.toml d7.log; then
+  if grep -q "green.alumet.broker" "${TMP_DIR}/d7.log" \
+     && ! grep -q "green.alumet.database" "${TMP_DIR}/d7.log"; then
+    ok "d7 invalid broker region through the shared validator: error names [green.alumet.broker] alone"
+  else
+    color_red "    FAIL: d7 error does not name [green.alumet.broker] alone"
+    note "D d7: $(tail -2 "${TMP_DIR}/d7.log" | tr '\n' ' ')"
+    D_FAILS=$((D_FAILS + 1))
+  fi
+else
+  color_red "    FAIL: d7 invalid broker region was ACCEPTED"
+  D_FAILS=$((D_FAILS + 1))
+fi
+
+# d8: a control char in the broker label_value is refused — but by the TOML
+# parser, before the config validator runs, so the error cannot name the
+# section. `validate_workload_fields`' own control-char branch is therefore
+# unreachable from a config file and is defence-in-depth for programmatic
+# construction only. Asserting the rejection is truthful; asserting the section
+# name here would be asserting the TOML crate's message.
+write_config d8.toml "$(printf 'kafka\007cgroup')" "" ""
+if expect_config_reject d8.toml d8.log; then
+  ok "d8 control char in the broker label_value refused fail-closed (at TOML parse, so unnamed)"
+else
+  color_red "    FAIL: d8 control char in the broker label_value was ACCEPTED"
+  D_FAILS=$((D_FAILS + 1))
+fi
+
 # provider absent / empty must be ACCEPTED and resolve to generic.
 write_config d6.toml "${BROKER_LABEL}" "" ""
 sed -i.bak 's/provider = "aws"/provider = ""/' "${TMP_DIR}/d6.toml"
@@ -536,7 +573,7 @@ else
 fi
 
 if [ "${D_FAILS}" -eq 0 ]; then
-  assert_pass "D" "6/6 configuration cases behave (5 refusals + empty provider accepted)"
+  assert_pass "D" "8/8 configuration cases behave (7 refusals + empty provider accepted)"
 else
   assert_fail "D" "${D_FAILS} configuration case(s) wrong"
 fi

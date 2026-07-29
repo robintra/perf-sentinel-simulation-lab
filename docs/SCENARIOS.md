@@ -2070,10 +2070,12 @@ label*, and that *dies then comes back*. The logic was rewritten three times in
 review, each correction revealing the next, so legs A1–A6 map 1:1 onto the four
 rules the current code rests on.
 
-Twelve legs. **D** six configuration cases (half-declared `[green.broker_static]`,
-`provider = "asw"`, the cgroup colliding with `service_mappings` and with the
-database declaration, a broker without an Alumet endpoint — all refused, the
-last naming *that* section; plus `provider = ""` accepted as `generic`).
+Twelve legs. **D** eight configuration cases (half-declared
+`[green.broker_static]`, `provider = "asw"`, the cgroup colliding with
+`service_mappings` and with the database declaration, a broker without an Alumet
+endpoint, an invalid broker `region` and a control char in its `label_value` —
+all refused, each naming *that* section; plus `provider = ""` accepted as
+`generic`).
 **A1/A2** the nominal regime: `alumet_rapl` in every window once the measurement
 owns the timeline, and the summed energy matching the closed form
 `elapsed × J / (energy_interval × 3.6e6)` rather than the declared cluster's — a
@@ -2115,11 +2117,15 @@ same trace, same link, only the parent of the analyzable span differs, and only
 the ancestor form renders `triggered by trace`. Reported upstream; the gate
 stays red until the fix lands.
 
-A pre-existing gap deliberately left ungated: an invalid `label_value` (spaces,
-`!`) is accepted at load on the `watch` path for **both**
-`[green.alumet.broker]` and `[green.alumet.database]`, and 0.9.22 accepts it
-too, so it is not a regression of this branch. Also noted rather than failed:
-on a RabbitMQ **default exchange** `messaging.destination.name` is blank and
+One validator subtlety pinned by legs d7/d8 rather than assumed: `label_value`
+is deliberately permissive — a value with spaces or `!` is accepted, because
+cgroup names carry odd characters and `validate_workload_fields` bounds only
+length and control characters there. The charset rule (`ASCII letters, digits,
+'-' and '_'`) applies to **`region`**. Those two rejections are the ones that
+flow through the validator broker and database share, so they are where a
+section mix-up would surface, and both name `[green.alumet.broker]` alone.
+
+Noted rather than failed: on a RabbitMQ **default exchange** `messaging.destination.name` is blank and
 `messaging.rabbitmq.destination.routing_key` is never read, so publishes to
 distinct routing keys collapse into one template — the same class as the
 host-strip merges documented in `rpc-carrier-parity`.

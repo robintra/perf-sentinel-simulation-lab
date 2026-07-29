@@ -37,7 +37,7 @@ onto the four rules the current code rests on.
 
 | leg | assertion |
 |-----|-----------|
-| D  | six configuration cases: half-declared `[green.broker_static]` (`nodes` without `instance_type`), `provider = "asw"`, the broker cgroup colliding with `service_mappings`, the same cgroup declared as both broker and database, and `[green.alumet.broker]` without an `[green.alumet]` endpoint — all refused at load, the last one naming **that** section and not `[green.alumet.database]`; plus `provider = ""` **accepted** and resolved to `generic` |
+| D  | eight configuration cases: half-declared `[green.broker_static]` (`nodes` without `instance_type`), `provider = "asw"`, the broker cgroup colliding with `service_mappings`, the same cgroup declared as both broker and database, `[green.alumet.broker]` without an `[green.alumet]` endpoint, an invalid broker `region`, and a control char in the broker `label_value` — all refused at load, each naming **that** section and never `[green.alumet.database]`; plus `provider = ""` **accepted** and resolved to `generic` |
 | A1 | nominal regime, Alumet live and labelled: `messaging_waste.model` is `alumet_rapl` in every window once the measurement owns the timeline, and `broker_specpower` bills none of them |
 | A2 | the energy summed over the run is the cgroup's own (closed form: `elapsed × J / (energy_interval × 3.6e6)`), not the declared cluster's. A per-tick double billing — the arbitration's first failure mode — lands near 2× and cannot hide in the band |
 | A3 | Alumet cut: falls back to `broker_specpower` once past the staleness window (3× the scrape interval), leaving no window without a figure |
@@ -108,10 +108,12 @@ Prerequisites: a local release build of the product
   broker energy at all, so it produces no `messaging_waste` to compare against;
   A5 in particular confirms that the review fix holds against a real scraper, it
   cannot re-demonstrate the bug.
-- **A pre-existing gap, out of scope here.** An invalid `label_value` (spaces,
-  `!`) is accepted at load on the `watch` path for **both**
-  `[green.alumet.broker]` and `[green.alumet.database]`; 0.9.22 accepts it too,
-  so it is not a regression of this branch and leg D does not gate it.
+- **`label_value` is deliberately permissive.** A value with spaces or `!` is
+  accepted: cgroup names carry odd characters, so `validate_workload_fields`
+  bounds only length and control characters there. The charset rule (`ASCII
+  letters, digits, '-' and '_'`) applies to **`region`**, which legs d7 and d8
+  gate — they are the two rejections that flow through the validator broker and
+  database share, so they are where a section mix-up would surface.
 - **The RabbitMQ default exchange is a documented blind spot,** recorded as a
   note rather than a failure: `messaging.destination.name` is blank there and
   `messaging.rabbitmq.destination.routing_key` is never read, so publishes to
