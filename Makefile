@@ -44,6 +44,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-alumet-db-waste \
         verify-appsec-hardening \
         verify-endpoint-resolution \
+        verify-broker-messaging-waste \
         verify-chart-disclose-persistence \
         verify-all-scenarios
 
@@ -165,6 +166,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/alumet-db-waste/verify.sh
 	@bash -n scenarios/appsec-hardening/verify.sh
 	@bash -n scenarios/endpoint-resolution/verify.sh
+	@bash -n scenarios/broker-messaging-waste/verify.sh
 	@bash -n scenarios/chart-disclose-persistence/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
@@ -560,7 +562,10 @@ verify-appsec-hardening: ## 0.9.15 AppSec: source_endpoint redaction, ack API ke
 verify-endpoint-resolution: ## 0.9.22 source.endpoint: ancestor walk to the inbound route, CLIENT skip, outermost code frame, one spelling per origin (local binary, no cluster)
 	./scenarios/endpoint-resolution/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 59 scenarios sequentially (see docs/SCENARIOS.md)
+verify-broker-messaging-waste: ## messaging ingestion + broker energy: the two-source arbitration against a real scraper (cut/restore/wrong-label/cold-boot), disclosure v1.5, config refusals, destination spellings, producer link (local binary, no cluster)
+	./scenarios/broker-messaging-waste/verify.sh
+
+verify-all-scenarios: seed-tracegen ## Run all 60 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -606,7 +611,7 @@ verify-all-scenarios: seed-tracegen ## Run all 59 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

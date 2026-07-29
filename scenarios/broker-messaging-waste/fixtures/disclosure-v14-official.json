@@ -1,0 +1,173 @@
+{
+  "schema_version": "perf-sentinel-report/v1.4",
+  "report_metadata": {
+    "intent": "official",
+    "confidentiality_level": "public",
+    "integrity_level": "hash-only",
+    "generated_at": "2026-07-29T07:04:15.302091917Z",
+    "generated_by": "cli-batch",
+    "perf_sentinel_version": "0.9.22",
+    "report_uuid": "5c6d906e-763f-496c-adbc-0e79961e1fa7",
+    "binary_version": "0.9.22"
+  },
+  "organisation": {
+    "name": "Lab Example SAS",
+    "country": "FR",
+    "identifiers": {
+      "domain": "lab.example.fr"
+    }
+  },
+  "period": {
+    "from_date": "2026-04-01",
+    "to_date": "2026-06-30",
+    "period_type": "calendar-quarter",
+    "days_covered": 91
+  },
+  "scope_manifest": {
+    "total_applications_declared": 10,
+    "applications_measured": 1,
+    "environments_measured": [
+      "prod"
+    ],
+    "requests_measured": 185,
+    "coverage_basis": {
+      "operator_declared": [
+        "total_applications_declared",
+        "total_requests_in_period",
+        "applications_excluded",
+        "environments_measured",
+        "environments_excluded"
+      ],
+      "machine_derived": [
+        "applications_measured",
+        "requests_measured",
+        "coverage_percentage"
+      ]
+    }
+  },
+  "methodology": {
+    "sci_specification": "ISO/IEC 21031:2024",
+    "perf_sentinel_version": "0.9.22",
+    "enabled_patterns": [
+      "n_plus_one_sql",
+      "n_plus_one_http",
+      "redundant_sql",
+      "redundant_http"
+    ],
+    "core_patterns_required": [
+      "n_plus_one_sql",
+      "n_plus_one_http",
+      "redundant_sql",
+      "redundant_http"
+    ],
+    "conformance": "core-required",
+    "calibration_inputs": {
+      "carbon_intensity_source": "electricity_maps",
+      "specpower_table_version": "2026-04-24",
+      "binary_specpower_vintage": "2026-04-24 (CCF aligned)",
+      "scaphandre_used": true,
+      "energy_source_models": [
+        "scaphandre_rapl"
+      ],
+      "calibration_applied": false
+    },
+    "standard_crosswalk": {
+      "standard": "ESRS E1 (Delegated Regulation (EU) 2023/5303)",
+      "mappings": [
+        {
+          "report_field": "aggregate.total_energy_kwh",
+          "datapoint": "E1-5 Energy consumption and mix",
+          "note": "Convert kWh to MWh. Not disaggregated by fossil, nuclear or renewable source."
+        },
+        {
+          "report_field": "aggregate.total_carbon_kgco2eq (operational term)",
+          "datapoint": "E1-6 Gross Scope 2 GHG emissions (location-based)",
+          "note": "Location-based only. ESRS also requires a market-based figure, which SCI excludes."
+        },
+        {
+          "report_field": "embodied carbon (SCI M term, aggregate only)",
+          "datapoint": "E1-6 Gross Scope 3 GHG emissions (categories 1 and 2)",
+          "note": "Hardware lifecycle. ESRS admits estimates and proxy data for Scope 3."
+        }
+      ],
+      "caveats": [
+        "Interpretive crosswalk, not a certification or an audited inventory.",
+        "Figures carry a 2x directional uncertainty bracket.",
+        "Scope is IT compute only. It covers neither non-IT scopes nor the market-based Scope 2 figure."
+      ]
+    }
+  },
+  "aggregate": {
+    "total_requests": 185,
+    "total_energy_kwh": 0.00008470679291957487,
+    "total_carbon_kgco2eq": 0.00019084476871145063,
+    "aggregate_efficiency_score": 11.75468483816013,
+    "aggregate_waste_ratio": 0.8824531516183987,
+    "anti_patterns_detected_count": 0,
+    "estimated_optimization_potential_kgco2eq": 5.1554285243958e-6,
+    "canonical_waste": {
+      "n_plus_one_threshold": 2,
+      "energy_kwh": 0.00007471635542602602,
+      "carbon_kgco2eq": 5.1554285243958e-6,
+      "waste_ratio": 0.8824531516183987,
+      "efficiency_score": 11.75468483816013
+    },
+    "operational_waste": {
+      "n_plus_one_threshold": 5,
+      "energy_kwh": 0.00007471635542602602,
+      "carbon_kgco2eq": 5.1554285243958e-6,
+      "waste_ratio": 0.8824531516183987,
+      "efficiency_score": 11.75468483816013
+    },
+    "period_coverage": 1.0,
+    "binary_versions": [
+      "0.8.2"
+    ],
+    "runtime_windows_count": 6,
+    "fallback_windows_count": 0,
+    "per_service_energy_models": {
+      "order-service": [
+        "scaphandre_rapl"
+      ]
+    },
+    "per_service_measured_ratio": {
+      "order-service": 1.0
+    },
+    "temporal_coverage": {
+      "temporal_coverage": 0.01098901098901099,
+      "observed_days": 1,
+      "days_in_period": 91,
+      "largest_gap_days": 65
+    }
+  },
+  "applications": [
+    {
+      "service_name": "order-service",
+      "endpoints_observed": 2,
+      "total_requests": 185,
+      "energy_kwh": 0.00008470679291957487,
+      "carbon_kgco2eq": 5.8447687114506715e-6,
+      "efficiency_score": 100.0,
+      "anti_patterns_detected_count": 0
+    }
+  ],
+  "integrity": {
+    "content_hash": "sha256:6a7a532410a2ac981b58b09e4c034c6dd100d7528783ec868a543e456cc934f3",
+    "binary_hash": "sha256:1f4f868b9b625f8b1126fc7e59d3fd738cf4552789456ad81bd071ea468707d0",
+    "trace_integrity_chain": null,
+    "signature": null
+  },
+  "notes": {
+    "disclaimers": [
+      "Directional estimate, not regulatory-grade.",
+      "Approximate uncertainty bracket: ~2x multiplicative.",
+      "Optimization potential excludes embodied hardware emissions (SCI M term).",
+      "Per-service carbon includes operational emissions only; embodied carbon (SCI M term) is reported in the aggregate total but not attributed per service.",
+      "Energy and carbon attribution per service is runtime-calibrated when the window's energy_model is non-empty; archives written before this feature shipped fall back to proportional I/O share.",
+      "Not suitable for CSRD or GHG Protocol Scope 3 reporting.",
+      "Methodology: ISO/IEC 21031:2024 (SCI).",
+      "An ESRS E1 datapoint crosswalk is provided under methodology.standard_crosswalk as a mapping aid, not a substitute for an audited CSRD inventory.",
+      "Temporal coverage: 1/91 declared days carried measured traffic (1.1%, largest gap 65 days). Archiving is traffic-gated, so days without measured traffic, including legitimately quiet periods, lower this figure. It is a lower bound on activity, not a daemon-uptime guarantee."
+    ]
+  }
+}
