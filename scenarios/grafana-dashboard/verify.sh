@@ -333,6 +333,24 @@ ok "${UNCOVERED_COUNT} exposed metrics uncovered by dashboard (extension targets
 step "Validate every panel expr returns at least one time series"
 EMPTY_PANELS=0
 TOTAL_PANELS=0
+UNFEEDABLE=0
+# Exprs the lab structurally cannot feed, so an empty result is the lab's
+# coverage gap and not a broken panel. Each entry must name what is missing;
+# anything else empty still fails the scenario.
+#
+# `type="messaging"` only gets a histogram series once a broker span exceeds the
+# slow threshold, and the lab deploys no broker at all — messaging ingestion is
+# gated cluster-free by scenarios/broker-messaging-waste instead. Note this is
+# not a missing `or vector(0)`: its two siblings in the same panel
+# (type="sql", type="http_out") do not carry one either, and only 2 of the
+# dashboard's 32 exprs do, so the fallback is the exception upstream, not the
+# convention.
+expr_unfeedable() {  # $1 = raw expr ; 0 = known-unfeedable
+  case "$1" in
+    *'type="messaging"'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 # URL-encode the exprs upfront so braces, quotes, and parentheses do
 # not break shell interpolation when piped to wget --post-data.
 python3 -c "
@@ -355,11 +373,16 @@ except Exception:
     print(0)
 " 2>/dev/null || echo 0)
   if [ "${count}" -lt 1 ]; then
-    EMPTY_PANELS=$((EMPTY_PANELS + 1))
-    warn "empty result: ${raw:0:70}..."
+    if expr_unfeedable "${raw}"; then
+      UNFEEDABLE=$((UNFEEDABLE + 1))
+      warn "empty but not feedable by this lab (no broker deployed): ${raw:0:70}..."
+    else
+      EMPTY_PANELS=$((EMPTY_PANELS + 1))
+      warn "empty result: ${raw:0:70}..."
+    fi
   fi
 done < "${TMP_DIR}/upstream-exprs.txt"
-ok "${TOTAL_PANELS} panel expressions checked, ${EMPTY_PANELS} returned empty"
+ok "${TOTAL_PANELS} panel expressions checked, ${EMPTY_PANELS} returned empty, ${UNFEEDABLE} empty by lab coverage gap"
 
 step "Confirm dashboards visible via Grafana API"
 GRAFANA_PASS=$(kubectl -n observability get secret kube-prometheus-stack-grafana \
@@ -527,7 +550,7 @@ step "Write report"
   echo "## Panels rendered against live data"
   echo
   echo "- upstream panels checked: ${TOTAL_PANELS}"
-  echo "- empty results: ${EMPTY_PANELS}"
+  echo "- empty results: ${EMPTY_PANELS} (plus ${UNFEEDABLE} empty by lab coverage gap, e.g. no broker deployed)"
   echo
   echo "## Alert rules"
   echo
