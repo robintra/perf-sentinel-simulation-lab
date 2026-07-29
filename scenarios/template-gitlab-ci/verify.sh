@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Validate the upstream gitlab-ci.yml template at v0.5.17 end-to-end.
+# Validate the upstream gitlab-ci.yml template at v0.9.23 end-to-end.
 #
 # 4 steps:
 #
-# 1. Curl the upstream `docs/ci-templates/gitlab-ci.yml` at v0.5.17
+# 1. Curl the upstream `docs/ci-templates/gitlab-ci.yml` at v0.9.23
 #    (override via UPSTREAM_VERSION).
 # 2. Lint the template via the GitLab CE CI Lint API
 #    (POST /api/v4/ci/lint). Asserts the YAML parses and the gitlab-ci
@@ -18,7 +18,7 @@
 #    GitLab CE. Surfaces its verdict.
 #
 # Optional knobs:
-#   UPSTREAM_VERSION    override the version tag (default 0.5.17).
+#   UPSTREAM_VERSION    override the version tag (default 0.9.23).
 #   UPSTREAM_PATH       override with a local copy of the template
 #                       (default fetches via curl).
 #   SKIP_E2E=1          skip step 4 (faster, lint+parity only).
@@ -33,7 +33,7 @@ LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 LAB_FIXTURE="${LAB_ROOT}/artifacts/fixtures/gitlab-ci-from-upstream.yml"
 GITLAB_VERIFY="${LAB_ROOT}/scripts/verify-gitlab-perf-sentinel.sh"
 
-UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.5.17}"
+UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.9.23}"
 UPSTREAM_URL="https://raw.githubusercontent.com/robintra/perf-sentinel/v${UPSTREAM_VERSION}/docs/ci-templates/gitlab-ci.yml"
 GITLAB_URL="${GITLAB_URL:-http://localhost:8181}"
 PAT_FILE="${PAT_FILE:-/tmp/gitlab-pat.txt}"
