@@ -21,6 +21,11 @@
 #       "resourceSpans" tag value; an OTLP dump with an attribute named/valued
 #       "data" stays OTLP (single pretty-printed object form).
 #   A7  report --input <dump> renders a usable dashboard.
+#   A8  the real opentelemetry-java stdout-exporter shape ingests: an attribute
+#       carrying no value ({"key":"empty","value":{}}) is legal protojson but
+#       matches no AnyValue variant, and used to fail the WHOLE document.
+#   A9  that tolerance changes nothing else: the same dump with an empty-valued
+#       attribute injected yields the same findings as the pristine one.
 set -uo pipefail
 
 SCENARIO="batch-otlp-file"
@@ -29,6 +34,10 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 JAEGER_FIXTURE="${SCRIPT_DIR}/../datadog-bridge/fixtures/crossfmt-jaeger.json"
+# Verbatim copy of opentelemetry-java's own expected output for the
+# `experimental-otlp/stdout` exporter (exporters/logging-otlp test resources,
+# Apache-2.0). Committed rather than curl'd so the assertion stays offline.
+JAVA_STDOUT_FIXTURE="${SCRIPT_DIR}/fixtures/java-stdout-wrapper.json"
 rm -rf "${TMP_DIR}"
 mkdir -p "${TMP_DIR}/dump"
 chmod 777 "${TMP_DIR}/dump"   # the contrib collector runs as UID 10001
@@ -91,6 +100,7 @@ command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 \
   || die "Docker unavailable — the dd-trace leg needs a throwaway collector container"
 python3 -c "import msgpack" 2>/dev/null || die "python3-msgpack missing (needed by dd_send.py)"
 [ -f "${JAEGER_FIXTURE}" ] || die "missing Jaeger fixture ${JAEGER_FIXTURE}"
+[ -f "${JAVA_STDOUT_FIXTURE}" ] || die "missing Java stdout fixture ${JAVA_STDOUT_FIXTURE}"
 
 # dd-trace SQL is pre-obfuscated -> strict sanitizer mode, mirrored between
 # the batch config and the loopback daemon so A2 compares like with like.
@@ -351,6 +361,73 @@ if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TMP_DIR}/dd-dump.ndjson" \
   assert_pass "A7" "dashboard rendered from the NDJSON dump ($(wc -c < "${TMP_DIR}/r.html" | tr -d ' ') bytes, dd-shop present)"
 else
   assert_fail "A7" "report failed or dashboard empty: $(tail -2 "${TMP_DIR}/err.txt")"
+fi
+
+# ── A8: the opentelemetry-java stdout exporter shape ────────────────────────
+# Java has no OTLP file exporter, so the documented CI recipe captures traces
+# from the forked JVM's stdout: `experimental-otlp/stdout` writes one JSON
+# object per export batch, Failsafe parks it in target/failsafe-reports, and a
+# grep turns it into NDJSON. That output carries attributes with no value at
+# all, which is legal protojson but matches no AnyValue variant.
+step "A8: Failsafe -output.txt -> documented grep -> analyze (empty-valued attribute)"
+python3 - "${JAVA_STDOUT_FIXTURE}" "${TMP_DIR}/failsafe-output.txt" <<'PY'
+import json, sys
+line = json.dumps(json.load(open(sys.argv[1])), separators=(",", ":"))
+# Two export batches, framed by test log lines, as a real -output.txt looks.
+open(sys.argv[2], "w").write(
+    "12:04:31.001 INFO  c.e.SomeIT - starting\n" + line
+    + "\nsome unrelated test log line\n" + line + "\n")
+PY
+grep -h '^{"resourceSpans"' "${TMP_DIR}/failsafe-output.txt" > "${TMP_DIR}/java-stdout.ndjson"
+GREPPED=$(wc -l < "${TMP_DIR}/java-stdout.ndjson" | tr -d ' ')
+A8_RC=0; run_analyze "${TMP_DIR}/java-stdout.ndjson" || A8_RC=$?
+# The upstream fixture carries no I/O span, so traces_analyzed stays 0: what is
+# under test is that the document ingests at all, not what it detects.
+if [ "${A8_RC}" = "0" ] && [ "${GREPPED}" = "2" ] \
+   && ! grep -q "no known keys found" "${TMP_DIR}/err.txt"; then
+  assert_pass "A8" "grep kept ${GREPPED}/2 batches, analyze exit 0, no AnyValue parse error"
+else
+  assert_fail "A8" "rc=${A8_RC}, grepped=${GREPPED}/2: $(tail -2 "${TMP_DIR}/err.txt")"
+fi
+
+# ── A9: the tolerance is inert on everything else ───────────────────────────
+step "A9: an empty-valued attribute injected into the dump leaves the findings unchanged"
+python3 - "${TMP_DIR}/dd-dump.ndjson" "${TMP_DIR}/empty-attr.ndjson" <<'PY'
+import json, sys
+out = open(sys.argv[2], "w")
+for i, raw in enumerate(open(sys.argv[1])):
+    d = json.loads(raw)
+    if i == 0:
+        span = d["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+        span.setdefault("attributes", []).append({"key": "empty", "value": {}})
+    out.write(json.dumps(d, separators=(",", ":")) + "\n")
+PY
+census() {  # per-finding identity + occurrence count, plus the two counters
+  # `signature` is the finding's stable identity (type:service:endpoint:hash) and
+  # pattern.occurrences is what a dropped span would move, so a lenient reparse
+  # that silently lost the injected span could not pass this unchanged.
+  python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+a = d["analysis"]
+rows = sorted(
+    (f.get("signature", ""), f.get("severity", ""),
+     f.get("pattern", {}).get("occurrences"), f.get("pattern", {}).get("template"))
+    for f in d.get("findings", []))
+print(json.dumps([a["traces_analyzed"], a.get("events_processed"), rows]))
+' "$1"
+}
+A9_RC=0; run_analyze "${TMP_DIR}/dd-dump.ndjson" || A9_RC=$?
+PRISTINE="$(census "${TMP_DIR}/out.json" 2>/dev/null || echo pristine-failed)"
+INJ_RC=0; run_analyze "${TMP_DIR}/empty-attr.ndjson" || INJ_RC=$?
+INJECTED="$(census "${TMP_DIR}/out.json" 2>/dev/null || echo injected-failed)"
+# Guard against a vacuous pass: comparing two empty censuses proves nothing.
+[ "${A9_RC}" = "0" ] && echo "${PRISTINE}" | grep -q '\[\[' \
+  || die "A9: the pristine dump yields no finding to compare against (${PRISTINE})"
+if [ "${INJ_RC}" = "0" ] && [ "${INJECTED}" = "${PRISTINE}" ]; then
+  assert_pass "A9" "identical census with and without the empty-valued attribute: ${PRISTINE}"
+else
+  assert_fail "A9" "rc=${INJ_RC}, pristine=${PRISTINE} injected=${INJECTED}"
 fi
 
 # =============================================================================
