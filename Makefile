@@ -46,7 +46,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-endpoint-resolution \
         verify-broker-messaging-waste \
         verify-chart-disclose-persistence \
-        verify-java-stdout-exporter \
+        verify-java-ci-capture \
         verify-all-scenarios
 
 help: ## List available targets
@@ -168,7 +168,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/appsec-hardening/verify.sh
 	@bash -n scenarios/endpoint-resolution/verify.sh
 	@bash -n scenarios/broker-messaging-waste/verify.sh
-	@bash -n scenarios/java-stdout-exporter/verify.sh
+	@bash -n scenarios/java-ci-capture/verify.sh
 	@bash -n scenarios/chart-disclose-persistence/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
@@ -567,11 +567,11 @@ verify-endpoint-resolution: ## 0.9.22 source.endpoint: ancestor walk to the inbo
 verify-broker-messaging-waste: ## messaging ingestion + broker energy: the two-source arbitration against a real scraper (cut/restore/wrong-label/cold-boot), disclosure v1.5, config refusals, destination spellings, producer link (local binary, no cluster)
 	./scenarios/broker-messaging-waste/verify.sh
 
-verify-java-stdout-exporter: ## QUARANTINED (expected FAIL, see its README): the upstream Java CI recipe, Maven Failsafe + experimental-otlp/stdout -> grep -> analyze (local binary, no cluster)
-	./scenarios/java-stdout-exporter/verify.sh
+verify-java-ci-capture: ## QUARANTINED (expected FAIL, see its README): the upstream Java CI recipe, Maven Failsafe + perf-sentinel capture, plus the capture exit-code contract (local binary, no cluster)
+	./scenarios/java-ci-capture/verify.sh
 
 verify-all-scenarios: seed-tracegen ## Run all 60 scenarios sequentially (see docs/SCENARIOS.md)
-	@# java-stdout-exporter is intentionally absent: it is quarantined while the
+	@# java-ci-capture is intentionally absent: it is quarantined while the
 	@# upstream Java capture recipe is broken, so the gate keeps reporting on the
 	@# other 60. Add it here when it goes green.
 	@# Order matters:

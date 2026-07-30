@@ -1153,16 +1153,20 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 `make verify-all-scenarios` includes all 60 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
-One scenario sits outside that list on purpose. `java-stdout-exporter`
-runs the upstream Java CI recipe (Maven Failsafe +
-`experimental-otlp/stdout` → `grep` → `analyze`) and currently FAILs:
-Surefire's fork channel diverts the agent's stdout writes into a
-`.dumpstream` file, so the documented grep captures nothing. It has a
-`make verify-java-stdout-exporter` target and is covered by `make
-validate`, but it is quarantined out of the release-gate loop and out of
-the count of 60 until the upstream recipe is corrected — at which point
-it gets wired in like any other scenario. Its README carries the full
-diagnosis and the configuration that does work.
+One scenario sits outside that list on purpose. `java-ci-capture` runs
+the upstream Java CI recipe (Maven Failsafe + `perf-sentinel capture` →
+`analyze --ci`) and holds the exit-code contract that command promises.
+It is the first lab scenario whose trace file is produced by a language
+agent rather than by a Collector, committed fixtures, or a backend query
+API — the gap that let two broken Java recipes ship. It currently FAILs
+3 of its 12 assertions: the published POM points the agent at the gRPC
+port while the agent defaults to `http/protobuf`, a request refused
+before the queue is reported as writer backpressure, and a SIGTERM
+leaves an orphaned grandchild process. It has a `make
+verify-java-ci-capture` target and is covered by `make validate`, but it
+is quarantined out of the release-gate loop and out of the count of 60
+until it goes green — at which point it gets wired in like any other
+scenario. Its README carries the full diagnosis.
 
 ### Ack workflow walkthrough
 

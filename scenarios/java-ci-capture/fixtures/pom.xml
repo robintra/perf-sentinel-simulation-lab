@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Minimal Maven project reproducing the "CI integration tests (Maven Failsafe,
-  stdout exporter)" recipe from the upstream docs/INSTRUMENTATION.md.
+  Minimal Maven project reproducing the "CI integration tests (Maven Failsafe)"
+  recipe from the upstream docs/INSTRUMENTATION.md, Option 1 (`perf-sentinel
+  capture`).
 
   The maven-dependency-plugin and maven-failsafe-plugin blocks below are copied
   VERBATIM from that section. If the recipe drifts, this file must be updated to
   match it, never the other way round: the point of the scenario is to run what
   the documentation actually tells users to run.
+
+  One indirection: the OTLP endpoint is a property whose DEFAULT is the
+  documented literal `http://localhost:4317`. Leg D0 runs with that default, so
+  it exercises the recipe exactly as published; the later legs override it, to
+  measure the rest of the capture contract independently of D0's outcome.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -14,7 +20,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.perfsim.lab</groupId>
-  <artifactId>java-stdout-exporter-it</artifactId>
+  <artifactId>java-ci-capture-it</artifactId>
   <version>1.0.0-SNAPSHOT</version>
 
   <properties>
@@ -24,6 +30,17 @@
          a JaCoCo-style plugin fills in. Declared empty so the recipe can be
          pasted verbatim into a project that has no such plugin. -->
     <argLine></argLine>
+    <!-- The documented value. verify.sh overrides it only where a leg needs a
+         configuration that actually exports. -->
+    <lab.otel.endpoint>http://localhost:4317</lab.otel.endpoint>
+    <!-- OTEL_EXPORTER_OTLP_PROTOCOL is deliberately ABSENT below: the documented
+         recipe omits it and relies on the agent's default. Declaring it empty
+         would not be the same thing, an empty value aborts autoconfiguration
+         outright. Legs that need it export it into the environment instead, and
+         the Failsafe fork inherits it. -->
+    <lab.items>15</lab.items>
+    <lab.db.url></lab.db.url>
+    <lab.fail></lab.fail>
     <junit.version>5.11.4</junit.version>
     <postgresql.version>42.7.4</postgresql.version>
     <!-- Older than the agent on purpose: the javaagent bridges API versions at
@@ -90,10 +107,9 @@
         <version>${failsafe.version}</version>
         <configuration>
           <argLine>@{argLine} -javaagent:${project.build.directory}/opentelemetry-javaagent.jar</argLine>
-          <!-- Sends the forked JVM's stdout to target/failsafe-reports/*-output.txt. -->
-          <redirectTestOutputToFile>true</redirectTestOutputToFile>
           <environmentVariables>
-            <OTEL_TRACES_EXPORTER>${lab.otel.traces.exporter}</OTEL_TRACES_EXPORTER>
+            <OTEL_TRACES_EXPORTER>otlp</OTEL_TRACES_EXPORTER>
+            <OTEL_EXPORTER_OTLP_ENDPOINT>${lab.otel.endpoint}</OTEL_EXPORTER_OTLP_ENDPOINT>
             <OTEL_SERVICE_NAME>lab-java-it</OTEL_SERVICE_NAME>
             <OTEL_TRACES_SAMPLER>always_on</OTEL_TRACES_SAMPLER>
             <OTEL_METRICS_EXPORTER>none</OTEL_METRICS_EXPORTER>
@@ -104,11 +120,9 @@
                  the anti-pattern the assertions name, exactly like the lab's own
                  Java services. -->
             <OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED>false</OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED>
-            <!-- Set by verify.sh; empty for the stdout run. -->
-            <OTEL_EXPORTER_OTLP_ENDPOINT>${lab.otel.endpoint}</OTEL_EXPORTER_OTLP_ENDPOINT>
-            <OTEL_EXPORTER_OTLP_PROTOCOL>http/protobuf</OTEL_EXPORTER_OTLP_PROTOCOL>
             <LAB_DB_URL>${lab.db.url}</LAB_DB_URL>
             <LAB_ITEMS>${lab.items}</LAB_ITEMS>
+            <LAB_FAIL>${lab.fail}</LAB_FAIL>
           </environmentVariables>
         </configuration>
         <executions>

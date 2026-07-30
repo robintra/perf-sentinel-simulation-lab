@@ -64,5 +64,13 @@ class OrderItemsIT {
     if (total < 0) {
       throw new AssertionError("unreachable, keeps the query results live");
     }
+
+    // D4 drives a real test failure through the wrapper: the spans are already
+    // exported at this point, so the leg measures exit-code propagation on a run
+    // that still produced traces.
+    String fail = System.getenv("LAB_FAIL");
+    if (fail != null && !fail.isBlank()) {
+      throw new AssertionError("LAB_FAIL is set, failing on purpose");
+    }
   }
 }
