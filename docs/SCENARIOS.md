@@ -1153,6 +1153,17 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 `make verify-all-scenarios` includes all 60 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
+One scenario sits outside that list on purpose. `java-stdout-exporter`
+runs the upstream Java CI recipe (Maven Failsafe +
+`experimental-otlp/stdout` → `grep` → `analyze`) and currently FAILs:
+Surefire's fork channel diverts the agent's stdout writes into a
+`.dumpstream` file, so the documented grep captures nothing. It has a
+`make verify-java-stdout-exporter` target and is covered by `make
+validate`, but it is quarantined out of the release-gate loop and out of
+the count of 60 until the upstream recipe is corrected — at which point
+it gets wired in like any other scenario. Its README carries the full
+diagnosis and the configuration that does work.
+
 ### Ack workflow walkthrough
 
 The canonical use case `ci-shift-left` validates end-to-end:

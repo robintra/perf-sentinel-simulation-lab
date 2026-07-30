@@ -1,0 +1,21 @@
+# Throwaway collector for the parity leg: plain OTLP in, NDJSON file out.
+# No batch processor, so one export request maps to exactly one line, the same
+# shape the stdout exporter writes and the same one batch-otlp-file consumes.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+exporters:
+  file/dump:
+    path: /var/otel/otlp-dump.ndjson
+service:
+  telemetry:
+    logs:
+      # info so the "Everything is ready" startup banner is emitted —
+      # verify.sh gates readiness on it (same trick as batch-otlp-file).
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [file/dump]
