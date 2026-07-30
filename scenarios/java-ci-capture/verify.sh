@@ -20,6 +20,12 @@
 #   D4  a failing test surfaces as Maven's own non-zero exit code.
 #   D5  the service form (capture &, then SIGTERM) yields the same counters.
 #   D6  the last export batch is not lost: the file carries every span.
+#   F1  --max-file-size exceeded: exit 2, message naming the flag, file valid.
+#   F2  a request refused before the queue is named unusable, not backpressure.
+#   F3  --output in a missing directory: exit 1, wrapped command never runs.
+#   F4  SIGTERM stops the whole command tree, probed by PID.
+#   F5  --listen-address 0.0.0.0 reached from a neighbouring container.
+#   F6  genuine writer saturation is reported as backpressure, and only as that.
 #
 # Self-contained: no cluster. Needs the local release binary, a JDK, Maven and
 # Docker (throwaway PostgreSQL, plus a throwaway Collector for the D3 reference).
@@ -65,7 +71,7 @@ assert_fail() { color_red "    FAIL: $2"; FAILS=$((FAILS + 1)); record "$1" "FAI
 CAPTURE_PID=""
 cleanup() {
   [ -n "${CAPTURE_PID}" ] && kill -TERM "${CAPTURE_PID}" 2>/dev/null || true
-  docker rm -f "${PG_CONTAINER}" "${COLLECTOR_CONTAINER}" jcc-gen >/dev/null 2>&1 || true
+  docker rm -f "${PG_CONTAINER}" "${COLLECTOR_CONTAINER}" jcc-gen jcc-gen1 jcc-gen2 jcc-gen3 jcc-gen4 jcc-gen5 jcc-gen6 >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -160,39 +166,28 @@ print(max(occ) if occ else 0)
 ' "$1" "$2"
 }
 
-# ── D0: the recipe exactly as published ─────────────────────────────────────
-# The POM's default endpoint IS the documented literal, so this leg runs the
-# published configuration with no override at all.
+# ── D0 / D1 / D2 / D6: the recipe exactly as published ──────────────────────
+# The POM's endpoint and protocol are the documented literals, so this run
+# exercises the published configuration with no override at all.
 DOC_ENDPOINT="$(grep -o 'http://localhost:[0-9]*' "${PROJECT}/pom.xml" | head -1)"
-step "D0: the POM as published (endpoint ${DOC_ENDPOINT}, agent default protocol)"
-D0_OUT="${TMP_DIR}/d0-traces.json"
-"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${D0_OUT}" \
-  --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
-  -- "${MVN}" $(mvn_args) > "${TMP_DIR}/d0-stdout.log" 2> "${TMP_DIR}/d0-stderr.log"
-D0_RC=$?
-D0_SPANS="$(span_count "${D0_OUT}")"
-if [ "${D0_SPANS}" -gt 0 ]; then
-  assert_pass "D0" "the published POM captured ${D0_SPANS} span(s)"
-else
-  PROTO_WARN="$(grep -ho "endpoint port is likely incorrect for protocol version \"[^\"]*\"" "${TMP_DIR}/d0-stderr.log" | head -1)"
-  assert_fail "D0" "the published POM captured nothing (capture rc=${D0_RC}): $(grep -o 'Capture: [^.]*' "${TMP_DIR}/d0-stderr.log" | tail -1)${PROTO_WARN:+; agent warned: ${PROTO_WARN}}"
-fi
-
-# Everything below needs a configuration that actually exports. The documented
-# endpoint targets 4317, capture's gRPC port, so the minimal correction is to
-# state the protocol that endpoint implies instead of relying on the agent's
-# default, which is http/protobuf in agent 2.x. Exported into the environment
-# rather than added to the POM: the Failsafe fork inherits it, and the POM stays
-# byte-for-byte the published recipe.
-
-# ── D1 / D2 / D6: the nominal wrapped run ───────────────────────────────────
-step "D1, D2, D6: capture --output ... -- mvn verify (protocol stated)"
+DOC_PROTOCOL="$(sed -n 's#.*<lab.otel.protocol>\(.*\)</lab.otel.protocol>.*#\1#p' "${PROJECT}/pom.xml" | head -1)"
+step "D0-D2, D6: capture -- mvn verify, POM as published (${DOC_ENDPOINT}, protocol ${DOC_PROTOCOL})"
 CAP_OUT="${TMP_DIR}/capture-traces.json"
 "${PERF_SENTINEL_LOCAL_BIN}" capture --output "${CAP_OUT}" \
   --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
-  -- env OTEL_EXPORTER_OTLP_PROTOCOL=grpc "${MVN}" $(mvn_args) > "${TMP_DIR}/stdout.log" 2> "${TMP_DIR}/stderr.log"
+  -- "${MVN}" $(mvn_args) > "${TMP_DIR}/stdout.log" 2> "${TMP_DIR}/stderr.log"
 CAP_RC=$?
 REPORTS="${PROJECT}/target/failsafe-reports"
+CAP_SPANS="$(span_count "${CAP_OUT}")"
+
+# D0 — the published recipe exports at all. Round 2 measured 0 spans here: the
+# endpoint named :4317 while the agent defaulted to http/protobuf.
+if [ "${CAP_SPANS}" -gt 0 ]; then
+  assert_pass "D0" "the published POM captured ${CAP_SPANS} span(s) with protocol ${DOC_PROTOCOL} on ${DOC_ENDPOINT}"
+else
+  PROTO_WARN="$(grep -ho "endpoint port is likely incorrect for protocol version \"[^\"]*\"" "${TMP_DIR}/stderr.log" | head -1)"
+  assert_fail "D0" "the published POM captured nothing (capture rc=${CAP_RC}): $(grep -o 'Capture: [^.]*' "${TMP_DIR}/stderr.log" | tail -1)${PROTO_WARN:+; agent warned: ${PROTO_WARN}}"
+fi
 
 # D1 — the fork survives: this is the whole point of moving off stdout.
 CORRUPT=$(grep -rci "Corrupted channel\|Corrupted STDOUT" "${REPORTS}" "${TMP_DIR}/stdout.log" "${TMP_DIR}/stderr.log" 2>/dev/null | awk -F: '{s+=$NF} END{print s+0}')
@@ -214,7 +209,6 @@ else
 fi
 
 # D6 — no batch lost at JVM shutdown: ITEMS JDBC spans plus one SERVER parent.
-CAP_SPANS="$(span_count "${CAP_OUT}")"
 EXPECTED_SPANS=$((ITEMS + 1))
 if [ "${CAP_SPANS}" = "${EXPECTED_SPANS}" ]; then
   assert_pass "D6" "${CAP_SPANS} spans captured = ${ITEMS} JDBC + 1 SERVER, nothing lost at shutdown"
@@ -238,7 +232,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 [ "${COL_READY}" = "1" ] || die "collector never became ready"
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf "${MVN}" $(mvn_args "-Dlab.otel.endpoint=http://localhost:${COLLECTOR_PORT}") \
+"${MVN}" $(mvn_args "-Dlab.otel.endpoint=http://localhost:${COLLECTOR_PORT}" -Dlab.otel.protocol=http/protobuf) \
   > "${TMP_DIR}/mvn-collector.log" 2>&1 || die "the reference run failed: $(tail -20 "${TMP_DIR}/mvn-collector.log")"
 REF_DUMP="${TMP_DIR}/dump/otlp-dump.ndjson"
 for _ in $(seq 1 30); do [ -s "${REF_DUMP}" ] && break; sleep 1; done
@@ -265,7 +259,7 @@ fi
 step "D4: a failing test surfaces as Maven's exit code through the wrapper"
 "${PERF_SENTINEL_LOCAL_BIN}" capture --output "${TMP_DIR}/d4-traces.json" \
   --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
-  -- env OTEL_EXPORTER_OTLP_PROTOCOL=grpc "${MVN}" $(mvn_args -Dlab.fail=1) \
+  -- "${MVN}" $(mvn_args -Dlab.fail=1) \
   > "${TMP_DIR}/d4-stdout.log" 2> "${TMP_DIR}/d4-stderr.log"
 D4_RC=$?
 MVN_FAILED=$(grep -c "BUILD FAILURE" "${TMP_DIR}/d4-stdout.log")
@@ -288,7 +282,7 @@ for _ in $(seq 1 30); do
   lsof -ti "tcp:${CAPTURE_GRPC}" >/dev/null 2>&1 && break
   sleep 0.5
 done
-OTEL_EXPORTER_OTLP_PROTOCOL=grpc "${MVN}" $(mvn_args) > "${TMP_DIR}/d5-mvn.log" 2>&1
+"${MVN}" $(mvn_args) > "${TMP_DIR}/d5-mvn.log" 2>&1
 D5_MVN_RC=$?
 kill -TERM "${CAPTURE_PID}" 2>/dev/null
 wait "${CAPTURE_PID}" 2>/dev/null
@@ -377,55 +371,114 @@ else
   assert_fail "F1" "rc=${F1_RC} (want 2), message: $(grep -o 'Capture: .*' "${TMP_DIR}/f1-stderr.log" | tail -1 | cut -c1-90)"
 fi
 
-# F2 — the handoff asks for a burst faster than the writer. What this leg
-# actually measures is narrower and more useful: the counter that backs exit 2
-# also counts requests refused BEFORE the queue, so a misconfigured exporter is
-# reported as backpressure. A run that exits 2 saying "the exporter was faster
-# than the writer" when nothing was ever queued is a wrong diagnosis, and it is
-# the shape a user hits with OTEL_EXPORTER_OTLP_PROTOCOL=http/json.
-step "F2: a request refused before the queue must not be reported as backpressure"
-F2_OUT="${TMP_DIR}/f2-traces.json"
-"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${F2_OUT}" \
-  --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" --grace-ms 500 \
-  > "${TMP_DIR}/f2-stdout.log" 2> "${TMP_DIR}/f2-stderr.log" &
-CAPTURE_PID=$!
-for _ in $(seq 1 30); do lsof -ti "tcp:${CAPTURE_HTTP}" >/dev/null 2>&1 && break; sleep 0.5; done
-F2_HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-  "http://127.0.0.1:${CAPTURE_HTTP}/v1/traces" -H 'Content-Type: application/json' \
-  -d '{"resourceSpans":[]}')
-kill -TERM "${CAPTURE_PID}" 2>/dev/null; wait "${CAPTURE_PID}" 2>/dev/null; F2_RC=$?
-CAPTURE_PID=""
-F2_MSG="$(grep -o 'Capture: .*' "${TMP_DIR}/f2-stderr.log" | tail -1)"
-if echo "${F2_MSG}" | grep -qi "faster than the writer"; then
-  assert_fail "F2" "a single ${F2_HTTP} at /v1/traces exits ${F2_RC} claiming backpressure: ${F2_MSG}"
+# F2 — the two rejection causes must be told apart. Round 2 found them sharing
+# one counter, so a misconfigured exporter was reported as writer backpressure.
+# Both causes still exit 2 (the file is incomplete either way); what must differ
+# is the diagnosis the user acts on.
+step "F2: a request refused before the queue is named as unusable, not as backpressure"
+f2_probe() {  # $1 = content-type ; $2 = body ; echoes "<http> <rc> <message>"
+  local out="${TMP_DIR}/f2-traces.json" cp code rc
+  rm -f "${out}"
+  "${PERF_SENTINEL_LOCAL_BIN}" capture --output "${out}" \
+    --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" --grace-ms 500 \
+    > "${TMP_DIR}/f2-stdout.log" 2> "${TMP_DIR}/f2-stderr.log" &
+  cp=$!
+  for _ in $(seq 1 30); do lsof -ti "tcp:${CAPTURE_HTTP}" >/dev/null 2>&1 && break; sleep 0.5; done
+  code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "http://127.0.0.1:${CAPTURE_HTTP}/v1/traces" -H "Content-Type: $1" -d "$2")
+  kill -TERM "${cp}" 2>/dev/null; wait "${cp}" 2>/dev/null; rc=$?
+  printf '%s %s %s' "${code}" "${rc}" "$(grep -o 'Capture: .*' "${TMP_DIR}/f2-stderr.log" | tail -1)"
+}
+F2_FAILURES=""
+for probe in "application/json|{\"resourceSpans\":[]}|415" \
+             "application/x-protobuf|not-protobuf-at-all|400"; do
+  CT="${probe%%|*}"; REST="${probe#*|}"; BODY="${REST%|*}"; WANT="${REST##*|}"
+  RESULT="$(f2_probe "${CT}" "${BODY}")"
+  GOT_CODE="${RESULT%% *}"; REST2="${RESULT#* }"; GOT_RC="${REST2%% *}"; MSG="${REST2#* }"
+  if [ "${GOT_RC}" = "2" ] \
+     && echo "${MSG}" | grep -q "refused as unusable" \
+     && echo "${MSG}" | grep -q "OTEL_EXPORTER_OTLP_PROTOCOL" \
+     && ! echo "${MSG}" | grep -qi "faster than the writer"; then
+    ok "${CT} -> http ${GOT_CODE}, exit ${GOT_RC}, named as unusable"
+  else
+    F2_FAILURES="${F2_FAILURES} [${CT}: http=${GOT_CODE} (want ${WANT}) rc=${GOT_RC} msg=${MSG}]"
+  fi
+done
+if [ -z "${F2_FAILURES}" ]; then
+  assert_pass "F2" "415 and 400 both exit 2 as 'refused as unusable' naming OTEL_EXPORTER_OTLP_PROTOCOL, never as backpressure"
 else
-  assert_pass "F2" "a ${F2_HTTP} at /v1/traces is not reported as backpressure (rc=${F2_RC}): ${F2_MSG:-no message}"
+  assert_fail "F2" "${F2_FAILURES}"
 fi
 
-step "F4: SIGTERM during a wrapped capture"
+step "F4: SIGTERM stops the whole command tree"
 F4_OUT="${TMP_DIR}/f4-traces.json"
-rm -f "${TMP_DIR}/f4-child-finished"
 "${PERF_SENTINEL_LOCAL_BIN}" capture --output "${F4_OUT}" --listen-address 0.0.0.0 \
   --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" --grace-ms 1000 \
-  -- sh -c "sleep 90; touch ${TMP_DIR}/f4-child-finished" \
-  > "${TMP_DIR}/f4-stdout.log" 2> "${TMP_DIR}/f4-stderr.log" &
+  -- sh -c "sleep 90" > "${TMP_DIR}/f4-stdout.log" 2> "${TMP_DIR}/f4-stderr.log" &
 CAPTURE_PID=$!
 for _ in $(seq 1 30); do lsof -ti "tcp:${CAPTURE_GRPC}" >/dev/null 2>&1 && break; sleep 0.5; done
 gen --traces 10 --workers 2
-sleep 1
+# The grandchild is what a Failsafe fork would be. Probed by PID: a witness file
+# written after the sleep is absent whether the process lives or not, so it
+# proves nothing — the round-2 leg had exactly that hole.
+GRANDCHILD="$(pgrep -f '^sleep 90' | head -1)"
+[ -n "${GRANDCHILD}" ] || die "F4: no grandchild to probe, the wrapped command never started"
 kill -TERM "${CAPTURE_PID}" 2>/dev/null; wait "${CAPTURE_PID}" 2>/dev/null; F4_RC=$?
 CAPTURE_PID=""
-sleep 2
-# The grandchild is what a Failsafe fork would be: killing only the direct child
-# leaves a test JVM holding its port and its database connection.
-ORPHANS=$(pgrep -f "sleep 90" 2>/dev/null | wc -l | tr -d ' ')
+# SIGKILL follows SIGTERM after 5s upstream, so allow for that before probing.
+for _ in $(seq 1 14); do kill -0 "${GRANDCHILD}" 2>/dev/null || break; sleep 1; done
+ALIVE=0; kill -0 "${GRANDCHILD}" 2>/dev/null && ALIVE=1
 F4_VALID=0
 "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${F4_OUT}" --format json >/dev/null 2>&1 && F4_VALID=1
-if [ ! -f "${TMP_DIR}/f4-child-finished" ] && [ "${F4_VALID}" = "1" ] && [ "${ORPHANS}" = "0" ]; then
-  assert_pass "F4" "child stopped, no orphan left, file still valid NDJSON (capture exited ${F4_RC})"
+if [ "${ALIVE}" = "0" ] && [ "${F4_VALID}" = "1" ]; then
+  assert_pass "F4" "grandchild ${GRANDCHILD} stopped with the group, file still valid NDJSON (capture exited ${F4_RC})"
 else
-  pkill -f "sleep 90" 2>/dev/null
-  assert_fail "F4" "orphaned grandchildren=${ORPHANS}, file re-readable=${F4_VALID}, child completed=$([ -f "${TMP_DIR}/f4-child-finished" ] && echo yes || echo no), capture rc=${F4_RC}"
+  kill -9 "${GRANDCHILD}" 2>/dev/null
+  assert_fail "F4" "grandchild ${GRANDCHILD} alive=${ALIVE} (orphaned, reparented to init), file re-readable=${F4_VALID}, capture rc=${F4_RC}"
+fi
+
+# F6 — genuine writer saturation, measurable only now that the two rejection
+# causes are separate counters. The exporter cannot be made fast enough from a
+# container (~1 req/s), so the writer is blocked instead: the output is a FIFO
+# whose reader holds it open and reads nothing, which stalls the writer while the
+# 256-slot channel fills. The reader then drains so capture can finish.
+step "F6: writer saturation is reported as backpressure, and only as that"
+F6_PIPE="${TMP_DIR}/f6.pipe"
+rm -f "${F6_PIPE}"; mkfifo "${F6_PIPE}"
+sh -c "exec 3< '${F6_PIPE}'; sleep ${F6_BLOCK_S:-100}; cat <&3 > /dev/null" >/dev/null 2>&1 &
+F6_READER=$!
+sleep 1
+"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${F6_PIPE}" --listen-address 0.0.0.0 \
+  --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" --grace-ms 500 \
+  > "${TMP_DIR}/f6-stdout.log" 2> "${TMP_DIR}/f6-stderr.log" &
+CAPTURE_PID=$!
+for _ in $(seq 1 30); do lsof -ti "tcp:${CAPTURE_GRPC}" >/dev/null 2>&1 && break; sleep 0.5; done
+for n in 1 2 3 4 5 6; do
+  docker run -d --name "jcc-gen${n}" --add-host=host.docker.internal:host-gateway "${GEN_IMAGE}" \
+    traces --otlp-endpoint "host.docker.internal:${CAPTURE_GRPC}" --otlp-insecure \
+    --duration 90s --workers 20 --child-spans 10 >/dev/null 2>&1
+done
+# The rejection counts are a summary printed at exit, not a stream, so there is
+# nothing to poll for: hold the writer blocked for the whole generator window,
+# then let the reader drain and read the summary capture leaves behind.
+sleep "${F6_BLOCK_S:-100}"
+for n in 1 2 3 4 5 6; do docker rm -f "jcc-gen${n}" >/dev/null 2>&1 || true; done
+sleep 12   # the reader is draining now; let the writer catch up so capture can exit
+kill -TERM "${CAPTURE_PID}" 2>/dev/null; wait "${CAPTURE_PID}" 2>/dev/null; F6_RC=$?
+CAPTURE_PID=""
+kill "${F6_READER}" 2>/dev/null
+F6_MSG="$(grep -o 'Capture: .*' "${TMP_DIR}/f6-stderr.log" | tail -2 | tr '\n' ' ')"
+F6_SATURATED=0
+echo "${F6_MSG}" | grep -qi "could not be queued" && F6_SATURATED=1
+if [ "${F6_SATURATED}" = "0" ]; then
+  record "F6" "SKIP — the generators never filled the 256-slot channel on this host (raise F6_BLOCK_S/F6_WAIT_S)"
+  color_red "    skip: saturation not reached"
+elif [ "${F6_RC}" = "2" ] \
+     && echo "${F6_MSG}" | grep -qi "faster than the writer" \
+     && ! echo "${F6_MSG}" | grep -qi "refused as unusable"; then
+  assert_pass "F6" "exit 2 as backpressure only, no unusable rejection: $(grep -o '[0-9]* requests could not be queued' "${TMP_DIR}/f6-stderr.log" | tail -1)"
+else
+  assert_fail "F6" "rc=${F6_RC} (want 2), message: ${F6_MSG}"
 fi
 
 # =============================================================================

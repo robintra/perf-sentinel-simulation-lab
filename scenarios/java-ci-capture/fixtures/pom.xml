@@ -33,11 +33,10 @@
     <!-- The documented value. verify.sh overrides it only where a leg needs a
          configuration that actually exports. -->
     <lab.otel.endpoint>http://localhost:4317</lab.otel.endpoint>
-    <!-- OTEL_EXPORTER_OTLP_PROTOCOL is deliberately ABSENT below: the documented
-         recipe omits it and relies on the agent's default. Declaring it empty
-         would not be the same thing, an empty value aborts autoconfiguration
-         outright. Legs that need it export it into the environment instead, and
-         the Failsafe fork inherits it. -->
+    <!-- The documented value. The recipe now states the protocol rather than
+         relying on the agent default, which moved from grpc to http/protobuf in
+         agent 2.0 — the same endpoint then means a different port. -->
+    <lab.otel.protocol>grpc</lab.otel.protocol>
     <lab.items>15</lab.items>
     <lab.db.url></lab.db.url>
     <lab.fail></lab.fail>
@@ -110,6 +109,7 @@
           <environmentVariables>
             <OTEL_TRACES_EXPORTER>otlp</OTEL_TRACES_EXPORTER>
             <OTEL_EXPORTER_OTLP_ENDPOINT>${lab.otel.endpoint}</OTEL_EXPORTER_OTLP_ENDPOINT>
+            <OTEL_EXPORTER_OTLP_PROTOCOL>${lab.otel.protocol}</OTEL_EXPORTER_OTLP_PROTOCOL>
             <OTEL_SERVICE_NAME>lab-java-it</OTEL_SERVICE_NAME>
             <OTEL_TRACES_SAMPLER>always_on</OTEL_TRACES_SAMPLER>
             <OTEL_METRICS_EXPORTER>none</OTEL_METRICS_EXPORTER>
