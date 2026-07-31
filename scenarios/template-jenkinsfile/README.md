@@ -1,7 +1,7 @@
 # Template Jenkinsfile validation
 
 Validates the upstream `docs/ci-templates/jenkinsfile.groovy` template
-at v0.5.17. Note that the upstream filename is lowercase
+at the version `verify.sh` pins (`UPSTREAM_VERSION`). Note that the upstream filename is lowercase
 `jenkinsfile.groovy`, NOT `Jenkinsfile`. The Multibranch Pipeline plugin
 accepts the `.groovy` extension for IDE syntax highlighting.
 
@@ -25,7 +25,7 @@ Report at `/tmp/scenario-template-jenkinsfile-report.md`.
 
 ## What it validates
 
-1. **Fetch**. Curl upstream at v0.5.17, fallback to local clone.
+1. **Fetch**. Curl upstream at the pinned `UPSTREAM_VERSION`, fallback to local clone.
 2. **Structural lint**. Check that the declarative pipeline skeleton is
    present and well-formed:
    - `pipeline { ... }`

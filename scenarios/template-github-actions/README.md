@@ -1,7 +1,7 @@
 # Template GitHub Actions validation
 
 Validates the upstream `docs/ci-templates/github-actions.yml` workflow
-at v0.5.17. Structural lint + best-effort `act --list` parse check.
+at the version `verify.sh` pins (`UPSTREAM_VERSION`). Structural lint + best-effort `act --list` parse check.
 
 ## Run
 
@@ -23,7 +23,7 @@ Report at `/tmp/scenario-template-github-actions-report.md`.
 
 ## What it validates
 
-1. **Fetch**. Curl upstream at v0.5.17, fallback to local clone.
+1. **Fetch**. Curl upstream at the pinned `UPSTREAM_VERSION`, fallback to local clone.
 2. **Structural lint**:
    - YAML parses (python `yaml.safe_load`).
    - Top-level keys present: `name`, `on`, `permissions`, `jobs`.

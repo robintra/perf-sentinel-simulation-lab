@@ -1,7 +1,7 @@
 # Template GitLab CI validation
 
 Validates the upstream `docs/ci-templates/gitlab-ci.yml` template at
-v0.5.17 against the in-cluster GitLab CE. Lint + parity + delegation to
+the version `verify.sh` pins (`UPSTREAM_VERSION`) against the in-cluster GitLab CE. Lint + parity + delegation to
 the existing `scripts/verify-gitlab-perf-sentinel.sh` end-to-end check.
 
 ## Run
@@ -24,7 +24,7 @@ Report at `/tmp/scenario-template-gitlab-ci-report.md`.
 
 ## What it validates
 
-1. **Fetch**. Curl the upstream template at v0.5.17 (fallback to local
+1. **Fetch**. Curl the upstream template at the pinned `UPSTREAM_VERSION` (fallback to local
    clone at `~/RustroverProjects/perf-sentinel/` if curl fails).
 2. **Lint via GitLab CE CI Lint API**. POST the YAML to
    `/api/v4/ci/lint`, asserts `valid: true`. Catches schema regressions
