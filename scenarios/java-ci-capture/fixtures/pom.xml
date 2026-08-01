@@ -46,6 +46,12 @@
          or below its own, never above. -->
     <opentelemetry-api.version>1.40.0</opentelemetry-api.version>
     <failsafe.version>3.5.0</failsafe.version>
+    <!-- Pinned because Maven's super-POM binds a compiler plugin old enough to
+         predate `maven.compiler.release`, and it then silently falls back to
+         source/target 5. Which version you get depends on the Maven the runner
+         ships, so an unpinned build passes on a developer machine and fails on
+         a CI image. -->
+    <compiler-plugin.version>3.15.0</compiler-plugin.version>
     <dependency-plugin.version>3.8.1</dependency-plugin.version>
   </properties>
 
@@ -74,6 +80,12 @@
 
   <build>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>${compiler-plugin.version}</version>
+      </plugin>
+
       <!-- Copy the agent jar into target/ before the integration-test phase. -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

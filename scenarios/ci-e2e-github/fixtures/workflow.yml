@@ -1,0 +1,70 @@
+# Shaped after docs/ci-templates/github-actions.yml with the HTML steps
+# UNCOMMENTED — they ship commented out, so this is the documented opt-in path
+# and the one this scenario is here to exercise.
+#
+# Three deliberate departures from the published template, all about running
+# under act rather than about the recipe:
+#   - the perf-sentinel binary is taken from the workspace instead of being
+#     downloaded from GitHub Releases: the release asset is linux/amd64 and the
+#     runner here is arm64, and the download step is not what is under test.
+#   - the SARIF upload and the PR comment are dropped: both need the GitHub API.
+#   - PostgreSQL is started by the scenario on a named docker network rather
+#     than through a `services:` block, because act does not give the runner
+#     container the service's hostname alias. LAB_PG_HOST names that container.
+#   - Java and Maven are set up in steps: GitHub-hosted runners ship both, act's
+#     catthehacker image ships neither a JDK recent enough for release 17 nor
+#     Maven at all.
+name: perf-sentinel end to end
+
+on: [push]
+
+env:
+  LAB_PG_HOST: ghe2e-postgres
+
+jobs:
+  perf-sentinel:
+    runs-on: ubuntu-latest
+    steps:
+      # act only populates the workspace through a checkout step, and a real
+      # workflow starts with one anyway.
+      - uses: actions/checkout@v5
+
+      # GitHub-hosted ubuntu-latest ships a modern JDK and Maven; act's runner
+      # image ships neither. Compensating for the image, not changing the recipe.
+      # setup-java is also what a real workflow uses, and it pins JAVA_HOME so
+      # Maven does not fall back to whatever javac the image happens to carry.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Maven
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends maven
+
+      - name: Run integration tests under capture
+        run: |
+          set -euo pipefail
+          # mkdir -p is NOT in the documented recipe and has to be: a CI
+          # workspace starts clean, target/ is created by Maven, and capture
+          # refuses to start when its output directory is missing. Same defect
+          # ci-e2e-jenkins reports as J0.
+          mkdir -p target
+          ./perf-sentinel capture --output target/traces.json \
+            -- mvn -B -f project/pom.xml verify \
+                 -Dlab.db.url="jdbc:postgresql://${LAB_PG_HOST}:5432/labdb?user=lab&password=lab" \
+                 -Dlab.items=15
+
+      - name: Analyze
+        run: |
+          # --ci exits non-zero when the quality gate trips, the nominal outcome
+          # here: the test plants a real N+1.
+          ./perf-sentinel analyze --ci --input target/traces.json --format json \
+            > perf-sentinel-report.json || true
+
+      - name: Generate interactive HTML report
+        run: ./perf-sentinel report --input target/traces.json --output report.html
+
+      - name: Publish report to the Pages directory
+        run: |
+          mkdir -p public
+          cp report.html public/index.html

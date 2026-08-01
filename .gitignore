@@ -59,3 +59,4 @@ artifacts/fixtures/*
 !artifacts/fixtures/*.toml
 !artifacts/fixtures/*.yml
 !artifacts/fixtures/*.yaml
+scenarios/ci-e2e-jenkins/fixtures/project/

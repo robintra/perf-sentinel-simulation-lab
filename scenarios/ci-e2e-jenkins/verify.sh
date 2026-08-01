@@ -33,6 +33,7 @@ REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER_CHECK="${SCRIPT_DIR}/../ci-e2e-common/render-check.sh"
+JAVA_FIXTURES="${SCRIPT_DIR}/../java-ci-capture/fixtures"
 
 JENKINS_IMAGE="${JENKINS_IMAGE:-perf-sentinel-lab-jenkins:2.568.1}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
@@ -71,6 +72,7 @@ trap cleanup EXIT
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 \
   || die "Docker unavailable — this scenario runs a real Jenkins"
 [ -x "${RENDER_CHECK}" ] || die "missing ${RENDER_CHECK}"
+[ -f "${JAVA_FIXTURES}/pom.xml" ] || die "missing the Maven fixture at ${JAVA_FIXTURES}"
 JENKINS_URL="http://127.0.0.1:${JENKINS_PORT}"
 lsof -ti "tcp:${JENKINS_PORT}" >/dev/null 2>&1 && die "port ${JENKINS_PORT} already in use"
 
@@ -95,6 +97,12 @@ docker exec "${PG_CONTAINER}" psql -U lab -d labdb -q -c \
 ok "lab_order_items seeded"
 
 # ── a real Jenkins controller ───────────────────────────────────────────────
+# Copied in at build time rather than committed twice: one Maven project, one
+# place to change it. The docker build context has to contain it, hence the copy.
+rm -rf "${SCRIPT_DIR}/fixtures/project"
+cp -R "${JAVA_FIXTURES}" "${SCRIPT_DIR}/fixtures/project"
+rm -rf "${SCRIPT_DIR}/fixtures/project/target"
+
 step "Build the Jenkins image (Maven + released perf-sentinel binary + the job)"
 docker build -q -t "${JENKINS_IMAGE}" "${SCRIPT_DIR}/fixtures" > "${TMP_DIR}/image-build.log" 2>&1 \
   || die "jenkins image build failed: $(tail -5 "${TMP_DIR}/image-build.log")"
