@@ -47,7 +47,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-broker-messaging-waste \
         verify-chart-disclose-persistence \
         verify-java-ci-capture \
-        verify-ci-e2e-jenkins verify-ci-e2e-github \
+        verify-ci-e2e-jenkins verify-ci-e2e-github verify-ci-e2e-gitlab \
         verify-all-scenarios
 
 help: ## List available targets
@@ -173,6 +173,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/ci-e2e-common/render-check.sh
 	@bash -n scenarios/ci-e2e-jenkins/verify.sh
 	@bash -n scenarios/ci-e2e-github/verify.sh
+	@bash -n scenarios/ci-e2e-gitlab/verify.sh
 	@bash -n scenarios/chart-disclose-persistence/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
@@ -580,7 +581,10 @@ verify-ci-e2e-jenkins: ## QUARANTINED (expected FAIL on J0, see its README): the
 verify-ci-e2e-github: ## Upstream Java CI recipe through a real GitHub Actions workflow (act) to the rendered dashboard (docker + act, no cluster)
 	./scenarios/ci-e2e-github/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 62 scenarios sequentially (see docs/SCENARIOS.md)
+verify-ci-e2e-gitlab: ## Upstream Java CI recipe through a real GitLab pipeline to the dashboard served by GitLab Pages (needs make up-gitlab)
+	./scenarios/ci-e2e-gitlab/verify.sh
+
+verify-all-scenarios: seed-tracegen ## Run all 63 scenarios sequentially (see docs/SCENARIOS.md)
 	@# ci-e2e-jenkins is intentionally absent: quarantined while the documented
 	@# one-liner cannot run on a clean CI workspace. Add it here when J0 goes green.
 	@# Order matters:
@@ -628,7 +632,7 @@ verify-all-scenarios: seed-tracegen ## Run all 62 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-github broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-github ci-e2e-gitlab broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

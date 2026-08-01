@@ -1,0 +1,79 @@
+# Shaped after docs/ci-templates/gitlab-ci.yml with the integration-test job and
+# the `perf-sentinel-pages-simple` job UNCOMMENTED — both ship commented out, so
+# this is the documented opt-in path and the one this scenario exercises.
+#
+# Departures from the published template, all about the lab rather than the
+# recipe, and all deliberate:
+#   - the perf-sentinel binary is committed into the project by the scenario,
+#     extracted from the released container image, rather than downloaded from
+#     GitHub Releases: the runner then needs no egress to github.com, and the
+#     arm64 lab gets an arm64 binary instead of the amd64 release asset.
+#   - PostgreSQL comes from a `services:` block, which GitLab's Kubernetes
+#     executor does support, unlike act.
+stages:
+  - test
+  - report
+  - deploy
+
+variables:
+  PERF_SENTINEL_TRACES: target/traces.json
+  POSTGRES_DB: labdb
+  POSTGRES_USER: lab
+  POSTGRES_PASSWORD: lab
+  # The documented recipe pairs :4317 with grpc explicitly: agent 2.x defaults to
+  # http/protobuf, and the same endpoint then means a different port.
+  LAB_DB_URL: "jdbc:postgresql://postgres:5432/labdb?user=lab&password=lab"
+
+integration-tests:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  services:
+    - name: postgres:18.4-alpine
+      alias: postgres
+  before_script:
+    # No psql, no apt: the lab's zero-trust NetworkPolicies keep the runner off
+    # the package mirrors, and the integration test creates and fills its own
+    # table anyway.
+    - chmod +x ./perf-sentinel
+  script:
+    # mkdir -p is NOT in the documented recipe and has to be: a CI workspace
+    # starts clean, target/ is created by Maven, and capture refuses to start
+    # when its output directory is missing. Same defect ci-e2e-jenkins reports
+    # as J0.
+    - mkdir -p target
+    - ./perf-sentinel capture --output "$PERF_SENTINEL_TRACES"
+        -- mvn -B -f project/pom.xml verify -Dlab.db.url="$LAB_DB_URL" -Dlab.items=15
+  artifacts:
+    paths:
+      - target/traces.json
+    expire_in: 1 day
+
+perf-sentinel:
+  stage: report
+  image: maven:3.9-eclipse-temurin-21
+  dependencies:
+    - integration-tests
+  script:
+    - chmod +x ./perf-sentinel
+    # --ci exits non-zero when the quality gate trips, the nominal outcome here.
+    - ./perf-sentinel analyze --ci --input "$PERF_SENTINEL_TRACES" --format json
+        > perf-sentinel-report.json || true
+    - ./perf-sentinel report --input "$PERF_SENTINEL_TRACES" --output report.html
+  artifacts:
+    when: always
+    paths:
+      - perf-sentinel-report.json
+      - report.html
+    expire_in: 1 week
+
+pages:
+  stage: deploy
+  image: maven:3.9-eclipse-temurin-21
+  dependencies:
+    - perf-sentinel
+  script:
+    - mkdir -p public
+    - cp report.html public/index.html
+  artifacts:
+    paths:
+      - public
