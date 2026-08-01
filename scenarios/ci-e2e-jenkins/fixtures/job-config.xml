@@ -1,0 +1,71 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job">
+  <description>perf-sentinel end to end: capture a Maven integration test, analyze it, render the dashboard, publish it.</description>
+  <keepDependencies>false</keepDependencies>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
+    <script>
+// Kept to trivial constructs on purpose: the script runs in the Groovy sandbox,
+// which is what a seeded job gets without a human clicking "approve". Anything
+// fancier (a script block, Groovy string interpolation over env) would need
+// script approval and would fail the build before it ever reached the recipe.
+// LAB_PG_HOST comes from the container environment, so the shell expands it.
+pipeline {
+    agent any
+    stages {
+        stage('Prepare workspace') {
+            steps {
+                sh 'rm -rf project &amp;&amp; cp -R "$JENKINS_HOME/perf-sentinel-project" project'
+            }
+        }
+        stage('Integration tests under capture') {
+            steps {
+                // PREFIX the existing test command, never add a second stage:
+                // capture -- mvn verify runs the suite once.
+                //
+                // mkdir -p target is NOT in the documented recipe, and it has to
+                // be: a CI workspace starts clean, target/ is created by Maven,
+                // and capture refuses to start when its output directory does
+                // not exist — so the documented one-liner fails before the tests
+                // run at all. J0 measures that; this line is the workaround that
+                // lets the remaining legs be measured.
+                sh 'mkdir -p target'
+                sh 'perf-sentinel capture --output target/traces.json -- mvn -B -f project/pom.xml verify -Dlab.db.url="jdbc:postgresql://$LAB_PG_HOST:5432/labdb?user=lab&amp;password=lab" -Dlab.items=15'
+            }
+        }
+        stage('Analyze') {
+            steps {
+                // --ci exits non-zero when the quality gate trips, which is the
+                // nominal outcome here: the test plants a real N+1. The report
+                // is still written, and the build must reach the HTML stage.
+                sh 'perf-sentinel analyze --ci --input target/traces.json --format json > perf-sentinel-report.json || true'
+            }
+        }
+        stage('Generate interactive HTML report') {
+            steps {
+                sh 'perf-sentinel report --input target/traces.json --output report.html'
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts(
+                artifacts: 'report.html, perf-sentinel-report.json, target/traces.json',
+                allowEmptyArchive: true
+            )
+            publishHTML([
+                reportDir: '.',
+                reportFiles: 'report.html',
+                reportName: 'perf-sentinel',
+                keepAll: true,
+                alwaysLinkToLastBuild: true,
+                allowMissing: true
+            ])
+        }
+    }
+}
+    </script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

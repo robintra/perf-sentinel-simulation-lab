@@ -1,0 +1,20 @@
+# Throwaway controller. Anonymous read is deliberate: the scenario fetches the
+# published report with curl and with headless Chrome, and authentication would
+# only add noise to what is being measured — how Jenkins SERVES that HTML.
+jenkins:
+  systemMessage: "perf-sentinel lab: CI end-to-end, capture to rendered dashboard"
+  # Builds run on the controller; there is no agent to schedule onto.
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "lab"
+          password: "lab"
+  authorizationStrategy: "unsecured"
+  crumbIssuer: "standard"
+unclassified:
+  location:
+    # Set so Jenkins stops warning about it; the scenario overrides the host at
+    # run time when it needs the Resource Root URL leg.
+    url: "http://localhost:18080/"

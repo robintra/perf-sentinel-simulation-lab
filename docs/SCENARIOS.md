@@ -1162,6 +1162,22 @@ contract that command promises: size cap, unusable versus backpressure
 rejections, refusal to start on an unwritable output, whole-process-group stop
 on SIGTERM, and cross-container listening.
 
+`ci-e2e-jenkins` sits outside the release-gate loop for now. It runs the
+documented Java CI recipe inside a real Jenkins controller and follows the
+artifact all the way to whether the published dashboard **renders in a
+browser** — the first lab scenario to serve a report over HTTP and assert on the
+rendered DOM rather than on the file size. It currently FAILs one assertion:
+`capture --output target/traces.json -- mvn verify`, the documented one-liner,
+cannot run on a clean CI workspace because `target/` does not exist yet, and
+`capture` correctly refuses to start, so the test suite never runs. It also
+reproduces, in situ, the unstyled-report symptom caused by Jenkins' default
+Content-Security-Policy, confirms the remedy documented in `docs/CI.md` works,
+and measures that the "sibling files" fix promised there would not help. It has
+a `make verify-ci-e2e-jenkins` target and is covered by `make validate`, but is
+quarantined out of the count of 61 until it goes green. Its shared browser
+helper lives in `scenarios/ci-e2e-common/`, which is not a scenario and is not
+counted, like `scenarios/limit-common/`.
+
 ### Ack workflow walkthrough
 
 The canonical use case `ci-shift-left` validates end-to-end:

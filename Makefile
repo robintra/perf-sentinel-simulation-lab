@@ -47,6 +47,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-broker-messaging-waste \
         verify-chart-disclose-persistence \
         verify-java-ci-capture \
+        verify-ci-e2e-jenkins \
         verify-all-scenarios
 
 help: ## List available targets
@@ -169,6 +170,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/endpoint-resolution/verify.sh
 	@bash -n scenarios/broker-messaging-waste/verify.sh
 	@bash -n scenarios/java-ci-capture/verify.sh
+	@bash -n scenarios/ci-e2e-common/render-check.sh
+	@bash -n scenarios/ci-e2e-jenkins/verify.sh
 	@bash -n scenarios/chart-disclose-persistence/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
@@ -570,7 +573,12 @@ verify-broker-messaging-waste: ## messaging ingestion + broker energy: the two-s
 verify-java-ci-capture: ## Upstream Java CI recipe end to end: Maven Failsafe + perf-sentinel capture -> analyze, plus the capture exit-code contract (local binary, no cluster)
 	./scenarios/java-ci-capture/verify.sh
 
+verify-ci-e2e-jenkins: ## QUARANTINED (expected FAIL on J0, see its README): the documented Java CI recipe inside a real Jenkins, through to whether the published dashboard renders (docker, no cluster)
+	./scenarios/ci-e2e-jenkins/verify.sh
+
 verify-all-scenarios: seed-tracegen ## Run all 61 scenarios sequentially (see docs/SCENARIOS.md)
+	@# ci-e2e-jenkins is intentionally absent: quarantined while the documented
+	@# one-liner cannot run on a clean CI workspace. Add it here when J0 goes green.
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
