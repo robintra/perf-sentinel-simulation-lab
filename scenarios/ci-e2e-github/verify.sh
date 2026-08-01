@@ -142,15 +142,21 @@ SPANS=0
 if [ -s "${WORKDIR}/target/traces.json" ]; then
   SPANS="$(python3 - "${WORKDIR}/target/traces.json" <<'PY'
 import json, sys
-n = 0
+from collections import Counter
+# Count the spans of the REQUEST trace, not every span in the file. The test
+# creates its own schema before opening the request span, and those statements
+# are instrumented too — they just land in their own single-span traces. Taking
+# the largest trace is what "the request's spans all arrived" actually means.
+traces = Counter()
 for line in open(sys.argv[1]):
     line = line.strip()
     if not line:
         continue
     for rs in json.loads(line).get("resourceSpans", []):
         for ss in rs.get("scopeSpans", []):
-            n += len(ss.get("spans", []))
-print(n)
+            for sp in ss.get("spans", []):
+                traces[sp.get("traceId", "")] += 1
+print(max(traces.values()) if traces else 0)
 PY
 )"
 fi

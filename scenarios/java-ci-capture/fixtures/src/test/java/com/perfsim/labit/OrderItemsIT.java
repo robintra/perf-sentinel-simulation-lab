@@ -26,11 +26,36 @@ class OrderItemsIT {
     return raw == null || raw.isBlank() ? 15 : Integer.parseInt(raw.trim());
   }
 
+  /**
+   * Creates and fills the table the test reads, so the fixture needs no external
+   * seeding step. CI runners cannot always reach a package mirror to install a
+   * psql client, and one self-contained test is simpler than three scenarios
+   * each seeding the same rows their own way. Idempotent by construction.
+   */
+  private static void ensureSchema(Connection connection) throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute(
+          "CREATE TABLE IF NOT EXISTS lab_order_items ("
+              + "id serial PRIMARY KEY, order_id int NOT NULL)");
+      statement.execute(
+          "INSERT INTO lab_order_items (order_id) "
+              + "SELECT g % 20 FROM generate_series(1, 200) g "
+              + "WHERE NOT EXISTS (SELECT 1 FROM lab_order_items)");
+    }
+  }
+
   @Test
   void listsOrderItemsOneQueryAtATime() throws Exception {
     String url = System.getenv("LAB_DB_URL");
     if (url == null || url.isBlank()) {
       throw new IllegalStateException("LAB_DB_URL is not set, verify.sh should have set it");
+    }
+
+    // Before the span opens, and on its own connection: inside the traced scope
+    // these statements would be captured as extra JDBC spans and change the very
+    // count the assertions check.
+    try (Connection setup = DriverManager.getConnection(url)) {
+      ensureSchema(setup);
     }
 
     Tracer tracer = GlobalOpenTelemetry.getTracer("perf-sentinel-lab-it");
