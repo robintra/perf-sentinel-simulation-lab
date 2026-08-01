@@ -984,3 +984,42 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+---
+# 4.H CI job pods need Maven Central. The GitLab Kubernetes executor creates a
+# fresh pod per job, and those pods carry none of the labels 4.F selects on, so
+# they fall through to `default-deny-all` and reach nothing — not a package
+# mirror, not a dependency repository. Any real Java pipeline in this cluster
+# therefore fails at dependency resolution.
+#
+# Deliberately narrow on the DESTINATION rather than on the source: the selector
+# is namespace-wide because job pods are unlabelled, but the only thing opened is
+# Maven Central over 443. Nothing else in gitlab-ce gains egress it did not have.
+#
+# Scenario that depends on it: scenarios/ci-e2e-gitlab.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: gitlab-ci-jobs-maven-egress
+  namespace: gitlab-ce
+spec:
+  endpointSelector: {}
+  egress:
+    - toFQDNs:
+        - matchName: "repo.maven.apache.org"
+        - matchName: "repo1.maven.org"
+        - matchPattern: "*.maven.apache.org"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
