@@ -126,11 +126,21 @@
             <OTEL_TRACES_SAMPLER>always_on</OTEL_TRACES_SAMPLER>
             <OTEL_METRICS_EXPORTER>none</OTEL_METRICS_EXPORTER>
             <OTEL_LOGS_EXPORTER>none</OTEL_LOGS_EXPORTER>
-            <!-- Not part of the documented recipe. The agent's default statement
-                 sanitizer rewrites every literal to `?`, which collapses an N+1
-                 into a redundant-query finding. Off here so the payload carries
-                 the anti-pattern the assertions name, exactly like the lab's own
-                 Java services. -->
+            <!-- Not part of the documented recipe, and kept for DETERMINISM
+                 rather than for correctness. Measured on this fixture: with the
+                 sanitizer on, perf-sentinel's default `auto` mode still reports
+                 n_plus_one_sql, via the recovery heuristic
+                 (classification_method=sanitizer_heuristic). But this project is
+                 plain JDBC with no ORM scope marker, so that heuristic rests on
+                 timing variance alone — and at 10 occurrences instead of 15,
+                 `strict` already falls back to redundant_sql. A gate assertion
+                 must not depend on how loaded the machine was. Off here, the
+                 literals stay distinct and the standard distinct_params rule
+                 decides, with no heuristic in the loop.
+                 Do NOT read this as advice to disable the sanitizer in a real
+                 pipeline: it puts raw SQL literals into a trace file that CI
+                 commonly publishes as a job artifact, and `auto` does not need
+                 it. -->
             <OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED>false</OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED>
             <LAB_DB_URL>${lab.db.url}</LAB_DB_URL>
             <LAB_ITEMS>${lab.items}</LAB_ITEMS>

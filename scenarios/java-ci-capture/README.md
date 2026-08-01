@@ -72,10 +72,16 @@ separated, the leg below is interpretable, and it passes.
   SERVER span is opened by hand because the project has no web framework for the
   agent to instrument; the JDBC spans are the agent's own. `LAB_FAIL` makes it
   fail on purpose for D4, after the spans have been exported.
-- The statement sanitizer is disabled, the one departure from the documented
-  environment that concerns the payload rather than the capture: its default
-  rewrites every literal to `?`, collapsing the N+1 into a redundant-query
-  finding.
+- The statement sanitizer is disabled — the one departure from the documented
+  environment that concerns the payload rather than the capture, and it is about
+  **determinism, not correctness**. Measured: with the sanitizer on, the default
+  `auto` mode still reports `n_plus_one_sql` through its recovery heuristic. But
+  this project is plain JDBC with no ORM scope marker, so that heuristic rests on
+  timing variance alone, and at 10 occurrences instead of 15 `strict` already
+  falls back to `redundant_sql`. A gate assertion must not depend on how loaded
+  the machine was. This is **not** advice to disable the sanitizer in a real
+  pipeline: doing so writes raw SQL literals into a trace file that CI commonly
+  publishes as a job artifact, and `auto` does not need it.
 - The F legs use `telemetrygen` from a neighbouring container, which is also what
   makes F5 a real cross-container test rather than a loopback one.
 - F6 cannot make the exporter fast enough — a container reaches roughly one
