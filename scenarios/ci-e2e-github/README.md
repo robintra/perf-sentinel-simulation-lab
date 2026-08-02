@@ -54,7 +54,8 @@ three scenarios share.
 - The repository act runs against is assembled in `/tmp`: the workflow, the Maven
   project copied from `scenarios/java-ci-capture/fixtures/` (one project, one
   place to change it), and the perf-sentinel binary extracted from the
-  **released** image `ghcr.io/robintra/perf-sentinel:0.9.24`.
+  **released** image, which `PERF_SENTINEL_IMAGE` overrides for a pre-release
+  round; the default has to stay a real published tag.
 - `act --bind` mounts the working directory instead of copying it into the
   runner. Without it act's copy stays inside the container and the workflow's
   outputs never reach the host, so the assertions would have nothing to read.
