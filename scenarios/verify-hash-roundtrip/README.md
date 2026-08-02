@@ -88,3 +88,14 @@ example evolves, refresh the fixture with:
 cp "${PERF_SENTINEL_REPO_PATH}/docs/schemas/examples/example-official-public-G2.json" \
    scenarios/verify-hash-roundtrip/fixtures/example-official-public-G2.json
 ```
+
+## Which binary this runs against
+
+`scripts/resolve-image.sh` picks the image: `PERF_SENTINEL_IMAGE` (a full
+reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
+GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
+
+It used to default to a hardcoded old tag, so the scenario ran green on every
+release without ever touching the version under validation — the gate reported a
+PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
+the eight image scenarios now share this resolution.

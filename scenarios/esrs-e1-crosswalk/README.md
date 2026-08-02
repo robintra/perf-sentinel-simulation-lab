@@ -28,3 +28,14 @@ PERF_SENTINEL_VERSION=0.8.13-rc make verify-esrs-e1-crosswalk   # pre-release
 
 `PERF_SENTINEL_REPO_PATH` (default `~/RustroverProjects/perf-sentinel`) locates the
 JSON Schema + v1.2 examples for the retro-compat check.
+
+## Which binary this runs against
+
+`scripts/resolve-image.sh` picks the image: `PERF_SENTINEL_IMAGE` (a full
+reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
+GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
+
+It used to default to a hardcoded old tag, so the scenario ran green on every
+release without ever touching the version under validation — the gate reported a
+PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
+the eight image scenarios now share this resolution.

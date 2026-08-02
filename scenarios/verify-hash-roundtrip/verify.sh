@@ -52,8 +52,13 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURE="${SCENARIO_DIR}/fixtures/example-official-public-G2.json"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.7.2}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to a hardcoded old tag, which meant the gate could report a
+# PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 
 mkdir -p "${TMP_DIR}"
 

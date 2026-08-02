@@ -13,8 +13,8 @@
 # then `disclose --intent internal`. No daemon/cluster contact. Reuses the
 # committed disclose org-config (scenarios/disclose/fixtures/org-config.toml).
 #
-# Image: ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION:-0.8.13}
-# (build + run with PERF_SENTINEL_VERSION=0.8.13-rc for the pre-release).
+# Image: the version under validation (see scripts/resolve-image.sh); for an
+# unpublished pre-release, build it locally and pass PERF_SENTINEL_IMAGE.
 
 set -euo pipefail
 
@@ -24,8 +24,13 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.8.13}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to a hardcoded old tag, which meant the gate could report a
+# PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 TRACES="${REPO_ROOT}/artifacts/fixtures/em-real-time-traces.json"
 ORG_CONFIG="${REPO_ROOT}/scenarios/disclose/fixtures/org-config.toml"
 

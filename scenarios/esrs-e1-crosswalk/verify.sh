@@ -18,7 +18,7 @@
 # committed disclose org-config. The retro-compat check needs check-jsonschema
 # and the product repo schema/examples; SKIPped (not failed) if either is absent.
 #
-# Image: ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION:-0.8.13}.
+# Image: the version under validation (see scripts/resolve-image.sh).
 
 set -euo pipefail
 
@@ -28,8 +28,13 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.8.13}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to a hardcoded old tag, which meant the gate could report a
+# PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-$HOME/RustroverProjects/perf-sentinel}"
 TRACES="${REPO_ROOT}/artifacts/fixtures/em-real-time-traces.json"
 ORG_CONFIG="${REPO_ROOT}/scenarios/disclose/fixtures/org-config.toml"

@@ -23,8 +23,14 @@ DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
 # The `report --input` render must run the version under test, not a fixed
 # old CLI: the whole point of this scenario is to exercise the release's own
 # report HTML renderer against a daemon Report it produced. CI sets
-# PERF_SENTINEL_VERSION; standalone runs keep the historical 0.5.21 default.
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION:-0.5.21}"
+# the version under validation (see scripts/resolve-image.sh).
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to a hardcoded old tag, which meant the gate could report a
+# PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 TMP_DIR="/tmp/${SCENARIO}"
 mkdir -p "${TMP_DIR}"
 
