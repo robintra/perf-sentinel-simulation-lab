@@ -7,7 +7,7 @@
 #   - org-config required-field validation (organisation.country and
 #     friends must be present for intent=official)
 #
-# 4 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
+# 4 sub-tests run inside the perf-sentinel image under validation
 # (defaults to the lab's currently-pinned version):
 #
 #   1. internal+internal happy path: complete org-config + above-coverage
@@ -35,8 +35,13 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES_DIR="${SCENARIO_DIR}/fixtures"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.7.2}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to a hardcoded old tag, which meant the gate could report a
+# PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 
 mkdir -p "${TMP_DIR}"
 
@@ -98,6 +103,41 @@ record() {
 }
 
 PERIOD_ARGS=(--period-type calendar-quarter --from 2026-01-01 --to 2026-03-31)
+
+# Align the declared SPECpower vintage with the binary's own, DERIVED rather
+# than hardcoded. The official-intent validator requires the two to be equal,
+# and the embedded table is refreshed from upstream coefficients every so often,
+# so a committed literal expires silently: the scenario then fails on a stale
+# fixture and reads as a product defect. The committed file keeps a documentary
+# value; this run overwrites the staged copy.
+#
+# `disclose --intent internal` does not run the official validator, so it is a
+# safe way to read `binary_specpower_vintage` back out of a report. Only its
+# first whitespace-delimited token is the declarable date: the binary annotates
+# it (e.g. "2026-04-24 (CCF aligned)") and the validator compares that prefix.
+step "0b. Align the declared SPECpower vintage with the binary's"
+run_disclose --intent internal --confidentiality internal "${PERIOD_ARGS[@]}" \
+  --input /workdir/above.ndjson \
+  --output /workdir/vintage-probe.json \
+  --org-config /workdir/org-config-complete.toml
+BINARY_VINTAGE="$(python3 -c "
+import json, sys
+try:
+    ci = json.load(open('${TMP_DIR}/vintage-probe.json'))['methodology']['calibration_inputs']
+    print((ci.get('binary_specpower_vintage') or '').split()[0])
+except Exception:
+    print('')" 2>/dev/null)"
+if [ -n "${BINARY_VINTAGE}" ]; then
+  python3 - "${TMP_DIR}/org-config-complete.toml" "${BINARY_VINTAGE}" <<'PY'
+import pathlib, re, sys
+p = pathlib.Path(sys.argv[1])
+p.write_text(re.sub(r'(?m)^specpower_table_version\s*=.*$',
+                    f'specpower_table_version = "{sys.argv[2]}"', p.read_text()))
+PY
+  ok "declared vintage aligned on the binary: ${BINARY_VINTAGE}"
+else
+  fail "could not read binary_specpower_vintage; sub-test 2 will report whatever the committed literal gives"
+fi
 
 # === Sub-test 1: internal+internal happy path ===
 step "1. internal+internal ABOVE complete (G1 produced)"

@@ -78,3 +78,14 @@ PERF_SENTINEL_VERSION=0.7.2 ./scenarios/intent-validator/verify.sh
 - **G2 public payload shape** (per-service aggregate) is not asserted
   here, only the exit code. A future sub-test could parse the output
   JSON and check key invariants of the G2 aggregate.
+
+## Which binary this runs against
+
+`scripts/resolve-image.sh` picks the image: `PERF_SENTINEL_IMAGE` (a full
+reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
+GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
+
+It used to default to a hardcoded old tag, so the scenario ran green on every
+release without ever touching the version under validation — the gate reported a
+PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
+the eight image scenarios now share this resolution.
