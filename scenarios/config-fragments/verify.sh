@@ -24,10 +24,17 @@
 #   I  the three deprecated `[green]` keys warn and are ignored: the carbon
 #      total is unchanged by `include_network_transport = false`, and a zeroed
 #      embodied coefficient falls back to the default instead of erasing M.
+#   J  `detection_config` is stamped on the report, and a report without it
+#      still loads.
+#   K  an absent carbon figure names its OWN cause: green off with a live
+#      Electricity Maps scraper says so, zero traces says so, and the combined
+#      wording is gone.
 #
-# I is not about fragments. It is here because it is the other half of what a
-# 0.9.25 config load does differently, and because a lab config carrying those
-# keys would otherwise surface as unexplained warning noise elsewhere.
+# I, J and K are not about fragments. They are here because they are the other
+# half of what a 0.9.25 config load does differently: which coefficients still
+# apply, what the run leaves on its own report, and what an absent figure is
+# allowed to claim. A lab config carrying the deprecated keys would otherwise
+# surface as unexplained warning noise in some other scenario's stderr.
 #
 # Self-contained: no cluster, no Docker, no daemon. Needs the local release
 # binary, python3, and the product checkout for its `examples/` fragments (leg H
@@ -289,6 +296,48 @@ if [ "${J_RC}" = "0" ] && [ "${J_KEYS}" -ge 8 ] && [ "${J_REPORT_RC}" = "0" ] &&
   assert_pass "J" "${J_KEYS} detection settings stamped on the report, and a report without the block still renders ($(wc -c < "${J}/pre-0925.html" | tr -d ' ') bytes)"
 else
   assert_fail "J" "analyze rc=${J_RC}, detection_config keys=${J_KEYS} (want >=8), report rc=${J_REPORT_RC}"
+fi
+
+# --- K: an absent carbon figure names its real cause ------------------------
+# 0.9.25 prints absent figures greyed out with their cause instead of omitting
+# them. The first version of that deduced the cause from the presence of
+# `scoring_config`, which is not a signal that GreenOps ran: the daemon stamps
+# that object as soon as Electricity Maps is configured, `[green] enabled`
+# notwithstanding. A daemon in that configuration having processed thousands of
+# traces therefore claimed "no traces analyzed" on a busy window.
+#
+# So the leg runs the combination that revealed it — green off WITH an
+# electricity_maps block, which is legitimate since the scraper runs
+# independently of the toggle — and the honest zero-trace case, and asserts each
+# names its own cause. The combined "enabled = false, or no traces analyzed"
+# wording no longer exists.
+step "K: an absent carbon figure names its own cause, on both paths"
+K_OFF="${TMP_DIR}/k-off"; rm -rf "${K_OFF}"; mkdir -p "${K_OFF}"
+K_EMPTY="${TMP_DIR}/k-empty"; rm -rf "${K_EMPTY}"; mkdir -p "${K_EMPTY}"
+cat > "${K_OFF}/.perf-sentinel.toml" <<'EOF'
+[green]
+enabled = false
+default_region = "FR"
+
+[green.electricity_maps]
+api_key = "lab-placeholder"
+region_map = { "eu-west-3" = "FR" }
+EOF
+cat > "${K_EMPTY}/.perf-sentinel.toml" <<'EOF'
+[green]
+enabled = true
+default_region = "FR"
+EOF
+echo '[]' > "${K_EMPTY}/no-spans.json"
+( cd "${K_OFF}" && "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${FIXTURE}" > out.txt 2> out.err )
+( cd "${K_EMPTY}" && "${PERF_SENTINEL_LOCAL_BIN}" analyze --input no-spans.json > out.txt 2> out.err )
+K_OFF_LINE="$(grep -a "Carbon:" "${K_OFF}/out.txt" | head -1 | sed 's/^ *//')"
+K_EMPTY_LINE="$(grep -a "Carbon:" "${K_EMPTY}/out.txt" | head -1 | sed 's/^ *//')"
+if [[ "${K_OFF_LINE}" == *"enabled = false"* ]] && [[ "${K_OFF_LINE}" != *"no traces analyzed"* ]] \
+   && [[ "${K_EMPTY_LINE}" == *"no traces analyzed"* ]] && [[ "${K_EMPTY_LINE}" != *"enabled = false"* ]]; then
+  assert_pass "K" "green off with a live scraper says '${K_OFF_LINE#*not computed }', zero traces says '${K_EMPTY_LINE#*not computed }' — no combined wording left"
+else
+  assert_fail "K" "green-off line: [${K_OFF_LINE:-<none>}]; zero-trace line: [${K_EMPTY_LINE:-<none>}]"
 fi
 
 # --- verdict ----------------------------------------------------------------
