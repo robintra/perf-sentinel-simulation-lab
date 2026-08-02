@@ -470,12 +470,23 @@ RUNNING_ID="$(kubectl -n "${NS}" get pod "${STS_NAME}-0" \
 REGISTRY_DIGEST="$(docker image inspect "${IMAGE}" \
   --format '{{range .RepoDigests}}{{println .}}{{end}}' 2>/dev/null \
   | sed -n 's/.*@\(sha256:[0-9a-f]*\)$/\1/p' | head -1)"
+# An image built locally and never pushed still gets a RepoDigest, but it is its
+# own config Id rather than anything a registry ever served. Comparing that to a
+# pod's imageID cannot work: `k3d image import` hands the tarball to containerd,
+# which computes its own id, so the two differ by construction and the leg would
+# report a stale layer that does not exist. Detect the case and SKIP.
+LOCAL_ID="$(docker image inspect "${IMAGE}" --format '{{.Id}}' 2>/dev/null)"
+if [ -n "${REGISTRY_DIGEST}" ] && [ "sha256:${REGISTRY_DIGEST#sha256:}" = "${LOCAL_ID}" ]; then
+  REGISTRY_DIGEST=""
+  PROVENANCE_LOCAL="yes"
+fi
 if [ "${RUNNING_IMAGE}" != "${IMAGE}" ]; then
   assert_fail "chart-provenance" "pod runs ${RUNNING_IMAGE:-<unreadable>}, expected ${IMAGE}"
 elif [ -z "${RUNNING_ID}" ]; then
   assert_fail "chart-provenance" "could not read imageID from pod ${STS_NAME}-0, cannot confirm which bits run"
 elif [ -z "${REGISTRY_DIGEST}" ]; then
-  record "chart-provenance" "SKIP - ${CHART_ORIGIN} v${CHART_PIN}, appVersion ${APP_VERSION}, pod on ${RUNNING_IMAGE} (${RUNNING_ID}); no local RepoDigest to compare against"
+  record "chart-provenance" "SKIP - ${CHART_ORIGIN} v${CHART_PIN}, appVersion ${APP_VERSION}, pod on ${RUNNING_IMAGE} (${RUNNING_ID}); $([ "${PROVENANCE_LOCAL:-no}" = yes ] && printf 'locally built image never pushed, its RepoDigest is its own config Id and cannot be compared to a containerd imageID' || printf 'no local RepoDigest to compare against')"
+  color_red "    skip: provenance not checkable on a locally built image (expected during a pre-release round)"
 elif [ "${RUNNING_ID#*@}" = "${REGISTRY_DIGEST}" ]; then
   assert_pass "chart-provenance" "${CHART_ORIGIN} v${CHART_PIN}, appVersion ${APP_VERSION}, pod digest matches the registry (${REGISTRY_DIGEST})"
 else
