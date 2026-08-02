@@ -2233,13 +2233,14 @@ discarding the valid files around it and continuing on defaults, and that rule
 now covers the **implicit** `.perf-sentinel.toml`, which used to warn and carry
 on. A lab recipe that relied on the old tolerance now fails, on purpose.
 
-Ten legs: recursive merge with the higher priority winning per key, the main
+Eleven legs: recursive merge with the higher priority winning per key, the main
 file loading last, duplicate priorities and uppercase names rejected, a non-TOML
 file ignored, exit 75 on an invalid fragment *and* on an invalid implicit main
 file, `--config path/custom.toml` reading fragments from `path/.perf-sentinel.d/`
 rather than from the working directory, the six reference GreenOps fragments
 loading together with `60-daemon-docker.toml` as a standalone main config, the
-three deprecated `[green]` keys, and `detection_config` additivity.
+three deprecated `[green]` keys, `detection_config` additivity, and the two
+possible causes of an absent carbon figure.
 
 Every leg reads the loaded configuration back out of the report's
 `detection_config` block rather than grepping the log, which reports what the
@@ -2248,8 +2249,64 @@ decoy fragment in the working directory setting a value nothing else uses: if
 the assertion sees it, the loader read the wrong directory, which a pass/fail on
 the merged result alone would not catch.
 
+The last leg runs the combination that broke the first version of the greyed-out
+figures: `[green] enabled = false` *with* an `[green.electricity_maps]` block,
+which is legitimate since the scraper runs independently of the toggle. The cause
+used to be deduced from the presence of `scoring_config`, which the daemon stamps
+as soon as Electricity Maps is configured, so a busy daemon claimed "no traces
+analyzed". Each case must now name its own cause, and the combined wording is
+gone.
+
 The deprecation leg is where §2.1 of the 0.9.25 handoff is measured rather than
 assumed: the same analysis runs twice, once with `include_network_transport =
 false` plus a zeroed transport coefficient and a zeroed embodied coefficient,
 once with none of them, and the two carbon totals must be **identical**. They
 are, and the methodology tag stays `sci_v1_numerator+transport` either way.
+
+## Which binary a scenario runs against
+
+Scenarios split into two families by how they reach perf-sentinel, and the
+difference decides what a PASS actually proves.
+
+**Local-binary scenarios** run `${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel`
+directly. They always exercise the working tree, so a `cargo build --release` is
+the only prerequisite — and forgetting it silently validates the previous build,
+which is why every such scenario prints the binary path and version it resolved.
+
+**Image scenarios** run `docker run <image>`, because they need the artifact a
+user installs rather than a host build: a `FROM scratch` static binary, the same
+one the daemon manifest pins. All of them resolve that image through
+`scripts/resolve-image.sh`, in this order:
+
+1. `PERF_SENTINEL_IMAGE` — a full reference, used verbatim. The pre-release path:
+   a locally built tag, or a digest.
+2. `PERF_SENTINEL_VERSION` — a GHCR tag. Every existing runbook and CI workflow
+   passes this one.
+3. `manifests/perf-sentinel-daemon.yaml` — the pin the lab is currently
+   validating, used verbatim since it may be a digest or a local pre-release tag.
+
+Each of those scenarios used to carry its own hardcoded default instead — 0.5.17,
+0.5.21, 0.7.2, 0.8.13, `latest`. A scenario pinned to an old tag runs green on
+every release without ever touching the version under validation, so the gate
+reported a PASS for code it had not executed. The 0.9.25 round unpinned all
+eight and found two assertions that had been stale for releases:
+`esrs-e1-crosswalk` still required schema exactly `v1.3`, and `intent-validator`
+still declared a 2024 SPECpower vintage its binary no longer recognised. Neither
+could have surfaced while the pin held.
+
+**Building a pre-release image.** Never point a `docker build` at the product
+checkout: it has a `.dockerignore` scoped to its own release Dockerfile, and its
+`target/` is several gigabytes of build cache Docker would upload. Build from a
+`git archive` context, which is what `scripts/seed-daemon-local.sh` does:
+
+```sh
+CTX="$(mktemp -d)"
+git -C "${PERF_SENTINEL_REPO_PATH}" archive HEAD | tar -x -C "${CTX}"
+rm -f "${CTX}/.dockerignore"
+docker build -f tools/daemon-image/Dockerfile -t perf-sentinel:X.Y.Z-local "${CTX}"
+```
+
+A scenario that genuinely needs a fixed old version — a compatibility leg against
+an earlier binary, say — should name that version inline at its call site rather
+than defaulting the whole run to it. `broker-messaging-waste` does exactly that
+for its v1.4 hash-compatibility leg.
