@@ -198,8 +198,13 @@ if [ "${BYTES}" -gt 0 ]; then
   if [ "${H4_RC}" = "2" ]; then
     skip "render check unavailable: $(tail -1 "${TMP_DIR}/h4.err")"
     record "H4" "SKIP — $(tail -1 "${TMP_DIR}/h4.err")"
+  # `notice=absent` is the second half: 0.9.25 opens the report with a plain
+  # #ps-no-js block that a script removes during parsing. On a path that renders,
+  # a visible notice would be a new display defect of its own.
+  elif [ "${H4:0:8}" = "RENDERED" ] && [[ "${H4}" == *"notice=absent"* ]]; then
+    assert_pass "H4" "${H4} — no restrictive CSP on the Pages path, and the no-JS notice was removed during parsing"
   elif [ "${H4:0:8}" = "RENDERED" ]; then
-    assert_pass "H4" "${H4} — no restrictive CSP on the Pages path"
+    assert_fail "H4" "the dashboard rendered but the no-JS notice is still painted: ${H4}"
   else
     assert_fail "H4" "the dashboard did not render even without a restrictive CSP: ${H4}"
   fi

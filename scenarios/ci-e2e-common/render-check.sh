@@ -19,10 +19,16 @@
 # the same report, used as the pre-JavaScript baseline.
 #
 # Prints one line of evidence on stdout:
-#   RENDERED rows=<n>/<static> tabs=<n>/<static>
-#   BLANK    rows=<n>/<static> tabs=<n>/<static>
+#   RENDERED rows=<n>/<static> tabs=<n>/<static> notice=<present|absent>
+#   BLANK    rows=<n>/<static> tabs=<n>/<static> notice=<present|absent>
 # and exits 0 either way — which of the two is expected belongs to the caller,
 # since both are legitimate depending on the CSP under test.
+#
+# `notice` reports the `#ps-no-js` block 0.9.25 added: a plain unstyled paragraph
+# naming both causes of a blank page, which a script placed right after it
+# removes during parsing. A normal load therefore never paints it, and a blocked
+# one keeps it. That is the difference between a page that explains itself and a
+# blank one, and it is the direct answer to what this scenario family reported.
 # Exit 2 means the check itself could not run (no Chrome, no python3, ...).
 set -uo pipefail
 
@@ -125,8 +131,13 @@ PY
 read -r ROWS TABS <<< "$(count_markers "${WORK}/dom.html")"
 read -r STATIC_ROWS STATIC_TABS <<< "$(count_markers "${BASELINE}")"
 
+# Absent means the script ran and removed it; present means it did not. Matched
+# on the id rather than on the wording, which is prose and will be reworded.
+NOTICE="absent"
+grep -q 'id="ps-no-js"' "${WORK}/dom.html" && NOTICE="present"
+
 if [ "${ROWS}" -gt "${STATIC_ROWS}" ] && [ "${TABS}" -gt "${STATIC_TABS}" ]; then
-  echo "RENDERED rows=${ROWS}/${STATIC_ROWS} tabs=${TABS}/${STATIC_TABS}"
+  echo "RENDERED rows=${ROWS}/${STATIC_ROWS} tabs=${TABS}/${STATIC_TABS} notice=${NOTICE}"
 else
-  echo "BLANK rows=${ROWS}/${STATIC_ROWS} tabs=${TABS}/${STATIC_TABS}"
+  echo "BLANK rows=${ROWS}/${STATIC_ROWS} tabs=${TABS}/${STATIC_TABS} notice=${NOTICE}"
 fi

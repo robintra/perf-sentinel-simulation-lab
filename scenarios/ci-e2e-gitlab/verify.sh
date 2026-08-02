@@ -259,8 +259,13 @@ else
     if [ "${G4_RC}" = "2" ]; then
       skip "render check unavailable: $(tail -1 "${TMP_DIR}/g4.err")"
       record "G4" "SKIP — $(tail -1 "${TMP_DIR}/g4.err")"
+    # `notice=absent` is the second half: 0.9.25 opens the report with a plain
+    # #ps-no-js block that a script removes during parsing. On a path that
+    # renders, a visible notice would be a new display defect of its own.
+    elif [ "${G4:0:8}" = "RENDERED" ] && [[ "${G4}" == *"notice=absent"* ]]; then
+      assert_pass "G4" "${G4} — served by GitLab Pages at ${PAGES_URL}, and the no-JS notice was removed during parsing"
     elif [ "${G4:0:8}" = "RENDERED" ]; then
-      assert_pass "G4" "${G4} — served by GitLab Pages at ${PAGES_URL}"
+      assert_fail "G4" "the dashboard rendered but the no-JS notice is still painted: ${G4}"
     else
       assert_fail "G4" "served by GitLab Pages but the dashboard did not render: ${G4}"
     fi

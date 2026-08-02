@@ -6,8 +6,11 @@
 
 # The released image is FROM scratch with a single static binary at /perf-sentinel.
 # Taking it from there rather than building locally is also more faithful: it is
-# the artifact a user actually installs.
-FROM ghcr.io/robintra/perf-sentinel:0.9.24 AS perf-sentinel
+# the artifact a user actually installs. Overridable so a pre-release validation
+# can point at a locally built image instead of the last published one — the
+# default must stay a real published tag, or a fresh clone builds nothing.
+ARG PERF_SENTINEL_IMAGE=ghcr.io/robintra/perf-sentinel:0.9.24
+FROM ${PERF_SENTINEL_IMAGE} AS perf-sentinel
 
 # Latest LTS line as of 2026-08-01 (2.575 is the weekly, not the LTS), arm64-native.
 FROM jenkins/jenkins:2.568.1-lts-jdk25

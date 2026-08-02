@@ -20,6 +20,8 @@
 #       ever changes the limitation was lifted and the docs need updating
 #   J5  with the documented Script Console remedy applied, it RENDERS
 #   J7  the documented future fix (CSS and JS in sibling files) would NOT help
+#   J8  the blocked page carries the 0.9.25 #ps-no-js notice explaining why it is
+#       blank, and that notice is gone once the script runs
 #
 # J6 (Resource Root URL, option A of docs/CI.md) is deliberately not covered:
 # it needs a second origin with its own hostname, and the CSP behaviour is
@@ -36,6 +38,10 @@ RENDER_CHECK="${SCRIPT_DIR}/../ci-e2e-common/render-check.sh"
 JAVA_FIXTURES="${SCRIPT_DIR}/../java-ci-capture/fixtures"
 
 JENKINS_IMAGE="${JENKINS_IMAGE:-perf-sentinel-lab-jenkins:2.568.1}"
+# Where the perf-sentinel binary baked into the controller comes from. Defaults
+# to the published release; a pre-release validation points it at a locally
+# built image, the same override the other two ci-e2e scenarios take.
+PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.9.24}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
 NETWORK="jce2e-net"
 JENKINS_CONTAINER="jce2e-jenkins"
@@ -103,8 +109,9 @@ rm -rf "${SCRIPT_DIR}/fixtures/project"
 cp -R "${JAVA_FIXTURES}" "${SCRIPT_DIR}/fixtures/project"
 rm -rf "${SCRIPT_DIR}/fixtures/project/target"
 
-step "Build the Jenkins image (Maven + released perf-sentinel binary + the job)"
-docker build -q -t "${JENKINS_IMAGE}" "${SCRIPT_DIR}/fixtures" > "${TMP_DIR}/image-build.log" 2>&1 \
+step "Build the Jenkins image (Maven + perf-sentinel from ${PERF_SENTINEL_IMAGE} + the job)"
+docker build -q --build-arg "PERF_SENTINEL_IMAGE=${PERF_SENTINEL_IMAGE}" \
+  -t "${JENKINS_IMAGE}" "${SCRIPT_DIR}/fixtures" > "${TMP_DIR}/image-build.log" 2>&1 \
   || die "jenkins image build failed: $(tail -5 "${TMP_DIR}/image-build.log")"
 ok "${JENKINS_IMAGE} built"
 
@@ -274,6 +281,26 @@ elif [ "${J5:0:8}" = "RENDERED" ]; then
   assert_pass "J5" "${J5} once DirectoryBrowserSupport.CSP is relaxed"
 else
   assert_fail "J5" "the documented remedy did not restore rendering: ${J5}"
+fi
+
+# J8 — 0.9.25's answer to what this scenario reported: the report now opens with
+# a plain unstyled notice naming both causes of a blank page, and a script right
+# after it removes the notice during parsing. So the notice must be PRESENT
+# exactly when the page failed to render and ABSENT when it rendered. Read off
+# J4's and J5's own output rather than loading the page a third time.
+step "J8: the blank page explains itself, and the notice disappears when it renders"
+J8_BLOCKED="$(printf '%s' "${J4}" | sed -n 's/.*notice=\([a-z]*\).*/\1/p')"
+J8_RENDERED="$(printf '%s' "${J5}" | sed -n 's/.*notice=\([a-z]*\).*/\1/p')"
+if [ "${J4_RC}" = "2" ] || [ "${J5_RC}" = "2" ]; then
+  skip "render check unavailable, no DOM to read the notice from"
+  record "J8" "SKIP — render check unavailable"
+elif [ "${J8_BLOCKED}" = "present" ] && [ "${J8_RENDERED}" = "absent" ]; then
+  assert_pass "J8" "the #ps-no-js notice is present on the blocked page and gone once the script runs — a page that explains itself rather than a blank one"
+elif [ -z "${J8_BLOCKED}" ] || [ -z "${J8_RENDERED}" ]; then
+  record "J8" "SKIP — render-check reported no notice field (older helper?)"
+  skip "render-check did not report a notice field"
+else
+  assert_fail "J8" "notice under CSP=${J8_BLOCKED} (want present), notice when rendered=${J8_RENDERED} (want absent)"
 fi
 
 # J7 — measure the promise at docs/CI.md:423 instead of trusting it.
