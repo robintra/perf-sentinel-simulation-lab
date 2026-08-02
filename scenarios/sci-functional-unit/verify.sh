@@ -3,7 +3,8 @@
 #
 # 0.8.13 adds `green_summary.co2.sci_per_trace` (the SCI intensity per trace) and
 # `green_summary.co2.functional_unit` alongside the existing footprint
-# `co2.total`. The numerator footprint keeps methodology `sci_v1_numerator`; the
+# `co2.total`. The numerator footprint keeps a `sci_v1_numerator` family tag,
+# suffixed with the optional terms it summed (`+transport` since 0.9.25); the
 # new intensity carries `sci_v1_intensity` and divides the footprint by the
 # number of traces analysed.
 #
@@ -15,8 +16,8 @@
 #            (not failed) when the daemon port-forward is unreachable, so the
 #            scenario also runs hermetically.
 #
-# Image: ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION:-0.8.13}. For the
-# unpublished pre-release, build + run with PERF_SENTINEL_VERSION=0.8.13-rc.
+# Image: the version under validation (see scripts/resolve-image.sh). For an
+# unpublished pre-release, build it locally and pass PERF_SENTINEL_IMAGE.
 
 set -euo pipefail
 
@@ -27,8 +28,13 @@ SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 FIXTURES_DIR="${SCENARIO_DIR}/fixtures"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-0.8.13}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to a hardcoded old tag, which meant the gate could report a
+# PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
 TRACES="${REPO_ROOT}/artifacts/fixtures/em-real-time-traces.json"
 
@@ -57,8 +63,16 @@ assert_sci() {
     || { fail "${label}: sci_per_trace.methodology != sci_v1_intensity"; return 1; }
   [ "$(jq -r '.green_summary.co2.functional_unit' "$f")" = "trace" ] \
     || { fail "${label}: functional_unit != trace"; return 1; }
-  [ "$(jq -r '.green_summary.co2.total.methodology' "$f")" = "sci_v1_numerator" ] \
-    || { fail "${label}: co2.total.methodology != sci_v1_numerator"; return 1; }
+  # Prefix, not equality. The tag carries the terms the numerator actually
+  # summed, and 0.9.25 always counts network transport, so it reads
+  # `sci_v1_numerator+transport` on any run with cross-region traffic. What this
+  # leg asserts is the SCI numerator family, not which optional terms landed in
+  # it — pinning the bare string turned a documented behaviour change into a
+  # lab failure the moment the scenario stopped running on its old pinned image.
+  case "$(jq -r '.green_summary.co2.total.methodology' "$f")" in
+    sci_v1_numerator|sci_v1_numerator+*) : ;;
+    *) fail "${label}: co2.total.methodology is not in the sci_v1_numerator family"; return 1 ;;
+  esac
   # invariant: sci_per_trace.mid == total.mid / traces_analyzed (epsilon)
   jq -e '((.green_summary.co2.sci_per_trace.mid - (.green_summary.co2.total.mid / .analysis.traces_analyzed)) | (if . < 0 then -. else . end)) < 1e-9' "$f" >/dev/null \
     || { fail "${label}: invariant sci.mid == total.mid/traces failed"; return 1; }
