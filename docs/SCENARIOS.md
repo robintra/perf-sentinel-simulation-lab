@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 63 scenarios live under `scenarios/<name>/` and each one ships a
+The 66 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -187,7 +187,7 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 63 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `endpoint-resolution` gate (the 0.9.22 `source.endpoint` ancestor walk: the inbound route resolved through ancestors rather than the direct parent, the CLIENT skip that stops an outbound URL naming a finding, the outermost-not-nearest code frame, and the per-language spelling parity that keeps one origin on one acknowledgment signature), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory), plus the `broker-messaging-waste` gate (OTel messaging ingestion and the broker energy attribution: the two-source arbitration between a measured cgroup and a declared cluster, driven against a real scraper that is cut, restored with a retroactive catch-up, answers without the expected label, and is unreachable from boot; plus disclosure v1.5, the configuration refusals, the destination spellings across broker families, and the producer link on the real astronomy capture), plus the `java-ci-capture` gate (the upstream Java CI recipe run verbatim from the published POM — Maven Failsafe with the OTel agent attached to the fork, `perf-sentinel capture` receiving OTLP over the network, `analyze --ci` on the result — together with the capture exit-code contract: size cap, unusable versus backpressure rejections, refusal to start on an unwritable output, whole-process-group stop on SIGTERM, and cross-container listening). The release gate runs all 63. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate. The lab now ships 66 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `endpoint-resolution` gate (the 0.9.22 `source.endpoint` ancestor walk: the inbound route resolved through ancestors rather than the direct parent, the CLIENT skip that stops an outbound URL naming a finding, the outermost-not-nearest code frame, and the per-language spelling parity that keeps one origin on one acknowledgment signature), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory), plus the `broker-messaging-waste` gate (OTel messaging ingestion and the broker energy attribution: the two-source arbitration between a measured cgroup and a declared cluster, driven against a real scraper that is cut, restored with a retroactive catch-up, answers without the expected label, and is unreachable from boot; plus disclosure v1.5, the configuration refusals, the destination spellings across broker families, and the producer link on the real astronomy capture), plus the `java-ci-capture` gate (the upstream Java CI recipe run verbatim from the published POM — Maven Failsafe with the OTel agent attached to the fork, `perf-sentinel capture` receiving OTLP over the network, `analyze --ci` on the result — together with the capture exit-code contract: size cap, unusable versus backpressure rejections, refusal to start on an unwritable output, whole-process-group stop on SIGTERM, and cross-container listening). The release gate runs all 66. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -250,7 +250,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 63 (sequential, long-running-drift is the long pole)
+# All 66 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1150,7 +1150,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 63 scenarios, in an order
+`make verify-all-scenarios` includes all 66 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is produced by a
@@ -1162,21 +1162,25 @@ contract that command promises: size cap, unusable versus backpressure
 rejections, refusal to start on an unwritable output, whole-process-group stop
 on SIGTERM, and cross-container listening.
 
-`ci-e2e-jenkins` sits outside the release-gate loop for now. It runs the
-documented Java CI recipe inside a real Jenkins controller and follows the
-artifact all the way to whether the published dashboard **renders in a
-browser** — the first lab scenario to serve a report over HTTP and assert on the
-rendered DOM rather than on the file size. It currently FAILs one assertion:
-`capture --output target/traces.json -- mvn verify`, the documented one-liner,
-cannot run on a clean CI workspace because `target/` does not exist yet, and
-`capture` correctly refuses to start, so the test suite never runs. It also
+`ci-e2e-jenkins` runs the documented Java CI recipe inside a real Jenkins
+controller and follows the artifact all the way to whether the published
+dashboard **renders in a browser** — the first lab scenario to serve a report
+over HTTP and assert on the rendered DOM rather than on the file size. It
 reproduces, in situ, the unstyled-report symptom caused by Jenkins' default
 Content-Security-Policy, confirms the remedy documented in `docs/CI.md` works,
-and measures that the "sibling files" fix promised there would not help. It has
-a `make verify-ci-e2e-jenkins` target and is covered by `make validate`, but is
-quarantined out of the count of 63 until it goes green. Its shared browser
-helper lives in `scenarios/ci-e2e-common/`, which is not a scenario and is not
-counted, like `scenarios/limit-common/`.
+and measures that the "sibling files" fix promised there would not help.
+
+It was quarantined out of the gate from 2026-08-01 to 2026-08-02 on one
+assertion, J0: `capture --output target/traces.json -- mvn verify`, the
+documented one-liner, could not run on a clean CI workspace because `target/`
+does not exist yet, and `capture` refused to start, so the test suite never ran.
+Product 0.9.25 creates the directory, J0 is green, and the scenario is back in
+`make verify-all-scenarios`. It gained J8 at the same time: 0.9.25 makes the
+report open with a notice naming both causes of a blank page, which a script
+removes during parsing, so the notice must be present exactly when the page
+failed to render. Its shared browser helper lives in
+`scenarios/ci-e2e-common/`, which is not a scenario and is not counted, like
+`scenarios/limit-common/`.
 
 `ci-e2e-github` is the same chain through a real GitHub Actions workflow, run
 locally by `act`, and it is part of the gate. It passes: the display risk on
@@ -2173,3 +2177,79 @@ Noted rather than failed: on a RabbitMQ **default exchange** `messaging.destinat
 `messaging.rabbitmq.destination.routing_key` is never read, so publishes to
 distinct routing keys collapse into one template — the same class as the
 host-strip merges documented in `rpc-carrier-parity`.
+
+## archive-integrity-chain (0.9.25 hash chain over the window archive)
+
+`make verify-archive-integrity-chain` — self-contained: a local release binary
+and python3. No cluster, no Docker. Around 90 seconds.
+
+Until 0.9.25, integrity stopped at the published document. `content_hash` and
+the cosign signature proved a report had not moved since generation, while the
+NDJSON windows it was aggregated from carried nothing: editing one before
+running `disclose` produced a coherent report with a valid hash, and no scenario
+here could tell. Each archive line now records `{ts, report, prev, seq, hash}`
+and `disclose` publishes the verdict under `integrity.trace_integrity_chain`.
+
+Six legs: an intact archive (`breaks = 0`, `windows_verified` equal to the
+window count), one window edited in place (`breaks = 1`, and the report is still
+produced — a break is published, not fatal), a pre-chaining archive
+(`windows_unchained = N`, `breaks = 0`, no accusation of tampering on an old
+file), the `hash` field **removed** after the chain has started (a break, which
+closes the obvious workaround for the edit case), a `SIGKILL` mid-write followed
+by a restart (`breaks = 0`, because a restarted daemon reads the last hash back
+before appending), and a deterministically torn tail (the torn line counts as a
+**lost window**, never as a break).
+
+The last two are the same guarantee from two angles. The `SIGKILL` is the
+operational shape and cannot promise it will tear a line; cutting the last line
+in half by hand measures the case the product fixed at the very end of the
+branch, which had only ever run under unit tests.
+
+The archive is generated by a **real daemon** on every run rather than committed
+as a fixture, so the chain always matches the binary under test. Two constraints
+on the plumbing: `TMP_DIR` must stay short, because the daemon's JSON socket
+lives there and a Unix socket path is capped near 104 bytes; and the window
+cadence is `trace_ttl_ms`, not a timer, since the daemon archives one window per
+eviction cycle that carried traffic.
+
+Two limits are upstream trade-offs rather than defects, and the scenario says so
+instead of testing them: a clean truncation of the file's *tail* is invisible to
+the chain alone (what remains is a shorter self-consistent chain — detecting it
+needs an anchor outside the file, which `integrity.cross_period_log` stays
+reserved for), and a **version rollback** appends unchained windows after
+chained ones, which the anti-strip rule counts as a break. Rotate the archive
+before a downgrade.
+
+## config-fragments (0.9.25 `.perf-sentinel.d/` loader)
+
+`make verify-config-fragments` — self-contained: a local release binary and
+python3. No cluster, no Docker, no daemon. A few seconds.
+
+Configuration can now be split into fragments named `NN-lowercase-name.toml`,
+loaded by ascending priority with the main `.perf-sentinel.toml` last. That part
+is a convenience. Two others are not, and neither was exercised anywhere in this
+repository: an invalid **discovered** file now stops with **exit 75** instead of
+discarding the valid files around it and continuing on defaults, and that rule
+now covers the **implicit** `.perf-sentinel.toml`, which used to warn and carry
+on. A lab recipe that relied on the old tolerance now fails, on purpose.
+
+Ten legs: recursive merge with the higher priority winning per key, the main
+file loading last, duplicate priorities and uppercase names rejected, a non-TOML
+file ignored, exit 75 on an invalid fragment *and* on an invalid implicit main
+file, `--config path/custom.toml` reading fragments from `path/.perf-sentinel.d/`
+rather than from the working directory, the six reference GreenOps fragments
+loading together with `60-daemon-docker.toml` as a standalone main config, the
+three deprecated `[green]` keys, and `detection_config` additivity.
+
+Every leg reads the loaded configuration back out of the report's
+`detection_config` block rather than grepping the log, which reports what the
+binary **applied** instead of what the files said. The `--config` leg plants a
+decoy fragment in the working directory setting a value nothing else uses: if
+the assertion sees it, the loader read the wrong directory, which a pass/fail on
+the merged result alone would not catch.
+
+The deprecation leg is where §2.1 of the 0.9.25 handoff is measured rather than
+assumed: the same analysis runs twice, once with `include_network_transport =
+false` plus a zeroed transport coefficient and a zeroed embodied coefficient,
+once with none of them, and the two carbon totals must be **identical**. They
+are, and the methodology tag stays `sci_v1_numerator+transport` either way.

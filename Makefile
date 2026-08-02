@@ -48,6 +48,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-chart-disclose-persistence \
         verify-java-ci-capture \
         verify-ci-e2e-jenkins verify-ci-e2e-github verify-ci-e2e-gitlab \
+        verify-archive-integrity-chain verify-config-fragments \
         verify-all-scenarios
 
 help: ## List available targets
@@ -174,6 +175,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/ci-e2e-jenkins/verify.sh
 	@bash -n scenarios/ci-e2e-github/verify.sh
 	@bash -n scenarios/ci-e2e-gitlab/verify.sh
+	@bash -n scenarios/archive-integrity-chain/verify.sh
+	@bash -n scenarios/config-fragments/verify.sh
 	@bash -n scenarios/chart-disclose-persistence/verify.sh
 	@bash -n scenarios/template-gitlab-ci/verify.sh
 	@bash -n scenarios/template-jenkinsfile/verify.sh
@@ -575,7 +578,7 @@ verify-broker-messaging-waste: ## messaging ingestion + broker energy: the two-s
 verify-java-ci-capture: ## Upstream Java CI recipe end to end: Maven Failsafe + perf-sentinel capture -> analyze, plus the capture exit-code contract (local binary, no cluster)
 	./scenarios/java-ci-capture/verify.sh
 
-verify-ci-e2e-jenkins: ## QUARANTINED (expected FAIL on J0, see its README): the documented Java CI recipe inside a real Jenkins, through to whether the published dashboard renders (docker, no cluster)
+verify-ci-e2e-jenkins: ## Upstream Java CI recipe inside a real Jenkins controller, through to whether the published dashboard renders under Jenkins' CSP (docker, no cluster)
 	./scenarios/ci-e2e-jenkins/verify.sh
 
 verify-ci-e2e-github: ## Upstream Java CI recipe through a real GitHub Actions workflow (act) to the rendered dashboard (docker + act, no cluster)
@@ -584,9 +587,13 @@ verify-ci-e2e-github: ## Upstream Java CI recipe through a real GitHub Actions w
 verify-ci-e2e-gitlab: ## Upstream Java CI recipe through a real GitLab pipeline to the dashboard served by GitLab Pages (needs make up-gitlab)
 	./scenarios/ci-e2e-gitlab/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 63 scenarios sequentially (see docs/SCENARIOS.md)
-	@# ci-e2e-jenkins is intentionally absent: quarantined while the documented
-	@# one-liner cannot run on a clean CI workspace. Add it here when J0 goes green.
+verify-archive-integrity-chain: ## 0.9.25 hash chain over the daemon window archive: intact, edited, pre-chaining, hash-stripped, SIGKILL and torn-tail (local binary, no cluster)
+	./scenarios/archive-integrity-chain/verify.sh
+
+verify-config-fragments: ## 0.9.25 .perf-sentinel.d/ loader (merge order, rejected names, exit 75 on both config paths) plus the three deprecated [green] keys (local binary, no cluster)
+	./scenarios/config-fragments/verify.sh
+
+verify-all-scenarios: seed-tracegen ## Run all 66 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -632,7 +639,7 @@ verify-all-scenarios: seed-tracegen ## Run all 63 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-github ci-e2e-gitlab broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain config-fragments broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
