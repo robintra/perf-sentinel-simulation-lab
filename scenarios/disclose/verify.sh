@@ -16,9 +16,7 @@
 #   - reports-thr50.ndjson  operator threshold 50, canonical 2 (same workload;
 #                           n+1 reclassified to redundant at the high threshold)
 #
-# 4 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
-# (defaults to `latest` so it tracks the current binary; CI drives the release
-# version via the PERF_SENTINEL_VERSION env):
+# 5 sub-tests run inside the perf-sentinel image under validation:
 #
 #   1. recognized schema + tiers: schema_version is perf-sentinel-report/v1.x,
 #      canonical threshold == 2, operational threshold == 5, both tiers
@@ -35,6 +33,10 @@
 #      (UNCHANGED) while operational threshold is 50 and the canonical
 #      waste_ratio strictly exceeds the operational one (the operator's high
 #      threshold under-reports avoidable waste; the canonical headline is immune).
+#   5. transport bracket: `transport_kgco2eq_low`/`_high` are published on an
+#      archive every window of which declares the fixed coefficient, and
+#      WITHHELD as soon as one window contributed transport without declaring
+#      it — which is every window archived before 0.9.25.
 #
 # Fixtures under fixtures/:
 #   - reports-thr5.ndjson, reports-thr50.ndjson, org-config.toml
@@ -49,8 +51,13 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES_DIR="${SCENARIO_DIR}/fixtures"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-latest}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to default to `latest`, which is the published release and therefore
+# NOT the binary under validation during a pre-release round.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 
 mkdir -p "${TMP_DIR}"
 
@@ -205,6 +212,93 @@ else
   record "4. anti-gaming invariant" FAIL "${note:-disclose error}"
 fi
 
+# === Sub-test 5: the transport bracket only frames the fixed coefficient ===
+# 0.9.25 publishes `transport_kgco2eq` on every run, plus a sourced
+# 0.001-0.059 kWh/GB bracket around it. That bracket frames the FIXED
+# coefficient only, so it must be withheld whenever a window that contributed
+# transport was scored under something else — including under a coefficient the
+# reader cannot see, which is every window archived before 0.9.25.
+#
+# The first shipped guard could never fire: it looked for a coefficient entry in
+# the aggregated coefficients, and no released version ever wrote one. An
+# archive from 0.9.23 with a custom coefficient therefore published a bracket
+# computed around 0.04 kWh/GB, under a signed content_hash. This leg is the
+# regression test for that, and it is deliberately counter-intuitive: the
+# mid value present with both bounds absent is the CORRECT outcome.
+step "5. transport bracket: published on a pure archive, withheld on a mixed one"
+cp "${FIXTURES_DIR}/transport-traces.json" "${TMP_DIR}/transport-traces.json"
+cp "${FIXTURES_DIR}/green-transport.toml"  "${TMP_DIR}/green-transport.toml"
+note=""
+if in_image analyze --config /workdir/green-transport.toml \
+     --input /workdir/transport-traces.json --format json \
+     > "${TMP_DIR}/transport-window.json" 2>/dev/null \
+   && python3 - "${TMP_DIR}" <<'PY'
+import copy, json, pathlib, sys
+
+tmp = pathlib.Path(sys.argv[1])
+report = json.loads((tmp / "transport-window.json").read_text())
+# Mid-quarter, so the window lands inside PERIOD_ARGS.
+window = {"ts": "2026-05-15T10:00:00Z", "report": report}
+(tmp / "transport-pure.ndjson").write_text(json.dumps(window) + "\n")
+
+# A pre-0.9.25 window is exactly this one minus the declared coefficient: the
+# field was born in that cycle, so an older archive carries no trace of what
+# scaled its transport term.
+old = copy.deepcopy(window)
+cfg = old["report"]["green_summary"].get("scoring_config")
+if cfg is None:
+    raise SystemExit(
+        "this binary does not stamp green_summary.scoring_config, "
+        "so the pre-0.9.25 window cannot be derived"
+    )
+cfg.pop("network_energy_per_byte_kwh", None)
+(tmp / "transport-mixed.ndjson").write_text(
+    json.dumps(old) + "\n" + json.dumps(window) + "\n"
+)
+PY
+then
+  for variant in pure mixed; do
+    in_image disclose --intent internal --confidentiality internal "${PERIOD_ARGS[@]}" \
+      --input "/workdir/transport-${variant}.ndjson" --output "/workdir/out-transport-${variant}.json" \
+      --org-config /workdir/org-config.toml >/dev/null 2>&1 || true
+  done
+  note="$(python3 - "${TMP_DIR}" <<'PY'
+import json, pathlib, sys
+
+tmp = pathlib.Path(sys.argv[1])
+def breakdown(name):
+    p = tmp / f"out-transport-{name}.json"
+    if not p.is_file():
+        return None
+    return json.loads(p.read_text())["aggregate"].get("carbon_breakdown") or {}
+
+pure, mixed = breakdown("pure"), breakdown("mixed")
+if pure is None or mixed is None:
+    print("disclose produced no report for one of the two variants"); sys.exit(1)
+checks = {
+    "pure: transport term present":  pure.get("transport_kgco2eq", 0) > 0,
+    "pure: low bound published":     "transport_kgco2eq_low" in pure,
+    "pure: high bound published":    "transport_kgco2eq_high" in pure,
+    "mixed: transport term present": mixed.get("transport_kgco2eq", 0) > 0,
+    "mixed: low bound WITHHELD":     "transport_kgco2eq_low" not in mixed,
+    "mixed: high bound WITHHELD":    "transport_kgco2eq_high" not in mixed,
+}
+bad = [k for k, v in checks.items() if not v]
+if bad:
+    print("failed: " + ", ".join(bad)); sys.exit(1)
+print("pure %.3e [%.3e, %.3e]; mixed %.3e with no bracket" % (
+    pure["transport_kgco2eq"], pure["transport_kgco2eq_low"],
+    pure["transport_kgco2eq_high"], mixed["transport_kgco2eq"]))
+PY
+)"
+fi
+if [ -n "${note}" ] && [[ "${note}" != failed:* ]] && [[ "${note}" != disclose* ]]; then
+  ok "${note}"; record "5. transport bracket per window" PASS "${note}"
+else
+  fail "transport bracket assertion failed (${note:-analyze/disclose error})"
+  record "5. transport bracket per window" FAIL "${note:-analyze/disclose error}"
+fi
+
 # === Aggregate verdict + report ===
 overall="PASS"
 for v in "${VERDICTS[@]}"; do [ "${v}" = "FAIL" ] && overall="FAIL"; done
@@ -224,7 +318,7 @@ for v in "${VERDICTS[@]}"; do [ "${v}" = "FAIL" ] && overall="FAIL"; done
 } > "${REPORT}"
 
 if [ "${overall}" = "PASS" ]; then
-  ok "PASS 4/4, see ${REPORT}"; exit 0
+  ok "PASS 5/5, see ${REPORT}"; exit 0
 else
   fail "see ${REPORT}"; exit 1
 fi

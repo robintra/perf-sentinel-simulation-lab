@@ -14,7 +14,7 @@ aggregates, from archived per-window NDJSON, two avoidable-waste tiers:
 ```
 make verify-disclose
 # or pin a version:
-PERF_SENTINEL_VERSION=0.8.2 make verify-disclose
+PERF_SENTINEL_VERSION=0.8.2 make verify-disclose   # pin an older binary on purpose
 ```
 
 Hermetic CLI scenario (no cluster/daemon): `docker run
@@ -53,3 +53,14 @@ for size (the tiers live in `disclosure_waste` + `green_summary`, not
   `specpower_table_version` tracks the pinned image's embedded CCF vintage
   (`2026-04-24` for 0.8.2). Bump it alongside `PERF_SENTINEL_VERSION` if the
   vintage changes.
+
+## Which binary this runs against
+
+`scripts/resolve-image.sh` picks the image: `PERF_SENTINEL_IMAGE` (a full
+reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
+GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
+
+It used to default to a hardcoded old tag, so the scenario ran green on every
+release without ever touching the version under validation — the gate reported a
+PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
+the eight image scenarios now share this resolution.

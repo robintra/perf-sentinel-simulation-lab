@@ -1,0 +1,9 @@
+# Minimal GreenOps config for the transport-bracket leg. The callee must resolve
+# to a DIFFERENT region than the caller, or `network_transport_contribution`
+# returns zero and the leg would assert on an absent term.
+[green]
+enabled = true
+default_region = "eu-west-3"
+
+[green.service_regions]
+assets-svc = "us-east-1"
