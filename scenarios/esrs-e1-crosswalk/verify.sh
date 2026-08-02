@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# ESRS E1 crosswalk + schema v1.3 + hash integrity (perf-sentinel 0.8.13, gate R1).
+# ESRS E1 crosswalk + schema floor + hash integrity (perf-sentinel 0.8.13, gate R1).
 #
 # 0.8.13 bumps the disclosure wire schema to perf-sentinel-report/v1.3 and adds
 # `methodology.standard_crosswalk` (an ESRS E1 datapoint mapping aid) plus the
 # matching disclaimer. This scenario disclosing an internal report and asserts:
-#   1. schema_version == perf-sentinel-report/v1.3
+#   1. schema_version >= perf-sentinel-report/v1.3 (a floor: the schema is
+#      additive, so a later version must still satisfy this leg)
 #   2. standard_crosswalk: standard ~ "ESRS E1", datapoints reference
 #      E1-5 / Scope 2 / Scope 3, a note/caveat mentions market-based
 #   3. notes.disclaimers carries the ESRS standard_crosswalk mapping-aid line
@@ -69,11 +70,20 @@ in_image disclose --intent internal --confidentiality internal \
   --org-config /workdir/org-config.toml > "${TMP_DIR}/disclose.log" 2>&1 || { cat "${TMP_DIR}/disclose.log"; die "disclose failed"; }
 ok "disclosed /workdir/report.json"
 
-# === 2. schema v1.3 ===
-step "2. schema_version == perf-sentinel-report/v1.3"
+# === 2. schema floor ===
+# A FLOOR, not an equality. The disclosure schema is additive by contract and
+# this leg's intent is "at least the version that introduced the crosswalk",
+# which is v1.3. Pinning the exact string made the scenario fail the moment the
+# product bumped — a lab staleness rather than a product defect, and the same
+# correction alumet-db-waste already carries.
+step "2. schema_version >= perf-sentinel-report/v1.3"
 SV="$(jq -r '.schema_version' "${TMP_DIR}/report.json")"
-if [ "${SV}" = "perf-sentinel-report/v1.3" ]; then ok "${SV}"; record "schema-v1.3" "PASS" "${SV}"
-else fail "schema_version=${SV}"; record "schema-v1.3" "FAIL" "${SV}"; fi
+if python3 -c "
+import re, sys
+m = re.search(r'/v(\d+)\.(\d+)', '${SV}')
+sys.exit(0 if m and (int(m.group(1)), int(m.group(2))) >= (1, 3) else 1)"; then
+  ok "${SV} (floor v1.3)"; record "schema-floor" "PASS" "${SV} >= v1.3"
+else fail "schema_version=${SV}, below the v1.3 floor"; record "schema-floor" "FAIL" "${SV}"; fi
 
 # === 3. standard_crosswalk ESRS E1 ===
 step "3. methodology.standard_crosswalk references ESRS E1 / E1-5 / Scope 2 / Scope 3 / market-based"
