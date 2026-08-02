@@ -22,10 +22,16 @@
 #   D6  the last export batch is not lost: the file carries every span.
 #   F1  --max-file-size exceeded: exit 2, message naming the flag, file valid.
 #   F2  a request refused before the queue is named unusable, not backpressure.
-#   F3  --output in a missing directory: exit 1, wrapped command never runs.
+#   F3  --output under a parent that is a regular file: exit 1, wrapped command
+#       never runs. (A missing directory used to belong here; 0.9.25 creates it,
+#       so the legitimate refusal needs a path a mkdir cannot fix.)
 #   F4  SIGTERM stops the whole command tree, probed by PID.
 #   F5  --listen-address 0.0.0.0 reached from a neighbouring container.
 #   F6  genuine writer saturation is reported as backpressure, and only as that.
+#   F7  --output target/traces.json on a CLEAN workspace: the directory is
+#       created and the suite runs, instead of the run failing before it starts.
+#   F8  the wrapped command deleting target/ mid-capture fails the run, instead
+#       of reporting a span count for a file that no longer exists.
 #
 # Self-contained: no cluster. Needs the local release binary, a JDK, Maven and
 # Docker (throwaway PostgreSQL, plus a throwaway Collector for the D3 reference).
@@ -315,16 +321,71 @@ gen() {  # telemetrygen from a neighbouring container, reaching the host listene
 }
 
 # F3 first: it needs no traffic at all.
-step "F3: --output in a directory that does not exist"
+#
+# A missing directory used to land here. Since 0.9.25 it is created (F7), so the
+# refusal has to be probed with a path that creating a directory cannot fix: a
+# parent that is a regular file. The refusal itself must stay, and it must stay
+# BEFORE the wrapped command starts — a capture that cannot listen must never
+# leave a test suite running detached.
+step "F3: --output under a parent that is a regular file"
 rm -f "${TMP_DIR}/f3-witness"
-"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${TMP_DIR}/no-such-dir/traces.json" \
+: > "${TMP_DIR}/f3-blocker"
+"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${TMP_DIR}/f3-blocker/traces.json" \
   --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
   -- touch "${TMP_DIR}/f3-witness" > "${TMP_DIR}/f3-stdout.log" 2> "${TMP_DIR}/f3-stderr.log"
 F3_RC=$?
 if [ "${F3_RC}" = "1" ] && [ ! -f "${TMP_DIR}/f3-witness" ]; then
-  assert_pass "F3" "exit 1 and the wrapped command never ran: $(grep -o 'Capture error: .*' "${TMP_DIR}/f3-stderr.log" | head -1 | cut -c1-80)"
+  assert_pass "F3" "exit 1 and the wrapped command never ran: $(grep -o 'Capture error: .*' "${TMP_DIR}/f3-stderr.log" | head -1 | cut -c1-90)"
 else
   assert_fail "F3" "rc=${F3_RC} (want 1), witness present=$([ -f "${TMP_DIR}/f3-witness" ] && echo yes || echo no)"
+fi
+
+# F7 — the defect this scenario reported from a real Jenkins controller: on a
+# clean CI workspace `target/` does not exist yet, because Maven is what creates
+# it and Maven is the command being wrapped. 0.9.24 refused to start, so the
+# integration suite never ran at all. A fresh copy of the fixtures is used
+# rather than PROJECT, which already has a target/ from D0.
+step "F7: --output target/traces.json on a clean workspace (no target/ yet)"
+F7_PROJECT="${TMP_DIR}/clean-workspace"
+rm -rf "${F7_PROJECT}"
+cp -R "${SCRIPT_DIR}/fixtures" "${F7_PROJECT}"
+F7_OUT="${F7_PROJECT}/target/traces.json"
+[ ! -e "${F7_PROJECT}/target" ] || die "F7 setup: the copied workspace already has a target/"
+"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${F7_OUT}" \
+  --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
+  -- "${MVN}" -B -f "${F7_PROJECT}/pom.xml" verify \
+     "-Dlab.db.url=${DB_URL}" "-Dlab.items=${ITEMS}" \
+  > "${TMP_DIR}/f7-stdout.log" 2> "${TMP_DIR}/f7-stderr.log"
+F7_RC=$?
+F7_SPANS="$(span_count "${F7_OUT}")"
+F7_TESTS="$(ls "${F7_PROJECT}/target/failsafe-reports"/*.txt 2>/dev/null | wc -l | tr -d ' ')"
+if [ "${F7_RC}" = "0" ] && [ "${F7_SPANS}" -gt 0 ] && [ "${F7_TESTS}" -gt 0 ]; then
+  assert_pass "F7" "the missing target/ was created, the suite ran (${F7_TESTS} failsafe report(s)) and ${F7_SPANS} spans were captured"
+else
+  assert_fail "F7" "rc=${F7_RC}, spans=${F7_SPANS}, failsafe reports=${F7_TESTS}: $(grep -o 'Capture error: .*' "${TMP_DIR}/f7-stderr.log" | head -1 | cut -c1-90)"
+fi
+
+# F8 — the other half of the same fix. `mvn clean` deletes target/ AFTER capture
+# opened the file in it; on Unix the writer keeps filling an unlinked inode, so
+# every counter stays real while the path holds nothing. 0.9.24 printed a span
+# count and exited 0, sending the next step to a file that never existed.
+# Reusing F7's workspace on purpose: target/ is now populated, which is what a
+# `mvn clean` actually finds.
+step "F8: the wrapped command deletes target/ while the capture is writing"
+F8_OUT="${F7_PROJECT}/target/traces.json"
+"${PERF_SENTINEL_LOCAL_BIN}" capture --output "${F8_OUT}" \
+  --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
+  -- "${MVN}" -B -f "${F7_PROJECT}/pom.xml" clean verify \
+     "-Dlab.db.url=${DB_URL}" "-Dlab.items=${ITEMS}" \
+  > "${TMP_DIR}/f8-stdout.log" 2> "${TMP_DIR}/f8-stderr.log"
+F8_RC=$?
+F8_MSG="$(grep -o 'Capture error: .*' "${TMP_DIR}/f8-stderr.log" | head -1)"
+F8_PRESENT="$([ -f "${F8_OUT}" ] && echo yes || echo no)"
+if [ "${F8_RC}" != "0" ] && [ "${F8_PRESENT}" = "no" ] \
+   && printf '%s' "${F8_MSG}" | grep -qi "removed while the capture was writing"; then
+  assert_pass "F8" "exit ${F8_RC} and the cause is named rather than a span count reported: $(printf '%s' "${F8_MSG}" | cut -c1-95)"
+else
+  assert_fail "F8" "rc=${F8_RC} (want non-zero), trace file present=${F8_PRESENT}, message: ${F8_MSG:-<none>}"
 fi
 
 step "F5: --listen-address 0.0.0.0 reached from a neighbouring container"

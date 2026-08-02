@@ -31,10 +31,12 @@ started one step downstream of the thing the documentation described.
 | D6 | the last export batch is not lost: the file carries every span |
 | F1 | `--max-file-size` exceeded: exit 2, a message naming the flag, file still valid |
 | F2 | a request refused **before** the queue is named unusable and points at `OTEL_EXPORTER_OTLP_PROTOCOL`, never at the writer |
-| F3 | `--output` in a missing directory: exit 1, and the wrapped command never runs |
+| F3 | `--output` under a parent that is a **regular file**: exit 1, and the wrapped command never runs |
 | F4 | SIGTERM during a wrapped capture: child stopped, no orphan left, file still valid NDJSON |
 | F5 | `--listen-address 0.0.0.0` reached from a neighbouring container |
 | F6 | genuine writer saturation is reported as backpressure, and **only** as that |
+| F7 | `--output target/traces.json` on a **clean workspace**: the directory is created and the suite runs |
+| F8 | the wrapped command deleting `target/` mid-capture **fails** the run instead of reporting a span count |
 
 D3's Collector run doubles as the control: if it finds nothing either, the
 fixture is at fault rather than the capture, and the scenario says so instead of
@@ -53,10 +55,23 @@ running it rather than by reading it.
 | 1 | `8839da06` | `experimental-otlp/stdout` — a forked Failsafe cannot hand back its stdout; the agent captures the fork's command channel in `premain`, so every export was diverted into a `.dumpstream`. Measured identically on Failsafe 3.5.0, 3.2.5 and 2.22.2, and on the documented `tee` fallback. |
 | 2 | `9c186516` | `capture` introduced and sound, but three defects: the published POM pointed `:4317` while agent 2.x defaults to `http/protobuf` (0 spans captured); a request refused *before* the queue was reported as writer backpressure; SIGTERM killed only the direct child, orphaning the grandchild to PID 1. |
 | 3 | `57d2a2f9` | all three fixed. The POM states the protocol, the two rejection causes have separate counters and messages, and the wrapped command runs in its own process group. **13/13 PASS.** |
+| 4 | `0.9.25` | the defect `ci-e2e-jenkins` reported as J0 is fixed: `capture` creates the output directory instead of refusing to start. F3 moves to a refusal a `mkdir` cannot fix, F7 and F8 are new. **15/15 PASS.** |
 
 Round 3 also made F6 possible: while protocol rejections and queue rejections
 shared one counter, a saturation measurement could not mean anything. With them
 separated, the leg below is interpretable, and it passes.
+
+Round 4 is the one this scenario did **not** find. F3 passed here for the wrong
+reason: it wrote into a directory that already existed, which is a developer
+machine, not a CI workspace. A real Jenkins controller with a fresh workspace is
+what surfaced it, which is why the three `ci-e2e-*` scenarios exist.
+
+Note what F7 and F8 together say about the shape of the command. Since the trace
+file lives under `target/`, `capture --output target/traces.json -- mvn clean
+verify` **cannot succeed**: `clean` unlinks the file capture is writing to, and
+F8 asserts that this is now reported rather than hidden. The documented recipe
+uses `mvn verify` for exactly that reason. A pipeline that wants `clean` must put
+the trace file outside the directory being cleaned.
 
 ## How it works
 
