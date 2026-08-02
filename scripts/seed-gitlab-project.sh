@@ -102,6 +102,15 @@ case "$1" in
 esac
 ASKPASS
 chmod 700 "${ASKPASS_SCRIPT}"
+# A configured credential helper (osxkeychain is Git for Mac's default) is
+# consulted BEFORE GIT_ASKPASS, and it caches per host:port. Every `make
+# up-gitlab` mints a new PAT for the same localhost:8181, so the second GitLab
+# instance on a machine authenticates with the first one's stale token and fails
+# with "HTTP Basic: Access denied" — while the PAT itself is valid and the API
+# accepts it, which sends you looking at GitLab rather than at the keychain.
+# Emptying the helper for these commands only neutralises it here; the user's
+# own git config is untouched.
+GIT_NO_HELPER=(-c credential.helper=)
 export LAB_GIT_TOKEN="${TOKEN}"
 export GIT_ASKPASS="${ASKPASS_SCRIPT}"
 # After a fresh project create, GitLab finalizes the repo via Sidekiq
@@ -112,7 +121,7 @@ export GIT_ASKPASS="${ASKPASS_SCRIPT}"
 # project, DNS down) is not buried under the Sidekiq race assumption.
 CLONE_ERR="$(mktemp)"
 for attempt in $(seq 1 30); do
-  if git clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}" 2>"${CLONE_ERR}"; then
+  if git "${GIT_NO_HELPER[@]}" clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK_DIR}" 2>"${CLONE_ERR}"; then
     rm -f "${CLONE_ERR}"
     break
   fi
@@ -139,7 +148,7 @@ if git diff --cached --quiet; then
   ok "no changes to push, project already seeded"
 else
   git commit -q -m "Seed: template + fixture + config"
-  git push -q origin HEAD:main
+  git "${GIT_NO_HELPER[@]}" push -q origin HEAD:main
   ok "initial commit pushed to main"
 fi
 unset LAB_GIT_TOKEN GIT_ASKPASS

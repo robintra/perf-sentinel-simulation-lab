@@ -94,7 +94,16 @@ esac
 ASKPASS
 chmod 700 "${TMP_DIR}/askpass.sh"
 export LAB_GIT_TOKEN="${TOKEN}" GIT_ASKPASS="${TMP_DIR}/askpass.sh"
-git clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK}" \
+# A configured credential helper (osxkeychain is Git for Mac's default) is
+# consulted BEFORE GIT_ASKPASS, and it caches per host:port. Every `make
+# up-gitlab` mints a new PAT for the same localhost:8181, so the second GitLab
+# instance on a machine authenticates with the first one's stale token and fails
+# with "HTTP Basic: Access denied" — while the PAT itself is valid and the API
+# accepts it, which sends you looking at GitLab rather than at the keychain.
+# Emptying the helper for these commands only neutralises it here; the user's
+# own git config is untouched.
+GIT_NO_HELPER=(-c credential.helper=)
+git "${GIT_NO_HELPER[@]}" clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK}" \
   || die "cannot clone the seeded project"
 
 # One Maven project across the three ci-e2e scenarios: copied in, never forked.
@@ -119,7 +128,7 @@ docker rm -f gle2e-extract >/dev/null 2>&1 || true
 ( cd "${WORK}" && git add -A \
   && git -c user.email=lab@example.com -c user.name=lab commit -q --allow-empty \
        -m "ci-e2e-gitlab: capture to rendered dashboard" \
-  && git push -q origin HEAD:main ) || die "cannot push the pipeline"
+  && git "${GIT_NO_HELPER[@]}" push -q origin HEAD:main ) || die "cannot push the pipeline"
 SHA="$(cd "${WORK}" && git rev-parse HEAD)"
 ok "pushed ${SHA:0:8}"
 
