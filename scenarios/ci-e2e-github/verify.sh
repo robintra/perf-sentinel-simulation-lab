@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER_CHECK="${SCRIPT_DIR}/../ci-e2e-common/render-check.sh"
 JAVA_FIXTURES="${SCRIPT_DIR}/../java-ci-capture/fixtures"
 
-PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.9.26}"
+PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.9.28}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
 NETWORK="ghe2e-net"
 PG_CONTAINER="ghe2e-postgres"
