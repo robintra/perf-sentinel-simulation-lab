@@ -1,0 +1,482 @@
+[
+ {
+  "timestamp": "2026-08-04T12:00:00.300Z",
+  "trace_id": "t00000000000000000000000000000d00",
+  "span_id": "s0000300",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 0",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/0",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.301Z",
+  "trace_id": "t00000000000000000000000000000d01",
+  "span_id": "s0000301",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 1",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/1",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.302Z",
+  "trace_id": "t00000000000000000000000000000d02",
+  "span_id": "s0000302",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 2",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/2",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.303Z",
+  "trace_id": "t00000000000000000000000000000d03",
+  "span_id": "s0000303",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 3",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/3",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.304Z",
+  "trace_id": "t00000000000000000000000000000d04",
+  "span_id": "s0000304",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 4",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/4",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.305Z",
+  "trace_id": "t00000000000000000000000000000d05",
+  "span_id": "s0000305",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 5",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/5",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.306Z",
+  "trace_id": "t00000000000000000000000000000d06",
+  "span_id": "s0000306",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 6",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/0",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.307Z",
+  "trace_id": "t00000000000000000000000000000d07",
+  "span_id": "s0000307",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 7",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/1",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.308Z",
+  "trace_id": "t00000000000000000000000000000d08",
+  "span_id": "s0000308",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 8",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/2",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.309Z",
+  "trace_id": "t00000000000000000000000000000d09",
+  "span_id": "s0000309",
+  "parent_span_id": "p0000030",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 9",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/3",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.310Z",
+  "trace_id": "t00000000000000000000000000000d0a",
+  "span_id": "s0000310",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 10",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/4",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.311Z",
+  "trace_id": "t00000000000000000000000000000d0b",
+  "span_id": "s0000311",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 11",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/5",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.312Z",
+  "trace_id": "t00000000000000000000000000000d0c",
+  "span_id": "s0000312",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 12",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/0",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.313Z",
+  "trace_id": "t00000000000000000000000000000d0d",
+  "span_id": "s0000313",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 13",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/1",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.314Z",
+  "trace_id": "t00000000000000000000000000000d0e",
+  "span_id": "s0000314",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 14",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/2",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.315Z",
+  "trace_id": "t00000000000000000000000000000d0f",
+  "span_id": "s0000315",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 15",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/3",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.316Z",
+  "trace_id": "t00000000000000000000000000000d10",
+  "span_id": "s0000316",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 16",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/4",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.317Z",
+  "trace_id": "t00000000000000000000000000000d11",
+  "span_id": "s0000317",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 17",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/5",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.318Z",
+  "trace_id": "t00000000000000000000000000000d12",
+  "span_id": "s0000318",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 18",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/0",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.319Z",
+  "trace_id": "t00000000000000000000000000000d13",
+  "span_id": "s0000319",
+  "parent_span_id": "p0000031",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 19",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/1",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.320Z",
+  "trace_id": "t00000000000000000000000000000d14",
+  "span_id": "s0000320",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 20",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/2",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.321Z",
+  "trace_id": "t00000000000000000000000000000d15",
+  "span_id": "s0000321",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 21",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/3",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.322Z",
+  "trace_id": "t00000000000000000000000000000d16",
+  "span_id": "s0000322",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 22",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/4",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.323Z",
+  "trace_id": "t00000000000000000000000000000d17",
+  "span_id": "s0000323",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 23",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/5",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.324Z",
+  "trace_id": "t00000000000000000000000000000d18",
+  "span_id": "s0000324",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 24",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/0",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.325Z",
+  "trace_id": "t00000000000000000000000000000d19",
+  "span_id": "s0000325",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 25",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/1",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.326Z",
+  "trace_id": "t00000000000000000000000000000d1a",
+  "span_id": "s0000326",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 26",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/2",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.327Z",
+  "trace_id": "t00000000000000000000000000000d1b",
+  "span_id": "s0000327",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 27",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/3",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.328Z",
+  "trace_id": "t00000000000000000000000000000d1c",
+  "span_id": "s0000328",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 28",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/4",
+   "method": "CatalogRepository::find"
+  }
+ },
+ {
+  "timestamp": "2026-08-04T12:00:00.329Z",
+  "trace_id": "t00000000000000000000000000000d1d",
+  "span_id": "s0000329",
+  "parent_span_id": "p0000032",
+  "service": "ack-svc",
+  "cloud_region": "eu-west-3",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM catalog WHERE id = 29",
+  "duration_us": 2000,
+  "source": {
+   "endpoint": "http://ack-svc/api/catalog/5",
+   "method": "CatalogRepository::find"
+  }
+ }
+]
