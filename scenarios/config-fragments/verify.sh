@@ -175,7 +175,11 @@ E="$(mkcase e)"
 printf '[detection]\nn_plus_one_min_occurrences = 7\n' > "${E}/.perf-sentinel.d/10-ok.toml"
 printf '[detection\nn_plus_one_min_occurrences =\n' > "${E}/.perf-sentinel.d/20-bad.toml"
 E_RC="$(run_case "${E}")"
-E_MSG="$(grep -o 'config fragment 20-bad.toml.*' "${E}/out.err" | head -1 | cut -c1-90)"
+# Match the file name, not the wording around it: 0.9.25 dropped the "config
+# fragment <name>" phrasing on purpose (the main .perf-sentinel.toml travels
+# the same loader and is not a fragment, product commit 83be3d84). The
+# contract is that the error names the offending file, which it still does.
+E_MSG="$(grep -o '20-bad\.toml.*' "${E}/out.err" | head -1 | cut -c1-90)"
 if [ "${E_RC}" = "${EXIT_TOOLING_ERROR}" ] && [ -n "${E_MSG}" ] && [ ! -s "${E}/out.json" ]; then
   assert_pass "E" "exit ${EXIT_TOOLING_ERROR}, no report written, error names the fragment: ${E_MSG}"
 else
@@ -187,7 +191,7 @@ step "F: an invalid IMPLICIT .perf-sentinel.toml exits ${EXIT_TOOLING_ERROR} (ch
 F="${TMP_DIR}/f"; rm -rf "${F}"; mkdir -p "${F}"
 printf '[detection\nbroken =\n' > "${F}/.perf-sentinel.toml"
 F_RC="$(run_case "${F}")"
-F_MSG="$(grep -o 'config fragment .perf-sentinel.toml.*' "${F}/out.err" | head -1 | cut -c1-90)"
+F_MSG="$(grep -o '\.perf-sentinel\.toml.*' "${F}/out.err" | head -1 | cut -c1-90)"
 if [ "${F_RC}" = "${EXIT_TOOLING_ERROR}" ] && [ ! -s "${F}/out.json" ]; then
   assert_pass "F" "exit ${EXIT_TOOLING_ERROR} rather than warning and running on defaults: ${F_MSG}"
 else
