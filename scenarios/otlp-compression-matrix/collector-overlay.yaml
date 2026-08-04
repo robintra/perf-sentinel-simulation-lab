@@ -1,0 +1,36 @@
+# Helm values overlay applied on top of helm/values/otel-collector.yaml.
+# Swaps the daemon exporter from otlphttp (:14318) to OTLP gRPC (:14317) with
+# the compression key deliberately left out, so the OTel default (gzip)
+# applies. That is the exact shape 0.9.26 dropped silently, and the shape no
+# lab producer ever had.
+#
+# Applied for the duration of the cluster leg only: the lab's nominal path
+# stays HTTP so the other 66 scenarios keep their reference topology. Helm
+# merge replaces lists wholesale, so the full pipeline is re-declared.
+#
+# Apply with:
+#   helm upgrade otel-collector open-telemetry/opentelemetry-collector \
+#     --version <installed> -n observability \
+#     -f helm/values/otel-collector.yaml \
+#     -f scenarios/otlp-compression-matrix/collector-overlay.yaml
+
+config:
+  exporters:
+    otlp/perf_sentinel:
+      # gRPC endpoint: host:port, no scheme.
+      endpoint: perf-sentinel-daemon.observability.svc.cluster.local:14317
+      tls:
+        insecure: true
+      # compression: intentionally absent -> gzip.
+  service:
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        processors:
+          - memory_limiter
+          - k8sattributes
+          - batch
+        exporters:
+          - otlphttp/tempo
+          - otlp/perf_sentinel

@@ -280,9 +280,20 @@ The daemon's `trace_ttl_ms` is set to 5 seconds (instead of the
 default 60 seconds) so findings emerge quickly enough for the 15s
 wait to suffice. Production deployments would use the longer TTL.
 
-The OTel Collector exporter that targets the daemon disables gzip
-compression: the daemon's `/v1/traces` handler does not decompress
-request bodies and rejects gzipped payloads with HTTP 400.
+The OTel Collector exporter that targets the daemon leaves `compression`
+unset, so the OTel default (gzip) applies: the daemon's `/v1/traces`
+handler has decompressed request bodies since 0.5.5, and the lab's old
+`compression: none` workaround was removed then (see
+`docs/TROUBLESHOOTING.md`, "gzip on the daemon exporter").
+
+The exporter is `otlphttp/perf_sentinel` on `:14318`, so the nominal lab
+path is OTLP **HTTP**. The daemon's gRPC listener on `:14317` is covered
+by the `otlp-compression-matrix` scenario, which runs the full transport
+× encoding matrix against a throwaway daemon and, in its cluster leg,
+temporarily switches this collector to `otlp/perf_sentinel` on `:14317`
+before reverting. That separation is deliberate: a single collector
+exporting to both ports would ingest every span twice and skew every
+finding count in the suite.
 
 ## Network segmentation
 

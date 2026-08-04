@@ -21,6 +21,10 @@ Protocols:
 The dump modes are stdlib-only. http-pb and grpc need opentelemetry-proto
 (and grpcio for grpc), pinned in requirements.txt.
 
+--compression {none,gzip,deflate} applies to http-pb (Content-Encoding) and
+grpc (grpc-encoding). It is what exercises the daemon's decompression paths:
+a real exporter compresses by default, and the lab's own producers did not.
+
 Every flag has a TRACEGEN_* environment fallback so Kubernetes Jobs can be
 parameterized without rebuilding the image.
 """
@@ -52,6 +56,9 @@ def parse_args():
     p.add_argument("--endpoint", default=env_default("ENDPOINT", "http://perf-sentinel-daemon.observability.svc.cluster.local:14318"))
     p.add_argument("--protocol", default=env_default("PROTOCOL", "http-pb"),
                    choices=["http-pb", "grpc", "ndjson-socket", "dump-native", "dump-jaeger", "dump-zipkin"])
+    p.add_argument("--compression", default=env_default("COMPRESSION", "none"),
+                   choices=["none", "gzip", "deflate"],
+                   help="http-pb and grpc only: compress the export the way a real exporter does. gRPC deflate is unreachable from the Collector's exporter (gzip/snappy/zstd only), so this client is the lab's only way to exercise it")
     p.add_argument("--services", type=int, default=int(env_default("SERVICES", "50")))
     p.add_argument("--service-prefix", default=env_default("SERVICE_PREFIX", "synth"))
     p.add_argument("--run-nonce", default=env_default("RUN_NONCE", ""),
@@ -332,7 +339,7 @@ class HttpPbSender:
     generator that dies on the first transient refusal measures its own
     fragility, not the daemon's limit."""
 
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, compression="none"):
         import urllib.parse
 
         u = urllib.parse.urlparse(endpoint)
@@ -340,6 +347,7 @@ class HttpPbSender:
         self.port = u.port or 80
         self.conn = None
         self.retries_used = 0
+        self.compression = compression
 
     def _connect(self):
         import http.client
@@ -349,14 +357,34 @@ class HttpPbSender:
     def send(self, batch, resource_blocks):
         self.send_raw(to_otlp_request(batch, resource_blocks).SerializeToString())
 
-    def send_raw(self, body):
+    def encode(self, body):
+        """Compress once. The payload bank encodes at build time so a
+        compressed run does not pay the codec on every request and keeps
+        measuring the daemon rather than this generator."""
+        if self.compression == "gzip":
+            import gzip
+
+            return gzip.compress(body)
+        if self.compression == "deflate":
+            import zlib
+
+            # zlib format (RFC 1950), what tower-http and tonic decode for
+            # deflate. Raw DEFLATE would be refused by both.
+            return zlib.compress(body)
+        return body
+
+    def send_raw(self, body, encoded=False):
+        if not encoded:
+            body = self.encode(body)
+        headers = {"Content-Type": "application/x-protobuf"}
+        if self.compression != "none":
+            headers["Content-Encoding"] = self.compression
         last = None
         for attempt in range(5):
             try:
                 if self.conn is None:
                     self._connect()
-                self.conn.request("POST", "/v1/traces", body=body,
-                                  headers={"Content-Type": "application/x-protobuf"})
+                self.conn.request("POST", "/v1/traces", body=body, headers=headers)
                 resp = self.conn.getresponse()
                 resp.read()
                 if resp.status >= 300:
@@ -371,12 +399,18 @@ class HttpPbSender:
 
 
 class GrpcSender:
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, compression="none"):
         import grpc
         from opentelemetry.proto.collector.trace.v1 import trace_service_pb2_grpc as svc_grpc
 
         target = endpoint.replace("http://", "").replace("https://", "")
-        self.channel = grpc.insecure_channel(target)
+        # grpc sets the `grpc-encoding` header from this, exactly like a real
+        # exporter: the listener has to advertise the encoding via
+        # accept_compressed or it answers Unimplemented.
+        codec = {"none": grpc.Compression.NoCompression,
+                 "gzip": grpc.Compression.Gzip,
+                 "deflate": grpc.Compression.Deflate}[compression]
+        self.channel = grpc.insecure_channel(target, compression=codec)
         self.stub = svc_grpc.TraceServiceStub(self.channel)
 
     def send(self, batch, resource_blocks):
@@ -406,9 +440,9 @@ class NdjsonSocketSender:
 
 def make_sender(args):
     if args.protocol == "http-pb":
-        return HttpPbSender(args.endpoint)
+        return HttpPbSender(args.endpoint, args.compression)
     if args.protocol == "grpc":
-        return GrpcSender(args.endpoint)
+        return GrpcSender(args.endpoint, args.compression)
     if args.protocol == "ndjson-socket":
         return NdjsonSocketSender(args.endpoint)
     raise AssertionError("not a live protocol: %s" % args.protocol)
@@ -477,7 +511,7 @@ def run_steady(args, gen, sender, steps):
         bank = []
         for _ in range(args.payload_bank):
             chunk = [gen.next_trace() for _ in range(args.batch_traces)]
-            bank.append(to_otlp_request(chunk, args.resource_blocks).SerializeToString())
+            bank.append(sender.encode(to_otlp_request(chunk, args.resource_blocks).SerializeToString()))
         print("PAYLOAD_BANK ready entries=%d traces_each=%d" % (len(bank), args.batch_traces), flush=True)
     bank_idx = 0
     for tps, seconds in steps:
@@ -487,7 +521,7 @@ def run_steady(args, gen, sender, steps):
             if bank is not None:
                 sends = max(1, tps // args.batch_traces)
                 for _ in range(sends):
-                    sender.send_raw(bank[bank_idx % len(bank)])
+                    sender.send_raw(bank[bank_idx % len(bank)], encoded=True)
                     bank_idx += 1
                     requests += 1
                 # Bank replays re-emit the same trace ids: account spans

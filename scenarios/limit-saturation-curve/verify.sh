@@ -31,6 +31,12 @@ ENDPOINT="http://localhost:${DAEMON_LOCAL_PORT}"
 RAMP="${RAMP:-50:60,100:60,200:60,400:90,800:90,1600:90}"
 [ "${LONG_RUN:-0}" = "1" ] && RAMP="50:60,100:60,200:60,400:90,800:120,1600:120,3200:120"
 SERVICES="${SERVICES:-64}"
+# COMPRESSION=gzip replays the same ramp with compressed exports. Since 0.9.28
+# the payload cap bounds the DECOMPRESSED size, so the same wire volume can
+# occupy more RSS than an uncompressed run: comparing the two curves is what
+# measures that amplification. tracegen compresses its payload bank once, so
+# the generator stays as fast as the uncompressed run.
+COMPRESSION="${COMPRESSION:-none}"
 SAMPLE_EVERY_S=10
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
@@ -107,6 +113,7 @@ spec:
           args:
             - "--endpoint=http://perf-sentinel-daemon.observability.svc.cluster.local:14318"
             - "--protocol=http-pb"
+            - "--compression=${COMPRESSION}"
             - "--services=${SERVICES}"
             - "--service-prefix=sat"
             - "--ramp=${RAMP}"
@@ -284,7 +291,7 @@ verdict="PASS"
 {
   echo "# Scenario: ${SCENARIO}"
   echo ""
-  echo "- Ramp: ${RAMP}, services: ${SERVICES}"
+  echo "- Ramp: ${RAMP}, services: ${SERVICES}, compression: ${COMPRESSION}"
   echo "- Generator: ${GEN_REPORT}"
   echo "- Raw samples: ${TSV}"
   echo ""

@@ -1,0 +1,44 @@
+# Collector config template for the self-contained legs. verify.sh
+# substitutes __EXPORTER__ (otlp = gRPC, otlphttp = HTTP), __ENDPOINT__ and
+# __COMPRESSION__ per leg.
+#
+# __COMPRESSION__ is replaced by either a `compression: <codec>` line or by a
+# comment. Leaving it out is the point of the nominal leg: an OTLP exporter
+# with no `compression` key gzips, and that default is what 0.9.26 dropped on
+# the gRPC endpoint.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 512
+
+exporters:
+  __EXPORTER__:
+    endpoint: __ENDPOINT__
+    tls:
+      insecure: true
+    __COMPRESSION__
+    # No retry: a permanent Unimplemented is dropped on the first attempt, so
+    # the counter check below reads a settled state rather than a queue.
+    retry_on_failure:
+      enabled: false
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [__EXPORTER__]

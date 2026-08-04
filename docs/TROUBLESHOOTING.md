@@ -268,6 +268,32 @@ because `prost::Message::decode` does not understand gzip. Stack
 operators on 0.5.4 had to set `compression: none` on every Collector
 exporter targeting the daemon, otherwise zero traces reached it.
 
+## Zero spans ingested, healthy daemon, silent counters (gRPC + gzip)
+
+**Resolved in perf-sentinel 0.9.28.** Symptom: the daemon pod is
+`Ready`, `/health` answers, and every `/metrics` counter stays at zero
+while traffic is flowing. Nothing in the daemon's own logs. The failure
+is only visible in the **Collector's** logs:
+
+```
+rpc error: code = Unimplemented desc = Content is compressed with `gzip` which isn't supported
+```
+
+Up to and including 0.9.26 the OTLP **gRPC** listener never called
+`accept_compressed`, and the Collector's OTLP exporter gzips by default.
+`Unimplemented` is a permanent error, so the Collector drops each batch
+without retrying: a total, silent telemetry loss.
+
+Workaround on 0.9.26 and earlier: set `compression: none` on the gRPC
+exporter, or point it at the HTTP endpoint (`:14318`), which has
+decompressed gzip since 0.5.5. On 0.9.28+, gzip and deflate are accepted
+on both endpoints; `zstd` and `snappy` remain refused with the same
+`Unimplemented` and must be changed back to `gzip` or `none`.
+
+This lab exported over `otlphttp` only, so it never exercised the broken
+path — see the `otlp-compression-matrix` scenario, which now covers the
+full transport × encoding matrix and A/Bs it against a pre-fix image.
+
 ## OTel JDBC sanitizer disabled to expose N+1 SQL distinct params
 
 **Resolved in perf-sentinel 0.5.7+.** The daemon now recognizes when
