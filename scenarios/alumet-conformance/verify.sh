@@ -106,7 +106,7 @@ start_daemon() {  # $1 = config file under TMP_DIR ; $2 = log file under TMP_DIR
   [ -n "${DAEMON_PID}" ] && kill "${DAEMON_PID}" 2>/dev/null || true
   free_daemon_port
   sleep 1
-  "${PERF_SENTINEL_LOCAL_BIN}" watch --config "${TMP_DIR}/$1" > "${TMP_DIR}/$2" 2>&1 &
+  RUST_LOG=info "${PERF_SENTINEL_LOCAL_BIN}" watch --config "${TMP_DIR}/$1" > "${TMP_DIR}/$2" 2>&1 &
   DAEMON_PID=$!
   for _ in $(seq 1 40); do
     curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 && return 0
