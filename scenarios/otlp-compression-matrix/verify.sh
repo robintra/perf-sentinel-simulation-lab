@@ -227,7 +227,7 @@ send_direct() {  # $1 = http-pb|grpc, $2 = compression
 settle() { sleep 6; }
 
 collector_refused() {  # 0 when the collector logged a permanent encoding refusal
-  docker logs "${COLLECTOR_NAME}" 2>&1 | grep -qi "unimplemented"
+  docker logs "${COLLECTOR_NAME}" 2>&1 | grep -i "unimplemented" >/dev/null
 }
 
 # --------------------------------------------------------------------------
