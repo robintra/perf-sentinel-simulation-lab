@@ -16,6 +16,7 @@ IMAGE="ghcr.io/robintra/perf-sentinel:0.5.21"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 mkdir -p "${TMP_DIR}"
+rm -f "${REPORT}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -77,6 +78,7 @@ helm upgrade otel-collector open-telemetry/opentelemetry-collector \
 ok "collector reconfigured for multi-export"
 
 step "Wait for Jaeger and Zipkin to be Ready"
+kubectl -n observability rollout restart deployment/jaeger deployment/zipkin >/dev/null
 kubectl -n observability rollout status deploy/jaeger --timeout=180s
 kubectl -n observability rollout status deploy/zipkin --timeout=180s
 # Cilium needs ~10-20s to converge new NetworkPolicies, otherwise the
