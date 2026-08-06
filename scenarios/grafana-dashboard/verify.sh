@@ -11,9 +11,9 @@
 # 2. Coverage audit. Reads daemon /metrics and the dashboard JSON, lists
 #    metrics the dashboard references, metrics the daemon exposes, and
 #    the diff in both directions. Surfaces extension targets.
-# 3. Panel render. For every panel `expr`, queries Prometheus
-#    historical data and asserts at least one time series. Catches
-#    "No data" tiles in CI.
+# 3. Panel render. Queries every panel target against Prometheus and
+#    asserts that each panel has at least one live time series. Catches
+#    "No data" tiles while allowing intentionally disabled targets.
 # 4. Extended overlay. Applies a separate ConfigMap
 #    `perf-sentinel-extended-dashboard` with 2 postgres-exporter panels
 #    that are lab-specific (Top 10 slow queries, DB query rate). All
@@ -431,6 +431,12 @@ print('rule-not-loaded')
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=1 >/dev/null
   DAEMON_SCALED_DOWN=0
   kubectl -n observability rollout status deployment/perf-sentinel-daemon --timeout=90s >/dev/null
+  for _ in $(seq 1 30); do
+    curl -fsS --max-time 2 "${DAEMON_URL}/health" >/dev/null 2>&1 && break
+    sleep 2
+  done
+  curl -fsS --max-time 2 "${DAEMON_URL}/health" >/dev/null 2>&1 \
+    || die "daemon port-forward did not recover after the trigger test"
   if [ "${FIRING}" = "yes" ]; then
     ok "PerfSentinelDaemonDown fired as expected (last state: firing)"
     TRIGGER_VERDICT="PASS"
