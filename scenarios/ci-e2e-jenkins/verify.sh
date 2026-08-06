@@ -41,7 +41,7 @@ JENKINS_IMAGE="${JENKINS_IMAGE:-perf-sentinel-lab-jenkins:2.568.1}"
 # Where the perf-sentinel binary baked into the controller comes from. Defaults
 # to the published release; a pre-release validation points it at a locally
 # built image, the same override the other two ci-e2e scenarios take.
-PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.9.28}"
+PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.10.0}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
 NETWORK="jce2e-net"
 JENKINS_CONTAINER="jce2e-jenkins"
