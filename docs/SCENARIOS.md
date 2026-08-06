@@ -1244,9 +1244,11 @@ All 8 share two design choices:
 
 A kubectl Job with `parallelism=PRODUCERS` of `telemetrygen` Pods
 emits OTLP HTTP traces at `RATE_PER_PRODUCER` sps for `DURATION`
-seconds against the production daemon. The daemon must keep
-`/api/status` answering, ingest at least `MIN_EVENTS_DELTA` events,
-and stay under `RSS_LIMIT_BYTES` (500 MiB by default). On 0.5.19+
+seconds against the production daemon. RPC attributes make the generated
+CLIENT spans analyzable instead of correctly filtered as `not_io`. The daemon
+must keep `/api/status` answering, receive at least 90% of the expected raw
+OTLP spans, ingest at least `MIN_EVENTS_DELTA` events, and stay under
+`RSS_LIMIT_BYTES` (500 MiB by default). On 0.5.19+
 the report also surfaces `perf_sentinel_otlp_rejected_total{reason="channel_full"}`
 as a quantitative backpressure signal next to the events delta.
 

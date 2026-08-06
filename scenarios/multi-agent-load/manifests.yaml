@@ -102,6 +102,9 @@ spec:
             - --rate=${RATE_PER_PRODUCER}
             - --duration=${DURATION}
             - --service=load-test-svc
+            - '--telemetry-attributes=rpc.system="grpc"'
+            - '--telemetry-attributes=rpc.service="load-test"'
+            - '--telemetry-attributes=rpc.method="Call"'
           resources:
             requests:
               cpu: 20m

@@ -205,6 +205,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	  scenarios/multi-agent-load/manifests.yaml \
 	  scenarios/long-running-drift/manifests.yaml \
 	  scenarios/failure-mode-network-partition/manifests.yaml
+	@python3 -c 'import yaml; docs=list(yaml.safe_load_all(open("scenarios/multi-agent-load/manifests.yaml"))); args=next(doc["spec"]["template"]["spec"]["containers"][0]["args"] for doc in docs if doc and doc.get("kind") == "Job"); required={"--telemetry-attributes=rpc.system=\"grpc\"", "--telemetry-attributes=rpc.service=\"load-test\"", "--telemetry-attributes=rpc.method=\"Call\""}; missing=required-set(args); assert not missing, "multi-agent-load lacks analyzable RPC attributes: " + repr(sorted(missing))'
 	@echo "==> yaml parse on grafana-dashboard manifests"
 	@python3 -c "import yaml,sys; [list(yaml.safe_load_all(open(f))) for f in sys.argv[1:]]" \
 	  scenarios/grafana-dashboard/postgres-exporter.yaml \
