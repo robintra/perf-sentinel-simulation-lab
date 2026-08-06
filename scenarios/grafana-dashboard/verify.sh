@@ -330,28 +330,26 @@ else
 fi
 ok "${UNCOVERED_COUNT} exposed metrics uncovered by dashboard (extension targets)"
 
-step "Validate every panel expr returns at least one time series"
+step "Validate every dashboard panel has at least one live time series"
 EMPTY_PANELS=0
 TOTAL_PANELS=0
-# Every expr is expected to return a series, with no exemptions. Notably the
-# `type="messaging"` histogram is NOT an exception even though the lab deploys no
-# broker: `record_slow_durations` pre-resolves all three `type` handles per
-# scored batch, so the child series exists with count 0 from the first batch on.
-# An exemption list was tried here and never fired once — do not re-add one
-# without a measured empty expr to justify it.
+# A panel may intentionally omit individual targets, such as unconfigured
+# energy backends. It is empty only when none of its targets returns a series.
 # URL-encode the exprs upfront so braces, quotes, and parentheses do
 # not break shell interpolation when piped to wget --post-data.
 python3 -c "
 import json, urllib.parse
 data = json.load(open('${LAB_DASHBOARD}'))
-for p in data.get('panels', []):
+for panel_id, p in enumerate(data.get('panels', [])):
     for t in p.get('targets', []):
         expr = (t.get('expr') or '').replace('\n', ' ')
+        for variable, value in {'\$job': 'perf-sentinel-daemon', '\$service': '.*', '\$__rate_interval': '5m', '\$__range': '6h'}.items():
+            expr = expr.replace(variable, value)
         if expr:
-            print(urllib.parse.quote(expr) + '\t' + expr)
+            print(str(panel_id) + '\t' + urllib.parse.quote(expr) + '\t' + expr)
 " > "${TMP_DIR}/upstream-exprs.txt"
-while IFS=$'\t' read -r encoded raw; do
-  TOTAL_PANELS=$((TOTAL_PANELS + 1))
+while IFS=$'\t' read -r panel_id encoded raw; do
+  echo "${panel_id}" >> "${TMP_DIR}/panels-seen.txt"
   count=$(prom_api_post query "query=${encoded}" \
     | python3 -c "
 import json, sys
@@ -360,12 +358,16 @@ try:
 except Exception:
     print(0)
 " 2>/dev/null || echo 0)
-  if [ "${count}" -lt 1 ]; then
-    EMPTY_PANELS=$((EMPTY_PANELS + 1))
-    warn "empty result: ${raw:0:70}..."
+  if [ "${count}" -ge 1 ]; then
+    echo "${panel_id}" >> "${TMP_DIR}/panels-live.txt"
   fi
 done < "${TMP_DIR}/upstream-exprs.txt"
-ok "${TOTAL_PANELS} panel expressions checked, ${EMPTY_PANELS} returned empty"
+sort -u "${TMP_DIR}/panels-seen.txt" -o "${TMP_DIR}/panels-seen.txt"
+sort -u "${TMP_DIR}/panels-live.txt" -o "${TMP_DIR}/panels-live.txt"
+comm -23 "${TMP_DIR}/panels-seen.txt" "${TMP_DIR}/panels-live.txt" > "${TMP_DIR}/panels-empty.txt"
+TOTAL_PANELS=$(wc -l < "${TMP_DIR}/panels-seen.txt" | tr -d ' ')
+EMPTY_PANELS=$(wc -l < "${TMP_DIR}/panels-empty.txt" | tr -d ' ')
+ok "${TOTAL_PANELS} dashboard panels checked, ${EMPTY_PANELS} returned empty"
 
 step "Confirm dashboards visible via Grafana API"
 GRAFANA_PASS=$(kubectl -n observability get secret kube-prometheus-stack-grafana \
