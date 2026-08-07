@@ -215,6 +215,9 @@ spec:
             - --rate=200
             - --duration=30s
             - --service=cold-burst-svc
+            - '--telemetry-attributes=rpc.system="grpc"'
+            - '--telemetry-attributes=rpc.service="cold-start-test"'
+            - '--telemetry-attributes=rpc.method="Call"'
           resources:
             requests: { cpu: 20m, memory: 32Mi }
             limits:   { cpu: 100m, memory: 64Mi }

@@ -1289,9 +1289,10 @@ comes from `process_resident_memory_bytes` and FDs from
 fallback when the surfaces are absent (older daemons or cfg-gated
 builds). Drift is the percent change of average RSS between the warm
 window `[10-30 %]` of samples and the tail window `[70-100 %]`. PASS
-requires drift below `DRIFT_PCT_LIMIT` (default 10 %), `active_traces`
-not monotonically growing, and `fds_delta < 50` when the FDs column is
-populated (skipped in fallback mode).
+requires analyzable RPC traffic (`events_processed` delta > 0), drift below
+`DRIFT_PCT_LIMIT` (default 10 %), `active_traces` not monotonically growing,
+and `fds_delta < 50` when the FDs column is populated (skipped in fallback
+mode).
 
 ```bash
 make verify-long-running-drift                  # default 2h, 10x base traffic
@@ -1301,9 +1302,10 @@ LONG_RUN=1 make verify-long-running-drift       # 24h leak hunting, 1x traffic
 ### failure-mode-daemon-restart
 
 `kubectl rollout restart` of the daemon Deployment in the middle of a
-180-second telemetrygen burst. Asserts that `/api/status` answers
-post-restart, `events_processed` resumes climbing, and no panic /
-FATAL line shows up in the daemon logs since the rollout.
+180-second analyzable RPC telemetrygen burst. Asserts that traffic is active
+before the rollout, `/api/status` answers post-restart, `events_processed`
+resumes climbing, and no panic / FATAL line shows up in the daemon logs since
+the rollout.
 
 ```bash
 make verify-failure-mode-daemon-restart

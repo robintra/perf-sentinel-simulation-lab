@@ -16,9 +16,10 @@ panic.
 ## Use case
 
 Daemon redeploys are routine (image bump, config change, node drain).
-The contract is: in-flight spans may be dropped, but the daemon must
-recover automatically without manual intervention, and the post-restart
-counter must climb again.
+The Job emits analyzable RPC spans. The contract is: traffic is active before
+the rollout, in-flight spans may be dropped, but the daemon must recover
+automatically without manual intervention, and the post-restart counter must
+climb again.
 
 ## Sequence
 
@@ -47,6 +48,7 @@ T+60+r+60   snapshot events_post
 PASS when:
 
 - daemon `/api/status` answers post-restart,
+- `events_processed` increases before the restart (traffic is in flight),
 - `events_processed` > 0 in the post-restart snapshot (ingestion resumed),
 - no `panic` / `FATAL` lines in `kubectl logs --since=5m`.
 

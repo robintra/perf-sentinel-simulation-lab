@@ -34,13 +34,18 @@ cleanup() {
 trap cleanup EXIT
 
 verdict="UNKNOWN"
-EVENTS_PRE=0; EVENTS_POST=0; DELTA_POST=0
+EVENTS_BASELINE=0; EVENTS_PRE=0; DELTA_PRE=0
+EVENTS_POST=0; DELTA_POST=0
 PANICS=0
 
 step "Sanity: daemon reachable on localhost:${DAEMON_LOCAL_PORT}"
 curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null \
   || die "daemon unreachable on localhost:${DAEMON_LOCAL_PORT}, run ./scripts/port-forward.sh start"
 ok "daemon reachable"
+
+EVENTS_BASELINE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))")
+ok "events_baseline=${EVENTS_BASELINE}"
 
 step "Apply namespace, NetworkPolicies and traffic Job"
 cat <<EOF | kubectl apply -f - > "${TMP_DIR}/apply.log" 2>&1
@@ -132,6 +137,9 @@ spec:
             - --rate=${TRAFFIC_RATE}
             - --duration=${TRAFFIC_DURATION}
             - --service=restart-svc
+            - '--telemetry-attributes=rpc.system="grpc"'
+            - '--telemetry-attributes=rpc.service="restart-test"'
+            - '--telemetry-attributes=rpc.method="Call"'
           resources:
             requests: { cpu: 20m, memory: 32Mi }
             limits:   { cpu: 100m, memory: 64Mi }
@@ -147,7 +155,8 @@ step "Wait ${PRE_RESTART_WAIT}s of nominal traffic"
 sleep "${PRE_RESTART_WAIT}"
 curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" > "${TMP_DIR}/report-pre.json"
 EVENTS_PRE=$(python3 -c "import json; print(json.load(open('${TMP_DIR}/report-pre.json')).get('analysis', {}).get('events_processed', 0))")
-ok "events_pre=${EVENTS_PRE}"
+DELTA_PRE=$(( EVENTS_PRE - EVENTS_BASELINE ))
+ok "events_pre=${EVENTS_PRE} delta_pre=${DELTA_PRE}"
 
 step "kubectl rollout restart deployment/perf-sentinel-daemon -n observability"
 RESTART_START=$(date +%s)
@@ -186,10 +195,12 @@ PANICS="${PANICS:-0}"
 ok "panic/FATAL hits: ${PANICS}"
 
 DAEMON_ALIVE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 && echo yes || echo no)
+PASS_PRE_TRAFFIC=$([ "${DELTA_PRE}" -gt 0 ] && echo yes || echo no)
 PASS_POST_TRAFFIC=$([ "${DELTA_POST}" -gt 0 ] && echo yes || echo no)
 PASS_NO_PANIC=$([ "${PANICS}" -eq 0 ] && echo yes || echo no)
 
 if [ "${DAEMON_ALIVE}" = "yes" ] \
+   && [ "${PASS_PRE_TRAFFIC}" = "yes" ] \
    && [ "${PASS_POST_TRAFFIC}" = "yes" ] \
    && [ "${PASS_NO_PANIC}" = "yes" ]; then
   verdict="PASS"
@@ -208,13 +219,14 @@ step "Write report"
   echo "## Timeline"
   echo
   echo "- traffic Job rate=${TRAFFIC_RATE}sps duration=${TRAFFIC_DURATION}"
-  echo "- nominal window: ${PRE_RESTART_WAIT}s, events at end: ${EVENTS_PRE}"
+  echo "- nominal window: ${PRE_RESTART_WAIT}s, events delta: ${DELTA_PRE} (${EVENTS_BASELINE} -> ${EVENTS_PRE})"
   echo "- rollout restart elapsed: ${RESTART_ELAPSED}s"
   echo "- post-restart window: ${POST_RESTART_WAIT}s, events at end: ${EVENTS_POST}"
   echo
   echo "## Verdicts"
   echo
   echo "- daemon /api/status answers post-restart: ${DAEMON_ALIVE}"
+  echo "- traffic active before restart (events delta > 0): ${PASS_PRE_TRAFFIC}"
   echo "- ingestion resumed (events_post > 0): ${PASS_POST_TRAFFIC}"
   echo "- no panic/FATAL in --since=5m logs: ${PASS_NO_PANIC} (count: ${PANICS})"
   echo

@@ -50,6 +50,7 @@ cleanup() {
 trap cleanup EXIT
 
 verdict="UNKNOWN"
+EVENTS_BEFORE=0; EVENTS_AFTER=0; DELTA_EVENTS=0
 DRIFT_RATE=$(( 100 * TRAFFIC_MULTIPLIER ))
 # Convert fractional hours to integer seconds. telemetrygen accepts Go
 # duration strings like "300s", but rejects fractional hour notation
@@ -63,6 +64,10 @@ step "Sanity: daemon reachable on localhost:${DAEMON_LOCAL_PORT}"
 curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null \
   || die "daemon unreachable on localhost:${DAEMON_LOCAL_PORT}, run ./scripts/port-forward.sh start"
 ok "daemon reachable"
+
+EVENTS_BEFORE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))")
+ok "events_before=${EVENTS_BEFORE}"
 
 step "Apply Job manifest (rate=${DRIFT_RATE}sps, duration=${DRIFT_DURATION})"
 # shellcheck disable=SC2016
@@ -107,6 +112,11 @@ END_TS=$(date +%s)
 ELAPSED=$(( END_TS - START_TS ))
 ok "${TOTAL_SAMPLES} samples collected in ${ELAPSED}s"
 
+EVENTS_AFTER=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/report" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin).get('analysis', {}).get('events_processed', 0))")
+DELTA_EVENTS=$(( EVENTS_AFTER - EVENTS_BEFORE ))
+ok "events_after=${EVENTS_AFTER} delta_events=${DELTA_EVENTS}"
+
 step "Compute drift between warm window [10-30 %] and tail window [70-100 %]"
 ANALYSIS=$(python3 - "${SAMPLES_FILE}" <<'PYEOF'
 import sys, statistics
@@ -148,6 +158,7 @@ STATUS=$(echo "${ANALYSIS}" | cut -f9)
 ok "drift_pct=${DRIFT_PCT}% fds_delta=${FDS_DELTA} active_traces_delta=$((TAIL_AT - WARM_AT))"
 
 DAEMON_ALIVE=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null 2>&1 && echo yes || echo no)
+PASS_INGEST=$([ "${DELTA_EVENTS}" -gt 0 ] && echo yes || echo no)
 PASS_DRIFT=$(python3 -c "print('yes' if abs(float('${DRIFT_PCT}')) < ${DRIFT_PCT_LIMIT} else 'no')")
 PASS_AT=$(python3 -c "print('yes' if (${TAIL_AT} - ${WARM_AT}) < max(50, ${WARM_AT}) else 'no')")
 
@@ -161,6 +172,7 @@ fi
 
 if [ "${STATUS}" = "ok" ] \
    && [ "${DAEMON_ALIVE}" = "yes" ] \
+   && [ "${PASS_INGEST}" = "yes" ] \
    && [ "${PASS_DRIFT}" = "yes" ] \
    && [ "${PASS_AT}" = "yes" ] \
    && [ "${PASS_FDS}" != "no" ]; then
@@ -196,6 +208,7 @@ step "Write report"
   echo "## Verdicts"
   echo
   echo "- daemon alive: ${DAEMON_ALIVE}"
+  echo "- analyzable traffic processed (events delta > 0): ${PASS_INGEST} (${DELTA_EVENTS})"
   echo "- drift_rss < ${DRIFT_PCT_LIMIT}%: ${PASS_DRIFT}"
   echo "- active_traces not monotonically growing: ${PASS_AT}"
   echo "- fds_delta < 50: ${PASS_FDS} (skip when daemon does not expose process_open_fds)"

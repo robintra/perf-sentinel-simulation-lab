@@ -94,6 +94,9 @@ spec:
             - --rate=${DRIFT_RATE}
             - --duration=${DRIFT_DURATION}
             - --service=drift-svc
+            - '--telemetry-attributes=rpc.system="grpc"'
+            - '--telemetry-attributes=rpc.service="drift-test"'
+            - '--telemetry-attributes=rpc.method="Call"'
           resources:
             requests:
               cpu: 20m

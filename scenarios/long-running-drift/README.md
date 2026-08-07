@@ -3,7 +3,8 @@
 Detect slow leaks (memory, file descriptors, in-flight traces) that are
 invisible on short runs. The daemon runs under continuous traffic for
 hours, and `verify.sh` samples its `/metrics` endpoint at fixed
-intervals, then compares the warm window to the tail window.
+intervals, then compares the warm window to the tail window. RPC attributes
+keep the generated spans on the analyzable I/O path.
 
 ## Use case
 
@@ -55,6 +56,7 @@ prefix is dropped to exclude cold-start effects.
 PASS when:
 
 - daemon `/api/status` answers at the end of the run,
+- `events_processed` increases during the sampling window,
 - absolute RSS drift between warm and tail windows < `DRIFT_PCT_LIMIT %`,
 - `perf_sentinel_active_traces` is not monotonically growing past
   `max(50, warm_average)` (a leak of in-flight traces would otherwise
