@@ -12,9 +12,11 @@ set -euo pipefail
 SCENARIO="multiformat-input"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.21"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
+LAB_ROOT="${REPO_ROOT}"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${REPO_ROOT}/scripts/resolve-image.sh"
 mkdir -p "${TMP_DIR}"
 rm -f "${REPORT}"
 
@@ -61,8 +63,14 @@ verdict_live="UNKNOWN"
 verdict_boundary="UNKNOWN"
 JAEGER_FINDINGS=0
 ZIPKIN_FINDINGS=0
+JAEGER_QUERY_FINDINGS=0
 JAEGER_TYPES=""
 ZIPKIN_TYPES=""
+
+cat >"${TMP_DIR}/grouping.toml" <<'EOF'
+[detection]
+grouping_attributes = ["k8s.namespace.name", "service.namespace"]
+EOF
 
 step "Apply Jaeger + Zipkin manifests"
 kubectl apply -f "${SCENARIO_DIR}/manifests.yaml" > "${TMP_DIR}/apply.log" 2>&1
@@ -205,8 +213,9 @@ fi
 step "Run perf-sentinel analyze on Jaeger export"
 if docker run --rm \
      -v "${TMP_DIR}/jaeger-traces.json:/input.json:ro" \
+     -v "${TMP_DIR}/grouping.toml:/grouping.toml:ro" \
      "${IMAGE}" \
-     analyze --input /input.json --format json \
+     analyze --input /input.json --config /grouping.toml --format json \
      > "${TMP_DIR}/jaeger-findings.json" 2> "${TMP_DIR}/jaeger-analyze.log"; then
   JAEGER_FINDINGS=$(python3 -c "import json; print(len(json.load(open('${TMP_DIR}/jaeger-findings.json')).get('findings', [])))")
   JAEGER_TYPES=$(python3 -c "
@@ -224,8 +233,9 @@ fi
 step "Run perf-sentinel analyze on Zipkin export"
 if docker run --rm \
      -v "${TMP_DIR}/zipkin-traces.json:/input.json:ro" \
+     -v "${TMP_DIR}/grouping.toml:/grouping.toml:ro" \
      "${IMAGE}" \
-     analyze --input /input.json --format json \
+     analyze --input /input.json --config /grouping.toml --format json \
      > "${TMP_DIR}/zipkin-findings.json" 2> "${TMP_DIR}/zipkin-analyze.log"; then
   ZIPKIN_FINDINGS=$(python3 -c "import json; print(len(json.load(open('${TMP_DIR}/zipkin-findings.json')).get('findings', [])))")
   ZIPKIN_TYPES=$(python3 -c "
@@ -240,12 +250,51 @@ else
   tail -10 "${TMP_DIR}/zipkin-analyze.log"
 fi
 
+step "Run perf-sentinel jaeger-query against the live backend"
+if docker run --rm --add-host host.docker.internal:host-gateway \
+     -v "${TMP_DIR}/grouping.toml:/grouping.toml:ro" \
+     "${IMAGE}" jaeger-query \
+       --endpoint http://host.docker.internal:16686 \
+       --service order-service --lookback 2m --max-traces 200 \
+       --config /grouping.toml --format json \
+     >"${TMP_DIR}/jaeger-query-findings.json" 2>"${TMP_DIR}/jaeger-query.log"; then
+  JAEGER_QUERY_FINDINGS=$(python3 -c "import json; print(len(json.load(open('${TMP_DIR}/jaeger-query-findings.json')).get('findings', [])))")
+  ok "Jaeger Query command: ${JAEGER_QUERY_FINDINGS} findings"
+else
+  color_red "    fail: jaeger-query command failed"
+  tail -10 "${TMP_DIR}/jaeger-query.log"
+fi
+
+step "Assert grouping survives Jaeger Query and both file formats"
+GROUPING_OK=$(python3 - "${TMP_DIR}/jaeger-findings.json" "${TMP_DIR}/zipkin-findings.json" \
+  "${TMP_DIR}/jaeger-query-findings.json" <<'PY'
+import json, sys
+for path in sys.argv[1:]:
+    findings = json.load(open(path, encoding="utf-8")).get("findings", [])
+    if not findings or not all(
+        f.get("grouping") and
+        f["grouping"][0] == {"key": "k8s.namespace.name", "value": "shop"}
+        for f in findings
+    ):
+        print("no")
+        break
+else:
+    print("yes")
+PY
+)
+if [ "${GROUPING_OK}" = "yes" ]; then
+  ok "Jaeger Query, Jaeger file and Zipkin file all carry k8s.namespace.name=shop"
+else
+  color_red "    fail: at least one Jaeger/Zipkin ingestion path lost grouping"
+fi
+
 step "Compare Jaeger vs Zipkin findings"
 # Rigorous: both formats analyze rich traces and produce coherent
 # findings (same anti-pattern categories detected on the same upstream
 # traffic). Backends bumped to MEM_MAX_TRACES=50000 / MEM_MAX_SPANS=500k
 # so heavy N+1 traces are not FIFO-evicted by the steady probe traffic.
-if [ "${JAEGER_FINDINGS}" -gt 0 ] && [ "${ZIPKIN_FINDINGS}" -gt 0 ]; then
+if [ "${JAEGER_FINDINGS}" -gt 0 ] && [ "${ZIPKIN_FINDINGS}" -gt 0 ] \
+   && [ "${JAEGER_QUERY_FINDINGS}" -gt 0 ] && [ "${GROUPING_OK}" = "yes" ]; then
   COMMON=$(python3 -c "
 j = set('${JAEGER_TYPES}'.split(','))
 z = set('${ZIPKIN_TYPES}'.split(','))

@@ -51,6 +51,13 @@ def env_default(name, fallback):
     return os.environ.get("TRACEGEN_%s" % name, fallback)
 
 
+def parse_attribute(spec):
+    key, separator, value = spec.partition("=")
+    if not separator or not key or not value:
+        raise argparse.ArgumentTypeError("attribute must be KEY=VALUE with neither side empty")
+    return key, value
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--endpoint", default=env_default("ENDPOINT", "http://perf-sentinel-daemon.observability.svc.cluster.local:14318"))
@@ -82,6 +89,10 @@ def parse_args():
                    help="http-pb only: pre-serialize N distinct request payloads and send them round-robin, lifting the generator ceiling far above what per-second Python serialization allows. Trace ids repeat across the run (size the bank above tps x daemon TTL)")
     p.add_argument("--resource-blocks", type=int, default=int(env_default("RESOURCE_BLOCKS", "0")),
                    help="cap distinct ResourceSpans per request (0 = one per service)")
+    p.add_argument("--resource-attribute", action="append", type=parse_attribute, default=[],
+                   metavar="KEY=VALUE", help="repeatable OTLP resource attribute")
+    p.add_argument("--span-attribute", action="append", type=parse_attribute, default=[],
+                   metavar="KEY=VALUE", help="repeatable attribute added to every generated span")
     p.add_argument("--seed", type=int, default=int(env_default("SEED", "42")))
     p.add_argument("--traces", type=int, default=int(env_default("TRACES", "1000")), help="dump modes and shape modes: total traces")
     p.add_argument("--shards", type=int, default=int(env_default("SHARDS", "1")), help="dump modes: number of output files")
@@ -162,6 +173,8 @@ class Generator:
             pattern = self.pick_pattern()
             spans = templates.PATTERNS[pattern](ctx)
             self.planted[pattern] += 1
+        for span in spans:
+            span["attrs"].update(self.args.span_attribute)
         self.spans_sent += len(spans)
         self.spans_io += sum(1 for s in spans if "db.statement" in s["attrs"] or "http.url" in s["attrs"])
         return self.trace_seq, service, spans
@@ -195,7 +208,7 @@ def iso_ts(ns):
     return dt.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (ns // 1_000_000 % 1000)
 
 
-def to_otlp_request(batch, resource_blocks=0):
+def to_otlp_request(batch, resource_blocks=0, resource_attributes=()):
     """batch: list of (trace_num, service, spans). Groups spans per service
     into ResourceSpans, like a collector batching a fleet."""
     from opentelemetry.proto.collector.trace.v1 import trace_service_pb2 as svc
@@ -229,6 +242,7 @@ def to_otlp_request(batch, resource_blocks=0):
             resource=resource.Resource(attributes=[
                 kv("service.name", service),
                 kv("cloud.region", "eu-west-3"),
+                *[kv(key, value) for key, value in resource_attributes],
             ]),
             scope_spans=[trace.ScopeSpans(spans=pb_spans)],
         ))
@@ -251,7 +265,7 @@ def io_kind(span):
     return None
 
 
-def to_native_events(batch):
+def to_native_events(batch, grouping_attributes=()):
     """Native SpanEvent JSON: only I/O spans, the format `analyze --input`
     and the daemon NDJSON socket consume."""
     events = []
@@ -274,6 +288,10 @@ def to_native_events(batch):
                 "span_id": "s%016x" % ((trace_num << 20) | s["sid"]),
                 "parent_span_id": ("s%016x" % ((trace_num << 20) | s["parent"])) if s["parent"] else None,
                 "service": service,
+                "grouping": [
+                    {"key": key, "value": value}
+                    for key, value in grouping_attributes
+                ],
                 "cloud_region": "eu-west-3",
                 "type": kind,
                 "operation": operation,
@@ -284,7 +302,7 @@ def to_native_events(batch):
     return events
 
 
-def to_jaeger(batch):
+def to_jaeger(batch, resource_attributes=()):
     data = []
     for trace_num, service, spans in batch:
         jspans = []
@@ -305,7 +323,10 @@ def to_jaeger(batch):
         data.append({
             "traceID": "t%032x" % trace_num,
             "spans": jspans,
-            "processes": {"p1": {"serviceName": service}},
+            "processes": {"p1": {
+                "serviceName": service,
+                "tags": [{"key": key, "value": value} for key, value in resource_attributes],
+            }},
         })
     return {"data": data}
 
@@ -339,7 +360,7 @@ class HttpPbSender:
     generator that dies on the first transient refusal measures its own
     fragility, not the daemon's limit."""
 
-    def __init__(self, endpoint, compression="none"):
+    def __init__(self, endpoint, compression="none", resource_attributes=()):
         import urllib.parse
 
         u = urllib.parse.urlparse(endpoint)
@@ -348,6 +369,7 @@ class HttpPbSender:
         self.conn = None
         self.retries_used = 0
         self.compression = compression
+        self.resource_attributes = resource_attributes
 
     def _connect(self):
         import http.client
@@ -355,7 +377,7 @@ class HttpPbSender:
         self.conn = http.client.HTTPConnection(self.host, self.port, timeout=30)
 
     def send(self, batch, resource_blocks):
-        self.send_raw(to_otlp_request(batch, resource_blocks).SerializeToString())
+        self.send_raw(to_otlp_request(batch, resource_blocks, self.resource_attributes).SerializeToString())
 
     def encode(self, body):
         """Compress once. The payload bank encodes at build time so a
@@ -399,7 +421,7 @@ class HttpPbSender:
 
 
 class GrpcSender:
-    def __init__(self, endpoint, compression="none"):
+    def __init__(self, endpoint, compression="none", resource_attributes=()):
         import grpc
         from opentelemetry.proto.collector.trace.v1 import trace_service_pb2_grpc as svc_grpc
 
@@ -412,16 +434,18 @@ class GrpcSender:
                  "deflate": grpc.Compression.Deflate}[compression]
         self.channel = grpc.insecure_channel(target, compression=codec)
         self.stub = svc_grpc.TraceServiceStub(self.channel)
+        self.resource_attributes = resource_attributes
 
     def send(self, batch, resource_blocks):
-        self.stub.Export(to_otlp_request(batch, resource_blocks), timeout=30)
+        self.stub.Export(to_otlp_request(batch, resource_blocks, self.resource_attributes), timeout=30)
 
 
 class NdjsonSocketSender:
     """One NDJSON line per batch: a JSON array of native SpanEvents."""
 
-    def __init__(self, endpoint):
+    def __init__(self, endpoint, grouping_attributes=()):
         self.path = endpoint
+        self.grouping_attributes = grouping_attributes
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         # Retry: as a sidecar this can start before the daemon listens.
         for attempt in range(60):
@@ -434,17 +458,17 @@ class NdjsonSocketSender:
                 time.sleep(2)
 
     def send(self, batch, _resource_blocks):
-        line = json.dumps(to_native_events(batch), separators=(",", ":")) + "\n"
+        line = json.dumps(to_native_events(batch, self.grouping_attributes), separators=(",", ":")) + "\n"
         self.sock.sendall(line.encode())
 
 
 def make_sender(args):
     if args.protocol == "http-pb":
-        return HttpPbSender(args.endpoint, args.compression)
+        return HttpPbSender(args.endpoint, args.compression, args.resource_attribute)
     if args.protocol == "grpc":
-        return GrpcSender(args.endpoint, args.compression)
+        return GrpcSender(args.endpoint, args.compression, args.resource_attribute)
     if args.protocol == "ndjson-socket":
-        return NdjsonSocketSender(args.endpoint)
+        return NdjsonSocketSender(args.endpoint, args.resource_attribute + args.span_attribute)
     raise AssertionError("not a live protocol: %s" % args.protocol)
 
 
@@ -461,9 +485,9 @@ def run_dump(args, gen):
     for shard in range(args.shards):
         batch = [gen.next_trace(args.shape or None) for _ in range(per_shard)]
         if fmt == "native":
-            payload = to_native_events(batch)
+            payload = to_native_events(batch, args.resource_attribute + args.span_attribute)
         elif fmt == "jaeger":
-            payload = to_jaeger(batch)
+            payload = to_jaeger(batch, args.resource_attribute)
         else:
             payload = to_zipkin(batch)
         path = os.path.join(args.out, "shard-%02d.%s.json" % (shard, fmt))
@@ -511,7 +535,9 @@ def run_steady(args, gen, sender, steps):
         bank = []
         for _ in range(args.payload_bank):
             chunk = [gen.next_trace() for _ in range(args.batch_traces)]
-            bank.append(sender.encode(to_otlp_request(chunk, args.resource_blocks).SerializeToString()))
+            bank.append(sender.encode(to_otlp_request(
+                chunk, args.resource_blocks, args.resource_attribute
+            ).SerializeToString()))
         print("PAYLOAD_BANK ready entries=%d traces_each=%d" % (len(bank), args.batch_traces), flush=True)
     bank_idx = 0
     for tps, seconds in steps:

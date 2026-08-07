@@ -18,7 +18,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         hubble-ui verify-network-policies \
         verify-hybrid-daemon-batch verify-batch-tempo-scrape verify-daemon-otlp-direct \
         verify-multiformat-input verify-calibrate-mode verify-sidecar-pattern \
-        verify-correlation-finding verify-pg-stat verify-grafana-dashboard \
+        verify-correlation-finding verify-grouping-identity verify-pg-stat verify-grafana-dashboard \
         verify-ci-shift-left verify-output-formats-coverage verify-disclose verify-disclose-temporal \
         verify-verify-hash-roundtrip verify-intent-validator verify-daemon-analysis-shedding \
         verify-template-gitlab-ci verify-template-jenkinsfile verify-template-github-actions \
@@ -136,6 +136,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/calibrate-mode/verify.sh
 	@bash -n scenarios/sidecar-pattern/verify.sh
 	@bash -n scenarios/correlation-finding/verify.sh
+	@bash -n scenarios/grouping-identity/verify.sh
+	@bash -n scenarios/ci-e2e-common/browser-check.sh
 	@bash -n scenarios/pg-stat/verify.sh
 	@bash -n scenarios/grafana-dashboard/verify.sh
 	@bash -n scenarios/multi-agent-load/verify.sh
@@ -410,6 +412,9 @@ verify-sidecar-pattern: ## perf-sentinel daemon as a per-service pod sidecar
 verify-correlation-finding: ## cross-trace correlation finding via /api/correlations
 	./scenarios/correlation-finding/verify.sh
 
+verify-grouping-identity: ## 0.11 grouping identity across ingest, detection, diff, API, HTML and CSV
+	./scenarios/grouping-identity/verify.sh
+
 verify-pg-stat: ## perf-sentinel report --pg-stat live integration
 	./scenarios/pg-stat/verify.sh
 
@@ -610,7 +615,7 @@ verify-ack-lifecycle-warning: ## 0.9.28 CI acknowledgment life cycle: unmatched 
 verify-otlp-compression-matrix: ## 0.9.28 OTLP transport x encoding matrix (gRPC/HTTP x gzip/deflate/none/zstd) with an A/B against the pre-fix image (Docker, no cluster; one cluster leg SKIPs without one)
 	./scenarios/otlp-compression-matrix/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 68 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: seed-tracegen ## Run all 69 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -659,7 +664,7 @@ verify-all-scenarios: seed-tracegen ## Run all 68 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain config-fragments ack-lifecycle-warning broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain config-fragments grouping-identity ack-lifecycle-warning broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

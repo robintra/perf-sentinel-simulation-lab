@@ -29,6 +29,8 @@
 #   K  an absent carbon figure names its OWN cause: green off with a live
 #      Electricity Maps scraper says so, zero traces says so, and the combined
 #      wording is gone.
+#   L  batch analysis warns once for all seven daemon-only GreenOps sections;
+#      daemon mode, green off, and no configured backend stay silent.
 #
 # I, J and K are not about fragments. They are here because they are the other
 # half of what a 0.9.25 config load does differently: which coefficients still
@@ -58,6 +60,9 @@ EXIT_TOOLING_ERROR=75
 
 rm -rf "${TMP_DIR}"
 mkdir -p "${TMP_DIR}"
+DAEMON_PID=""
+cleanup() { [ -z "${DAEMON_PID}" ] || kill "${DAEMON_PID}" 2>/dev/null || true; }
+trap cleanup EXIT INT TERM
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -342,6 +347,123 @@ if [[ "${K_OFF_LINE}" == *"enabled = false"* ]] && [[ "${K_OFF_LINE}" != *"no tr
   assert_pass "K" "green off with a live scraper says '${K_OFF_LINE#*not computed }', zero traces says '${K_EMPTY_LINE#*not computed }' — no combined wording left"
 else
   assert_fail "K" "green-off line: [${K_OFF_LINE:-<none>}]; zero-trace line: [${K_EMPTY_LINE:-<none>}]"
+fi
+
+# --- L: batch-only backend warning -----------------------------------------
+step "L: all daemon-only GreenOps sections warn in batch mode only"
+L_ALL="$(mkcase l-all)"
+cat > "${L_ALL}/.perf-sentinel.toml" <<'EOF'
+[green]
+enabled = true
+default_region = "eu-west-3"
+
+[green.alumet]
+endpoint = "http://127.0.0.1:1/metrics"
+metric_name = "attributed_energy_cpu_alumet"
+label_key = "name"
+
+[green.scaphandre]
+endpoint = "http://127.0.0.1:1/metrics"
+
+[green.kepler]
+endpoint = "http://127.0.0.1:1/metrics"
+
+[green.redfish.endpoints.lab]
+url = "https://127.0.0.1:1/redfish/v1/Chassis/1/Power"
+schema = "legacy_power"
+
+[green.cloud]
+prometheus_endpoint = "http://127.0.0.1:1"
+default_provider = "aws"
+default_instance_type = "c5.4xlarge"
+
+[green.broker_static]
+nodes = 1
+provider = "aws"
+instance_type = "m5.2xlarge"
+
+[green.electricity_maps]
+api_key = "lab-placeholder"
+region_map = { "eu-west-3" = "FR" }
+EOF
+L_ALL_RC="$(run_case "${L_ALL}")"
+
+L_OFF="$(mkcase l-off)"
+cat > "${L_OFF}/.perf-sentinel.toml" <<'EOF'
+[green]
+enabled = false
+[green.scaphandre]
+endpoint = "http://127.0.0.1:1/metrics"
+EOF
+L_OFF_RC="$(run_case "${L_OFF}")"
+L_NONE="$(mkcase l-none)"
+L_NONE_RC="$(run_case "${L_NONE}")"
+
+read -r L_HTTP L_GRPC < <(python3 - <<'PY'
+import socket
+ports = []
+for _ in range(2):
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    ports.append(sock.getsockname()[1])
+    sock.close()
+print(*ports)
+PY
+)
+L_DAEMON="${TMP_DIR}/l-daemon"
+mkdir -p "${L_DAEMON}"
+cat > "${L_DAEMON}/config.toml" <<EOF
+[daemon]
+listen_address = "127.0.0.1"
+listen_port_http = ${L_HTTP}
+listen_port_grpc = ${L_GRPC}
+api_enabled = true
+trace_ttl_ms = 1000
+
+[daemon.ack]
+enabled = false
+
+[green]
+enabled = true
+[green.scaphandre]
+endpoint = "http://127.0.0.1:1/metrics"
+EOF
+"${PERF_SENTINEL_LOCAL_BIN}" watch --config "${L_DAEMON}/config.toml" > "${L_DAEMON}/watch.log" 2>&1 &
+DAEMON_PID=$!
+L_DAEMON_RC=1
+for _ in $(seq 1 40); do
+  if curl -fsS "http://127.0.0.1:${L_HTTP}/api/export/report" > "${L_DAEMON}/report.json" 2>/dev/null; then
+    L_DAEMON_RC=0
+    break
+  fi
+  kill -0 "${DAEMON_PID}" 2>/dev/null || break
+  sleep 0.25
+done
+kill "${DAEMON_PID}" 2>/dev/null || true
+wait "${DAEMON_PID}" 2>/dev/null || true
+DAEMON_PID=""
+
+if python3 - "${L_ALL}/out.json" "${L_OFF}/out.json" "${L_NONE}/out.json" "${L_DAEMON}/report.json" <<'PY'
+import json, sys
+
+all_report, off, none, daemon = (json.load(open(path)) for path in sys.argv[1:])
+warnings = [w for w in all_report.get("warning_details", []) if "batch run" in w["message"]]
+expected = {
+    "[green.alumet]", "[green.scaphandre]", "[green.kepler]", "[green.redfish]",
+    "[green.cloud]", "[green.broker_static]", "[green.electricity_maps]",
+}
+assert len(warnings) == 1 and all(name in warnings[0]["message"] for name in expected)
+for report in (off, none, daemon):
+    assert not any("batch run" in w["message"] for w in report.get("warning_details", []))
+PY
+then
+  if [ "${L_ALL_RC}" = "0" ] && [ "${L_OFF_RC}" = "0" ] && [ "${L_NONE_RC}" = "0" ] && [ "${L_DAEMON_RC}" = "0" ]; then
+    assert_pass "L" "one batch warning names all seven sections; daemon, green-off and no-backend controls stay silent"
+  else
+    assert_fail "L" "commands rc all/off/none/daemon=${L_ALL_RC}/${L_OFF_RC}/${L_NONE_RC}/${L_DAEMON_RC}"
+  fi
+else
+  assert_fail "L" "warning presence or one of the three negative controls is wrong"
 fi
 
 # --- verdict ----------------------------------------------------------------

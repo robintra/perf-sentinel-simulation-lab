@@ -267,6 +267,41 @@ else
 fi
 
 # ── B5: robustness on real exports ──────────────────────────────────────────
+step "B4: --traces honors configured grouping"
+python3 - "${TRACES}" "${TMP_DIR}" <<'PY'
+import json, pathlib, sys
+
+data = json.loads(pathlib.Path(sys.argv[1]).read_text())
+counts = {}
+for trace in data["data"]:
+    for span in trace["spans"]:
+        statement = next((tag["value"] for tag in span.get("tags", []) if tag["key"] == "db.statement"), None)
+        if not statement:
+            continue
+        template = statement.rsplit("=", 1)[0]
+        index = counts.get(template, 0)
+        counts[template] = index + 1
+        span.setdefault("tags", []).append({"key": "tenant.id", "type": "string", "value": "tenant-a" if index % 2 == 0 else "tenant-b"})
+out = pathlib.Path(sys.argv[2])
+(out / "grouping-traces.json").write_text(json.dumps(data))
+(out / "grouping.toml").write_text('[detection]\ngrouping_attributes = ["tenant.id"]\n')
+PY
+if run_ms --input "${TMP_DIR}/digests.csv" --traces "${TMP_DIR}/grouping-traces.json" \
+     --config "${TMP_DIR}/grouping.toml" --format json \
+   && python3 - "${TMP_DIR}/out.txt" <<'PY'
+import json, sys
+
+report = json.load(open(sys.argv[1]))
+matches = [entry for ranking in report["rankings"] for entry in ranking["entries"]
+           if any(table in entry["normalized_template"] for table in ("orders", "line_items", "users"))]
+assert matches and not any(entry["seen_in_traces"] for entry in matches)
+PY
+then
+  assert_pass "B4-grouping" "tenant-a and tenant-b stay separate during --traces cross-reference"
+else
+  assert_fail "B4-grouping" "mysql-stat --traces ignored [detection] grouping_attributes"
+fi
+
 step "B5: NULL catch-all row (saturated digest table)"
 docker rm -f "${DB_SAT}" >/dev/null 2>&1 || true
 docker run -d --name "${DB_SAT}" -e MYSQL_ROOT_PASSWORD="${PW}" \

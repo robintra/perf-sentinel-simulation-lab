@@ -64,6 +64,7 @@ if [ ! -f "${REPO_ROOT}/.postgres-password" ]; then
   fail "missing .postgres-password (run make up first)"
 fi
 schemas=$(kubectl run -n db smoke-pgcheck --rm -i --restart=Never \
+  --labels="app.kubernetes.io/name=postgres-exporter" \
   --image=postgres:18.3-alpine \
   --env="PGPASSWORD=$(cat "${REPO_ROOT}/.postgres-password")" \
   --command -- psql -h postgres -U lab -d lab -tAc \

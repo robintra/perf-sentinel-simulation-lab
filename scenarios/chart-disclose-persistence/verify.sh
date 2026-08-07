@@ -95,6 +95,7 @@ mkdir -p "${TMP_DIR}"
 LOCAL_PORT="${LOCAL_PORT:-14418}"
 PVC_UTIL_IMAGE="${PVC_UTIL_IMAGE:-busybox:1.37}"
 ARCHIVE_WAIT_TIMEOUT="${ARCHIVE_WAIT_TIMEOUT:-90}"
+PROM_URL="${PROM_URL:-http://localhost:9090}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -432,6 +433,7 @@ kubectl create namespace "${NS}" --dry-run=client -o yaml | kubectl apply -f - >
   || die "could not create namespace ${NS}"
 kubectl label ns "${NS}" app.kubernetes.io/part-of=perf-sentinel-lab \
   pod-security.kubernetes.io/enforce=baseline --overwrite >/dev/null 2>&1
+kubectl apply -f "${REPO_ROOT}/manifests/network-policies.yaml" >/dev/null
 
 # === 1. helm install: StatefulSet + persistence ===
 step "1. helm install (workload.kind=StatefulSet, persistence.enabled=true) --wait"
@@ -449,6 +451,7 @@ if helm install "${RELEASE}" "${CHART_REF}" --version "${CHART_PIN}" -n "${NS}" 
   --set "workload.replicas=1" \
   --set "workload.statefulset.persistence.enabled=true" \
   --set "workload.statefulset.persistence.size=1Gi" \
+  --set "serviceMonitor.enabled=true" \
   ${HELM_IMAGE_ARGS[@]+"${HELM_IMAGE_ARGS[@]}"} \
   --wait --timeout 180s > "${TMP_DIR}/install.log" 2>&1; then
   assert_pass "helm-install" "chart ${CHART_PIN} (${RESOLVED_SOURCE}) installed as StatefulSet + persistence, pod Ready"
@@ -491,6 +494,40 @@ elif [ "${RUNNING_ID#*@}" = "${REGISTRY_DIGEST}" ]; then
   assert_pass "chart-provenance" "${CHART_ORIGIN} v${CHART_PIN}, appVersion ${APP_VERSION}, pod digest matches the registry (${REGISTRY_DIGEST})"
 else
   assert_fail "chart-provenance" "pod runs ${RUNNING_ID}, but ${IMAGE} currently resolves to ${REGISTRY_DIGEST} (stale cached layer for a re-pushed tag?)"
+fi
+
+step "1b. Prometheus discovers exactly one target for the StatefulSet pod"
+TARGET_OK="no"
+TARGET_NOTE=""
+for _ in $(seq 1 18); do
+  if curl -fsS --max-time 10 "${PROM_URL}/api/v1/targets" >"${TMP_DIR}/targets.json" 2>/dev/null; then
+    if TARGET_NOTE=$(python3 - "${TMP_DIR}/targets.json" "${NS}" "${STS_NAME}" <<'PY'
+import json, sys
+data, namespace, name = json.load(open(sys.argv[1], encoding="utf-8")), sys.argv[2], sys.argv[3]
+matches = []
+for target in data["data"]["activeTargets"]:
+    discovered = target.get("discoveredLabels", {})
+    if (discovered.get("__meta_kubernetes_namespace") == namespace and
+            discovered.get("__meta_kubernetes_service_name", "").startswith(name)):
+        matches.append(target)
+assert len(matches) == 1, [(t.get("labels", {}).get("job"), t.get("discoveredLabels", {}).get("__meta_kubernetes_service_name")) for t in matches]
+target = matches[0]
+service = target["discoveredLabels"]["__meta_kubernetes_service_name"]
+assert service == name, service
+assert target.get("health") == "up", target.get("health")
+print("job=%s service=%s health=up" % (target.get("labels", {}).get("job", "?"), service))
+PY
+    ); then
+      TARGET_OK="yes"
+      break
+    fi
+  fi
+  sleep 5
+done
+if [ "${TARGET_OK}" = "yes" ]; then
+  assert_pass "servicemonitor-target" "one main-Service target, no headless duplicate (${TARGET_NOTE})"
+else
+  assert_fail "servicemonitor-target" "Prometheus did not converge to one healthy ${STS_NAME} target; see ${TMP_DIR}/targets.json"
 fi
 
 # Parity with the documented consumer path (docs/HELM-DEPLOYMENT.md, "Software

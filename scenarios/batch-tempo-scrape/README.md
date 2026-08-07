@@ -13,14 +13,16 @@ make verify-batch-tempo-scrape
 ```
 
 The Tempo port-forward (`localhost:3200`) must be active. `make up-cni`
-or `scripts/port-forward.sh start` ensures this.
+or `scripts/port-forward.sh start` ensures this. The scenario sends three
+targeted N+1 requests and waits for Tempo to index them.
 
 ## What is verified
 
 `perf-sentinel tempo --endpoint http://host.docker.internal:3200 --service order-service`
 fetches traces from Tempo (which exposes only OTLP-JSON), parses them
 in-process, and runs the same detection pipeline as `analyze`. The
-verify asserts at least one trace is analyzed and findings are emitted.
+verify asserts at least one trace is analyzed, findings are emitted, and
+every finding is grouped under `k8s.namespace.name=shop`.
 
 This validates that item 5 of `project_perf_sentinel_followup.md`
 (Tempo OTLP-JSON consumer) works end to end without external conversion.

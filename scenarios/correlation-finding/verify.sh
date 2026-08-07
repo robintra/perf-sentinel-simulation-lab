@@ -53,14 +53,22 @@ print(len(data) if isinstance(data, list) else 0)
 ")
 ok "/api/correlations returned ${TOTAL} entries"
 
-step "Assert at least one entry with confidence > 0.5"
-HIGH_CONF=$(python3 -c "
+step "Assert confidence and grouping contract"
+read -r HIGH_CONF GROUPED SAME_GROUP LEGACY_FIELDS < <(python3 -c "
 import json
 data = json.load(open('${TMP_DIR}/correlations.json'))
 high = [c for c in data if c.get('confidence', 0) > 0.5]
-print(len(high))
+grouped = [c for c in data if all(
+    endpoint.get('grouping_key') and endpoint.get('grouping_value')
+    for endpoint in (c.get('source', {}), c.get('target', {})))]
+same = [c for c in grouped if
+    c['source']['grouping_key'] == c['target']['grouping_key'] and
+    c['source']['grouping_value'] == c['target']['grouping_value']]
+legacy = sum('namespace' in endpoint for c in data for endpoint in (c.get('source', {}), c.get('target', {})))
+print(len(high), len(grouped), len(same), legacy)
 ")
 ok "${HIGH_CONF} correlation entries with confidence > 0.5"
+ok "${GROUPED}/${TOTAL} carry grouping_key/grouping_value; ${SAME_GROUP} stay within one grouping"
 
 step "Top 3 correlation entries (by confidence)"
 TOP_LIST=$(python3 -c "
@@ -84,7 +92,9 @@ print(chr(10).join(out))
 ")
 echo "${TOP_LIST}"
 
-if [ "${TOTAL}" -ge 1 ] && [ "${HIGH_CONF}" -ge 1 ]; then
+if [ "${TOTAL}" -ge 1 ] && [ "${HIGH_CONF}" -ge 1 ] \
+   && [ "${GROUPED}" = "${TOTAL}" ] && [ "${SAME_GROUP}" = "${TOTAL}" ] \
+   && [ "${LEGACY_FIELDS}" = "0" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -108,6 +118,9 @@ step "Write report"
   echo
   echo "- total entries: ${TOTAL}"
   echo "- entries with confidence > 0.5: ${HIGH_CONF}"
+  echo "- entries with grouping_key/grouping_value: ${GROUPED}/${TOTAL}"
+  echo "- entries staying within one grouping: ${SAME_GROUP}/${TOTAL}"
+  echo "- legacy namespace fields: ${LEGACY_FIELDS}"
   echo
   echo "Top entries:"
   echo

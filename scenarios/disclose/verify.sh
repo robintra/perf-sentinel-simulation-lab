@@ -16,7 +16,7 @@
 #   - reports-thr50.ndjson  operator threshold 50, canonical 2 (same workload;
 #                           n+1 reclassified to redundant at the high threshold)
 #
-# 5 sub-tests run inside the perf-sentinel image under validation:
+# 6 sub-tests run inside the perf-sentinel image under validation:
 #
 #   1. recognized schema + tiers: schema_version is perf-sentinel-report/v1.x,
 #      canonical threshold == 2, operational threshold == 5, both tiers
@@ -37,6 +37,8 @@
 #      archive every window of which declares the fixed coefficient, and
 #      WITHHELD as soon as one window contributed transport without declaring
 #      it — which is every window archived before 0.9.25.
+#   6. canonical-disclosure migration: a mixed current/legacy period succeeds
+#      with a counted warning; a 100% legacy official period remains refused.
 #
 # Fixtures under fixtures/:
 #   - reports-thr5.ndjson, reports-thr50.ndjson, org-config.toml
@@ -299,6 +301,46 @@ else
   record "5. transport bracket per window" FAIL "${note:-analyze/disclose error}"
 fi
 
+# === Sub-test 6: canonical disclosure migration boundary ===
+step "6. mixed legacy/current period warns; all-legacy official period fails"
+python3 - "${TMP_DIR}/reports-thr5.ndjson" "${TMP_DIR}" <<'PY'
+import json, pathlib, sys
+
+rows = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.strip()][:2]
+legacy = json.loads(json.dumps(rows[0]))
+legacy["report"].pop("disclosure_waste", None)
+out = pathlib.Path(sys.argv[2])
+(out / "canonical-mixed.ndjson").write_text("\n".join(map(json.dumps, [legacy, rows[1]])) + "\n")
+old = []
+for row in rows:
+    row = json.loads(json.dumps(row))
+    row["report"].pop("disclosure_waste", None)
+    old.append(row)
+(out / "canonical-old.ndjson").write_text("\n".join(map(json.dumps, old)) + "\n")
+PY
+rm -f "${TMP_DIR}/out-canonical-mixed.json" "${TMP_DIR}/out-canonical-old.json"
+in_image disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \
+  --input /workdir/canonical-mixed.ndjson --output /workdir/out-canonical-mixed.json \
+  --org-config /workdir/org-config.toml > "${TMP_DIR}/canonical-mixed.out" 2> "${TMP_DIR}/canonical-mixed.err" \
+  && MIXED_RC=0 || MIXED_RC=$?
+in_image disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \
+  --input /workdir/canonical-old.ndjson --output /workdir/out-canonical-old.json \
+  --org-config /workdir/org-config.toml > "${TMP_DIR}/canonical-old.out" 2> "${TMP_DIR}/canonical-old.err" \
+  && OLD_RC=0 || OLD_RC=$?
+MIXED_WARNING_COUNT="$(grep -c '1 of 2 windows carry no canonical waste figure' "${TMP_DIR}/canonical-mixed.err" || true)"
+OLD_BYTES=0
+[ ! -f "${TMP_DIR}/out-canonical-old.json" ] || OLD_BYTES="$(wc -c < "${TMP_DIR}/out-canonical-old.json")"
+if [ "${MIXED_RC}" = "0" ] && [ "${MIXED_WARNING_COUNT}" = "1" ] \
+   && [ -s "${TMP_DIR}/out-canonical-mixed.json" ] \
+   && [ "${OLD_RC}" != "0" ] && [ ! -s "${TMP_DIR}/out-canonical-old.json" ] \
+   && grep -q 'canonical_waste' "${TMP_DIR}/canonical-old.err"; then
+  note="mixed warning=1 of 2; all-legacy official exit=${OLD_RC} with no report"
+  ok "${note}"; record "6. canonical migration boundary" PASS "${note}"
+else
+  note="mixed rc=${MIXED_RC}/warnings=${MIXED_WARNING_COUNT}; all-legacy rc=${OLD_RC}/bytes=${OLD_BYTES}"
+  fail "${note}"; record "6. canonical migration boundary" FAIL "${note}"
+fi
+
 # === Aggregate verdict + report ===
 overall="PASS"
 for v in "${VERDICTS[@]}"; do [ "${v}" = "FAIL" ] && overall="FAIL"; done
@@ -318,7 +360,7 @@ for v in "${VERDICTS[@]}"; do [ "${v}" = "FAIL" ] && overall="FAIL"; done
 } > "${REPORT}"
 
 if [ "${overall}" = "PASS" ]; then
-  ok "PASS 5/5, see ${REPORT}"; exit 0
+  ok "PASS ${#VERDICTS[@]}/${#VERDICTS[@]}, see ${REPORT}"; exit 0
 else
   fail "see ${REPORT}"; exit 1
 fi

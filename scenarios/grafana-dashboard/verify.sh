@@ -277,6 +277,64 @@ curl -sfH "Accept: application/openmetrics-text" http://localhost:14318/metrics 
 EXPOSED_COUNT=$(wc -l < "${TMP_DIR}/exposed-metrics.txt" | tr -d ' ')
 ok "${EXPOSED_COUNT} perf_sentinel_* metrics exposed by daemon"
 
+step "Validate /metrics negotiation and the real Prometheus scrape"
+curl -fsS -D "${TMP_DIR}/vmagent.headers" -o "${TMP_DIR}/vmagent.metrics" \
+  -H 'Accept: text/plain;version=0.0.4;*/*;q=0.1' \
+  http://localhost:14318/metrics \
+  || die "vmagent-compatible /metrics request failed"
+grep -qi '^content-type: text/plain;.*version=0.0.4' "${TMP_DIR}/vmagent.headers" \
+  || die "vmagent Accept did not negotiate Prometheus text: $(grep -i '^content-type:' "${TMP_DIR}/vmagent.headers")"
+grep -q '^# EOF$' "${TMP_DIR}/vmagent.metrics" \
+  && die "vmagent-compatible response incorrectly contains OpenMetrics EOF"
+grep -q 'trace_id=' "${TMP_DIR}/vmagent.metrics" \
+  && die "vmagent-compatible response incorrectly contains exemplars"
+grep -Eq '^perf_sentinel_io_waste_ratio [0-9.eE+-]+$' "${TMP_DIR}/vmagent.metrics" \
+  || die "perf_sentinel_io_waste_ratio is absent or malformed in Prometheus text"
+
+curl -fsS -D "${TMP_DIR}/openmetrics.headers" -o "${TMP_DIR}/openmetrics.metrics" \
+  -H 'Accept: application/openmetrics-text;version=1.0.0' \
+  http://localhost:14318/metrics \
+  || die "explicit OpenMetrics request failed"
+grep -qi '^content-type: application/openmetrics-text' "${TMP_DIR}/openmetrics.headers" \
+  || die "explicit OpenMetrics Accept returned the wrong Content-Type"
+grep -q '^# EOF$' "${TMP_DIR}/openmetrics.metrics" \
+  || die "explicit OpenMetrics response has no EOF marker"
+
+for rejected_q in 0.00 0.000; do
+  curl -fsS -D "${TMP_DIR}/q-${rejected_q}.headers" -o "${TMP_DIR}/q-${rejected_q}.metrics" \
+    -H "Accept: application/openmetrics-text;q=${rejected_q},text/plain;version=0.0.4" \
+    http://localhost:14318/metrics \
+    || die "q=${rejected_q} negotiation request failed"
+  grep -qi '^content-type: text/plain;.*version=0.0.4' "${TMP_DIR}/q-${rejected_q}.headers" \
+    || die "q=${rejected_q} was not treated as an OpenMetrics rejection"
+  grep -q '^# EOF$' "${TMP_DIR}/q-${rejected_q}.metrics" \
+    && die "q=${rejected_q} still selected OpenMetrics"
+done
+ok "vmagent/plain, explicit OpenMetrics, q=0.00 and q=0.000 negotiation PASS"
+
+GAUGE_QUERY="$(python3 -c 'import urllib.parse; print(urllib.parse.quote("count(perf_sentinel_io_waste_ratio)"))')"
+GAUGE_SERIES=$(prom_api_post query "query=${GAUGE_QUERY}" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)["data"]["result"]
+print(int(float(r[0]["value"][1])) if r else 0)
+')
+DAEMON_TARGETS=$(prom_api_get targets | python3 -c '
+import json, sys
+targets = json.load(sys.stdin)["data"]["activeTargets"]
+print(sum(1 for t in targets if "perf-sentinel" in t.get("labels", {}).get("job", "") and t.get("health") == "up"))
+')
+[ "${DAEMON_TARGETS}" -gt 0 ] && [ "${GAUGE_SERIES}" -eq "${DAEMON_TARGETS}" ] \
+  || die "Prometheus has ${GAUGE_SERIES} io_waste_ratio series for ${DAEMON_TARGETS} healthy daemon targets"
+
+GARBAGE_QUERY="$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""count({__name__=~"perf_sentinel_.* .*"})"""))')"
+GARBAGE_SERIES=$(prom_api_post query "query=${GARBAGE_QUERY}" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)["data"]["result"]
+print(int(float(r[0]["value"][1])) if r else 0)
+')
+[ "${GARBAGE_SERIES}" -eq 0 ] || die "Prometheus retained ${GARBAGE_SERIES} corrupted metric-name series"
+ok "Prometheus has ${GAUGE_SERIES}/${DAEMON_TARGETS} gauge series and zero corrupted names"
+
 python3 -c "
 import json, re
 data = json.load(open('${LAB_DASHBOARD}'))

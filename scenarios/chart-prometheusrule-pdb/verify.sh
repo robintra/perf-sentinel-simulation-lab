@@ -134,8 +134,36 @@ echo "$PDB0" | grep -qE 'apiVersion: policy/v1' || { fail "PDB apiVersion not po
 if [ "$pdb_ok" -eq 1 ]; then ok "minAvailable:0 honored, default maxUnavailable:1, policy/v1"; record "pdb-edge" "PASS" "minAvailable:0 + default maxUnavailable:1 + policy/v1"
 else record "pdb-edge" "FAIL" "see log"; fi
 
-# === 5. optional in-cluster admission (only if Prometheus-Operator CRD present) ===
-step "5. in-cluster admission (optional)"
+# === 5. StatefulSet ServiceMonitor selects only the main Service ===
+step "5. StatefulSet headless Service is excluded from the ServiceMonitor"
+helm template t "${CHART}" --set workload.kind=StatefulSet --set serviceMonitor.enabled=true \
+  >"${TMP_DIR}/stateful-servicemonitor.yaml" 2>"${TMP_DIR}/stateful-servicemonitor.err" \
+  || die "StatefulSet + ServiceMonitor render failed: $(cat "${TMP_DIR}/stateful-servicemonitor.err")"
+if python3 - "${TMP_DIR}/stateful-servicemonitor.yaml" <<'PY'
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1], encoding="utf-8")) if d]
+services = [d for d in docs if d.get("kind") == "Service"]
+assert len(services) == 2, [d["metadata"]["name"] for d in services]
+headless = [d for d in services if d.get("spec", {}).get("clusterIP") == "None"]
+main = [d for d in services if d.get("spec", {}).get("clusterIP") != "None"]
+assert len(headless) == len(main) == 1
+assert headless[0]["metadata"]["labels"]["app.kubernetes.io/component"] == "headless"
+assert "app.kubernetes.io/component" not in main[0]["metadata"].get("labels", {})
+monitors = [d for d in docs if d.get("kind") == "ServiceMonitor"]
+assert len(monitors) == 1
+expressions = monitors[0]["spec"]["selector"].get("matchExpressions", [])
+assert {"key": "app.kubernetes.io/component", "operator": "NotIn", "values": ["headless"]} in expressions
+PY
+then
+  ok "headless label + NotIn selector render together; main Service remains eligible"
+  record "stateful-servicemonitor" "PASS" "headless labelled/excluded, main Service unlabelled"
+else
+  fail "StatefulSet ServiceMonitor would duplicate or lose scrape targets"
+  record "stateful-servicemonitor" "FAIL" "rendered selector contract failed"
+fi
+
+# === 6. optional in-cluster admission (only if Prometheus-Operator CRD present) ===
+step "6. in-cluster admission (optional)"
 if kubectl get crd prometheusrules.monitoring.coreos.com >/dev/null 2>&1; then
   NS="phasea-$$"
   cleanup() { helm uninstall t -n "$NS" >/dev/null 2>&1 || true; kubectl delete ns "$NS" --wait=false >/dev/null 2>&1 || true; }

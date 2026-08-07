@@ -658,6 +658,8 @@ spec:
         - protocol: TCP
           port: 14318
         - protocol: TCP
+          port: 4318
+        - protocol: TCP
           port: 8080
         - protocol: TCP
           port: 8081

@@ -21,6 +21,7 @@ LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "${LAB_ROOT}/scripts/resolve-image.sh"
 TMP_DIR="/tmp/${SCENARIO}"
 TRACES_FIXTURE="$(cd "$(dirname "$0")/../.." && pwd)/artifacts/fixtures/em-real-time-traces.json"
+CROSS_FORMAT_TRACES="${LAB_ROOT}/scenarios/datadog-bridge/fixtures/crossfmt-jaeger.json"
 mkdir -p "${TMP_DIR}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
@@ -108,6 +109,55 @@ if [ "${verdict}" != "FAIL" ]; then
     PG_REFS=$(grep -oE '(pg_stat|pg-stat|pgStat)[a-z_-]*' "${TMP_DIR}/dashboard.html" | sort -u | wc -l | tr -d ' ')
     ok "dashboard contains ${PG_REFS} distinct pg_stat references (HTML ${HTML_BYTES} bytes)"
   fi
+fi
+
+step "Verify pg-stat --traces honors configured grouping"
+python3 - "${CROSS_FORMAT_TRACES}" "${TMP_DIR}" <<'PY'
+import csv, json, pathlib, sys
+
+source, out = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+data = json.loads(source.read_text())
+counts = {}
+for trace in data["data"]:
+    for span in trace["spans"]:
+        statement = next((tag["value"] for tag in span.get("tags", []) if tag["key"] == "db.statement"), None)
+        if not statement:
+            continue
+        template = statement.rsplit("=", 1)[0]
+        index = counts.get(template, 0)
+        counts[template] = index + 1
+        span.setdefault("tags", []).append({"key": "tenant.id", "type": "string", "value": "tenant-a" if index % 2 == 0 else "tenant-b"})
+(out / "grouping-traces.json").write_text(json.dumps(data))
+(out / "grouping.toml").write_text('[detection]\ngrouping_attributes = ["tenant.id"]\n')
+with (out / "grouping-pg.csv").open("w", newline="") as handle:
+    writer = csv.writer(handle)
+    writer.writerow(["query", "calls", "total_exec_time", "mean_exec_time", "rows", "shared_blks_hit", "shared_blks_read"])
+    writer.writerow(["SELECT * FROM orders WHERE id = 1", 100, 300, 3, 100, 100, 0])
+PY
+
+for mode in ungrouped grouped; do
+  CONFIG_ARGS=()
+  [ "${mode}" = "grouped" ] && CONFIG_ARGS=(--config /input/grouping.toml)
+  docker run --rm -u "$(id -u):$(id -g)" -v "${TMP_DIR}:/input:ro" "${IMAGE}" \
+    pg-stat --input /input/grouping-pg.csv --traces /input/grouping-traces.json \
+    "${CONFIG_ARGS[@]+"${CONFIG_ARGS[@]}"}" --format json > "${TMP_DIR}/grouping-${mode}.json" 2> "${TMP_DIR}/grouping-${mode}.err" \
+    || die "pg-stat --traces ${mode} run failed"
+done
+if python3 - "${TMP_DIR}/grouping-ungrouped.json" "${TMP_DIR}/grouping-grouped.json" <<'PY'
+import json, sys
+
+def markers(path):
+    report = json.load(open(path))
+    return [entry["seen_in_traces"] for ranking in report["rankings"] for entry in ranking["entries"]]
+
+assert any(markers(sys.argv[1])), "ungrouped trace did not cross-reference"
+assert not any(markers(sys.argv[2])), "tenant groups were coalesced"
+PY
+then
+  ok "--traces cross-reference keeps tenant-a and tenant-b below the detector threshold"
+else
+  verdict="FAIL"
+  color_red "    fail: pg-stat --traces ignored [detection] grouping_attributes"
 fi
 
 # Path 2: pg_stat via Prometheus scraping postgres-exporter. Skipped

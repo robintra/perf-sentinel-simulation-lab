@@ -14,7 +14,10 @@ set -euo pipefail
 
 SCENARIO="batch-tempo-scrape"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.21"
+SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
+LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 # Use host.docker.internal so this works on both Docker Desktop (Mac/Win)
 # and Linux runners (with --add-host host.docker.internal:host-gateway).
 HOST_FROM_CONTAINER="host.docker.internal"
@@ -32,6 +35,12 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 
 verdict="UNKNOWN"
 findings_count=0
+PF_ORDER_PID=""
+
+cleanup() {
+  [ -z "${PF_ORDER_PID}" ] || kill "${PF_ORDER_PID}" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 step "Probe Tempo from host"
 ready=0
@@ -47,6 +56,34 @@ if [ "${ready}" != "1" ]; then
 fi
 ok "Tempo ready"
 
+step "Generate recent N+1 traffic"
+kubectl -n shop port-forward svc/order-service 18280:8080 \
+  > "${TMP_DIR}/pf-order.log" 2>&1 &
+PF_ORDER_PID=$!
+for i in $(seq 1 15); do
+  curl -fsS "http://localhost:18280/actuator/health" >/dev/null 2>&1 && break
+  sleep 1
+done
+for i in $(seq 1 3); do
+  curl -fsS -X POST "http://localhost:18280/api/fault/n-plus-one-sql?items=15" >/dev/null
+done
+kill "${PF_ORDER_PID}" 2>/dev/null || true
+wait "${PF_ORDER_PID}" 2>/dev/null || true
+PF_ORDER_PID=""
+indexed=0
+for i in $(seq 1 30); do
+  now=$(date +%s)
+  start=$((now - 120))
+  if curl -fsS "${TEMPO_URL_HOST}/api/search?tags=service.name%3Dorder-service&start=${start}&end=${now}&limit=4" \
+       | python3 -c 'import json,sys; sys.exit(not any(t.get("rootTraceName", "").startswith("POST ") for t in json.load(sys.stdin).get("traces", [])))'; then
+    indexed=1
+    break
+  fi
+  sleep 2
+done
+[ "${indexed}" = "1" ] || die "targeted traces were not indexed by Tempo after 60s"
+ok "3 targeted traces indexed"
+
 step "Run perf-sentinel tempo --endpoint <url> --service order-service"
 # host.docker.internal resolves to the host both on Docker Desktop and
 # on Linux runners with --add-host host.docker.internal:host-gateway.
@@ -58,8 +95,8 @@ if docker run --rm \
      tempo \
        --endpoint "${TEMPO_URL_IN_CONTAINER}" \
        --service order-service \
-       --lookback 1h \
-       --max-traces 50 \
+       --lookback 2m \
+       --max-traces 4 \
        --format json \
      > "${TMP_DIR}/tempo-findings.json" \
      2> "${TMP_DIR}/tempo.log"; then
@@ -88,12 +125,18 @@ print(f'analysis: events_processed={data.get(\"analysis\", {}).get(\"events_proc
     cat "${TMP_DIR}/parse.log"
     findings_count=$(python3 -c "import json; print(len(json.load(open('${TMP_DIR}/tempo-findings.json')).get('findings', [])))")
     traces_analyzed=$(python3 -c "import json; print(json.load(open('${TMP_DIR}/tempo-findings.json')).get('analysis', {}).get('traces_analyzed', 0))")
-    if [ "${traces_analyzed}" -gt 0 ]; then
+    grouping_ok=$(python3 -c "
+import json
+findings=json.load(open('${TMP_DIR}/tempo-findings.json')).get('findings', [])
+print('yes' if findings and all(
+    f.get('grouping') and f['grouping'][0] == {'key':'k8s.namespace.name','value':'shop'}
+    for f in findings) else 'no')")
+    if [ "${traces_analyzed}" -gt 0 ] && [ "${findings_count}" -gt 0 ] && [ "${grouping_ok}" = "yes" ]; then
       verdict="PASS"
-      ok "${findings_count} findings from ${traces_analyzed} Tempo traces"
+      ok "${findings_count} findings from ${traces_analyzed} Tempo traces, grouped by k8s.namespace.name=shop"
     else
       verdict="FAIL"
-      color_red "    fail: 0 traces analyzed (Tempo subcommand could not fetch or parse)"
+      color_red "    fail: traces=${traces_analyzed}, findings=${findings_count}, grouping=${grouping_ok} (want >0/>0/yes)"
     fi
   fi
 fi
@@ -112,7 +155,7 @@ step "Write report"
   echo "perf-sentinel tempo \\"
   echo "  --endpoint ${TEMPO_URL_IN_CONTAINER} \\"
   echo "  --service order-service \\"
-  echo "  --lookback 1h --max-traces 50 \\"
+  echo "  --lookback 2m --max-traces 4 \\"
   echo "  --format json"
   echo '```'
   echo

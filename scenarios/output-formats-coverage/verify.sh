@@ -31,6 +31,9 @@
 #
 #   6.D. Quality gate clean. Sanity check that the gate accepts a clean
 #        baseline (smoke test for the CLI plumbing).
+#
+#   6.E. Real Chrome renders the batch-warning banner only when warnings are
+#        present, and the findings CSV exposes the grouping columns.
 
 set -euo pipefail
 
@@ -132,6 +135,44 @@ docker run --rm "${DOCKER_NET_FLAGS[@]}" -u "$(id -u):$(id -g)" \
   report --input /workdir/source.json --output /workdir/findings.html \
   > "${TMP_DIR}/report-html.log" 2>&1 \
   || die "report --output html failed, see ${TMP_DIR}/report-html.log"
+
+cat > "${TMP_DIR}/warning.toml" <<'EOF'
+[green]
+enabled = true
+[green.scaphandre]
+endpoint = "http://127.0.0.1:1/metrics"
+EOF
+docker run --rm "${DOCKER_NET_FLAGS[@]}" -u "$(id -u):$(id -g)" \
+  -v "${TMP_DIR}:/workdir" "${IMAGE}" \
+  report --input /workdir/source.json --config /workdir/warning.toml \
+    --output /workdir/findings-warning.html \
+  > "${TMP_DIR}/report-warning-html.log" 2>&1 \
+  || die "warning report failed, see ${TMP_DIR}/report-warning-html.log"
+
+BROWSER_CHECK="${LAB_ROOT}/scenarios/ci-e2e-common/browser-check.sh"
+"${BROWSER_CHECK}" "${TMP_DIR}/findings.html" dom > "${TMP_DIR}/clean.dom"
+"${BROWSER_CHECK}" "${TMP_DIR}/findings-warning.html" dom > "${TMP_DIR}/warning.dom"
+"${BROWSER_CHECK}" "${TMP_DIR}/findings.html" findings > "${TMP_DIR}/findings.csv"
+if ! grep -q 'batch run' "${TMP_DIR}/clean.dom" \
+   && grep -q '\[tuning\].*\[green.scaphandre\].*batch run' "${TMP_DIR}/warning.dom"; then
+  ASSERT_HTML_WARNINGS="PASS"
+  ok "Chrome shows the warning banner only on the warned report"
+else
+  ASSERT_HTML_WARNINGS="FAIL"
+  warn "warning banner presence/absence is wrong"
+fi
+if python3 - "${TMP_DIR}/findings.csv" <<'PY'
+import csv, sys
+header = next(csv.reader(open(sys.argv[1], newline="")))
+assert header[2:6] == ["service", "grouping_key", "grouping_value", "grouping_all"], header
+PY
+then
+  ASSERT_CSV_HEADERS="PASS"
+  ok "findings CSV includes grouping_key, grouping_value and grouping_all"
+else
+  ASSERT_CSV_HEADERS="FAIL"
+  warn "findings CSV grouping headers are missing or misplaced"
+fi
 
 # All 4 outputs non-empty
 JSON_BYTES=$(wc -c < "${TMP_DIR}/findings.json")
@@ -326,6 +367,8 @@ step "7. Verdict"
 if [ "${ASSERT_FORMATS}" = "PASS" ] \
    && [ "${ASSERT_COHERENCE}" = "PASS" ] \
    && [ "${ASSERT_SIG_JSON}" = "PASS" ] \
+   && [ "${ASSERT_HTML_WARNINGS}" = "PASS" ] \
+   && [ "${ASSERT_CSV_HEADERS}" = "PASS" ] \
    && [ "${ASSERT_DIFF_SCHEMA}" = "PASS" ] \
    && [ "${ASSERT_DIFF_NEW}" = "PASS" ] \
    && [ "${ASSERT_CAP}" = "PASS" ]; then
@@ -354,6 +397,8 @@ Coherence (JSON count == SARIF count): ${ASSERT_COHERENCE} (${JSON_COUNT}/${SARI
 Signature on every JSON finding: ${ASSERT_SIG_JSON} (${JSON_WITH_SIG}/${JSON_COUNT})
 Signature in SARIF (informational, gap memory item 10): ${SIG_SARIF_NOTE}
 Markdown format (informational, gap memory item 11): ${MARKDOWN_NOTE}
+HTML warning banner present/absent: ${ASSERT_HTML_WARNINGS}
+Findings CSV grouping headers: ${ASSERT_CSV_HEADERS}
 
 ## 6.B. Diff mode
 
