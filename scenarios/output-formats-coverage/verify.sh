@@ -153,8 +153,8 @@ BROWSER_CHECK="${LAB_ROOT}/scenarios/ci-e2e-common/browser-check.sh"
 "${BROWSER_CHECK}" "${TMP_DIR}/findings.html" dom > "${TMP_DIR}/clean.dom"
 "${BROWSER_CHECK}" "${TMP_DIR}/findings-warning.html" dom > "${TMP_DIR}/warning.dom"
 "${BROWSER_CHECK}" "${TMP_DIR}/findings.html" findings > "${TMP_DIR}/findings.csv"
-if ! grep -q 'batch run' "${TMP_DIR}/clean.dom" \
-   && grep -q '\[tuning\].*\[green.scaphandre\].*batch run' "${TMP_DIR}/warning.dom"; then
+if ! grep -qi 'TUNING.*batch run' "${TMP_DIR}/clean.dom" \
+   && grep -qi 'TUNING.*\[green\.scaphandre\].*batch run' "${TMP_DIR}/warning.dom"; then
   ASSERT_HTML_WARNINGS="PASS"
   ok "Chrome shows the warning banner only on the warned report"
 else
