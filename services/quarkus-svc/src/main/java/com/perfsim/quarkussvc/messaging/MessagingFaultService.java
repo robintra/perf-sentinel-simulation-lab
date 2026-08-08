@@ -20,6 +20,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeoutException;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -37,8 +38,8 @@ public class MessagingFaultService {
     private final String slowHost;
     private final int slowPort;
     private final String toxiproxyApi;
-    private final String username;
-    private final String password;
+    private final Optional<String> username;
+    private final Optional<String> password;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
@@ -53,8 +54,8 @@ public class MessagingFaultService {
             @ConfigProperty(name = "RABBITMQ_SLOW_PORT", defaultValue = "25672") int slowPort,
             @ConfigProperty(name = "TOXIPROXY_API", defaultValue = "http://toxiproxy.messaging.svc.cluster.local:8474")
                     String toxiproxyApi,
-            @ConfigProperty(name = "RABBITMQ_USERNAME") String username,
-            @ConfigProperty(name = "RABBITMQ_PASSWORD") String password) {
+            @ConfigProperty(name = "RABBITMQ_USERNAME") Optional<String> username,
+            @ConfigProperty(name = "RABBITMQ_PASSWORD") Optional<String> password) {
         this.directHost = directHost;
         this.directPort = directPort;
         this.slowHost = slowHost;
@@ -65,7 +66,10 @@ public class MessagingFaultService {
     }
 
     public Map<String, Object> publishSequentially(int messages) {
-        try (Connection connection = newConnection(directHost, directPort, 0);
+        String configuredUsername = requireCredential("RABBITMQ_USERNAME", username);
+        String configuredPassword = requireCredential("RABBITMQ_PASSWORD", password);
+        try (Connection connection = newConnection(
+                        directHost, directPort, 0, configuredUsername, configuredPassword);
                 Channel channel = connection.createChannel()) {
             declareTopology(channel);
             channel.confirmSelect();
@@ -84,10 +88,13 @@ public class MessagingFaultService {
     }
 
     public Map<String, Object> publishSlowly(long delayMs, int repeats) {
+        String configuredUsername = requireCredential("RABBITMQ_USERNAME", username);
+        String configuredPassword = requireCredential("RABBITMQ_PASSWORD", password);
         try {
             updateLatency(delayMs);
             int confirmed = 0;
-            try (Connection connection = newConnection(slowHost, slowPort, delayMs);
+            try (Connection connection = newConnection(
+                            slowHost, slowPort, delayMs, configuredUsername, configuredPassword);
                     Channel channel = connection.createChannel()) {
                 declareTopology(channel);
                 channel.confirmSelect();
@@ -124,7 +131,8 @@ public class MessagingFaultService {
         }
     }
 
-    private Connection newConnection(String host, int port, long downstreamDelayMs)
+    private Connection newConnection(
+            String host, int port, long downstreamDelayMs, String username, String password)
             throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(host);
@@ -139,6 +147,11 @@ public class MessagingFaultService {
         factory.setChannelRpcTimeout(responseTimeoutMs);
         factory.setShutdownTimeout(responseTimeoutMs);
         return factory.newConnection();
+    }
+
+    private static String requireCredential(String name, Optional<String> value) {
+        return value.filter(credential -> !credential.isBlank())
+                .orElseThrow(() -> new IllegalStateException(name + " is required"));
     }
 
     private static void declareTopology(Channel channel) throws IOException {

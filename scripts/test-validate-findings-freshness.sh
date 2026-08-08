@@ -148,12 +148,32 @@ SH
 
 cat > "${TEST_TMP}/bin/curl" <<'SH'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "${RUNNER_CURL_LOG}"
 if [[ " $* " == *"/api/status "* ]]; then
     printf '{}\n'
     exit 0
 fi
 count="$(cat "${RUNNER_CURL_COUNT}")"
 printf '%s\n' "$((count + 1))" > "${RUNNER_CURL_COUNT}"
+case "${RUNNER_CASE}" in
+    malformed-item)
+        printf '[null,{"finding":{"trace_id":"valid-trace","source_endpoint":"/api/fault/n-plus-one-messaging"}}]\n'
+        exit 0
+        ;;
+    malformed-wrapper)
+        printf '[{"finding":null},{"finding":{"trace_id":"valid-trace","source_endpoint":"/api/fault/n-plus-one-messaging"}}]\n'
+        exit 0
+        ;;
+    stale-no-source)
+        case "${count}" in
+            0) printf '[{"finding":{"trace_id":"reused-n-plus-one"}}]\n' ;;
+            1) printf '[{"finding":{"type":"n_plus_one_messaging","service":"%s","source_endpoint":"/api/fault/n-plus-one-messaging","trace_id":"reused-n-plus-one","pattern":{"template":"rabbitmq perfsim.%s","occurrences":8}},"stored_at_ms":9999999999999}]\n' "${RUNNER_SERVICE}" "${RUNNER_SERVICE}" ;;
+            2) printf '[{"finding":{"trace_id":"reused-slow"}}]\n' ;;
+            3) printf '[{"finding":{"type":"slow_messaging","service":"%s","source_endpoint":"/api/fault/slow-messaging","trace_id":"reused-slow","pattern":{"template":"rabbitmq perfsim.%s","occurrences":3,"span_duration_us_p50":600001}},"stored_at_ms":9999999999999}]\n' "${RUNNER_SERVICE}" "${RUNNER_SERVICE}" ;;
+        esac
+        exit 0
+        ;;
+esac
 if [[ "${RUNNER_CASE}" == "converging" ]]; then
     case "${count}" in
         0|3) printf '[]\n' ;;
@@ -179,6 +199,7 @@ SH
 
 chmod +x "${TEST_TMP}/bin/kubectl" "${TEST_TMP}/bin/curl"
 export RUNNER_CURL_COUNT="${TEST_TMP}/runner-curl-count"
+export RUNNER_CURL_LOG="${TEST_TMP}/runner-curl.log"
 export RUNNER_KUBECTL_LOG="${TEST_TMP}/runner-kubectl.log"
 export VALIDATION_TMP_DIR="${TEST_TMP}/runner"
 mkdir -p "${VALIDATION_TMP_DIR}"
@@ -195,6 +216,36 @@ fi
 
 echo "PASS: runner rejects a trace ID already present under another endpoint"
 
+export RUNNER_CASE=stale-no-source
+printf '0\n' > "${RUNNER_CURL_COUNT}"
+if "${REPO_ROOT}/scripts/run-multistack-scenario.sh" quarkus messaging \
+        > "${TEST_TMP}/runner-stale-no-source.log" 2>&1; then
+    echo "FAIL: runner accepted a trace ID whose baseline source was absent"
+    exit 1
+fi
+
+echo "PASS: runner snapshots trace IDs whose baseline source is absent"
+
+for malformed_case in malformed-item malformed-wrapper; do
+    export RUNNER_CASE="${malformed_case}"
+    printf '0\n' > "${RUNNER_CURL_COUNT}"
+    : > "${RUNNER_KUBECTL_LOG}"
+    if "${REPO_ROOT}/scripts/run-multistack-scenario.sh" quarkus messaging \
+            > "${TEST_TMP}/runner-${malformed_case}.log" 2>&1; then
+        echo "FAIL: runner accepted ${malformed_case} daemon findings"
+        exit 1
+    fi
+    if grep -Eq 'create configmap|apply -f|wait job/' "${RUNNER_KUBECTL_LOG}" || \
+            ! grep -q 'could not snapshot trace/source pairs' "${TEST_TMP}/runner-${malformed_case}.log"; then
+        echo "FAIL: runner did not reject ${malformed_case} before creating a Job"
+        cat "${TEST_TMP}/runner-${malformed_case}.log"
+        cat "${RUNNER_KUBECTL_LOG}"
+        exit 1
+    fi
+done
+
+echo "PASS: runner rejects non-object findings before creating a Job"
+
 export RUNNER_CASE=malformed
 printf '0\n' > "${RUNNER_CURL_COUNT}"
 if "${REPO_ROOT}/scripts/run-multistack-scenario.sh" quarkus messaging \
@@ -208,12 +259,20 @@ echo "PASS: runner rejects a non-list daemon response"
 export RUNNER_CASE=destination
 export RUNNER_SERVICE=mutiny-svc
 printf '0\n' > "${RUNNER_CURL_COUNT}"
+: > "${RUNNER_CURL_LOG}"
 if ! "${REPO_ROOT}/scripts/run-multistack-scenario.sh" mutiny messaging \
         > "${TEST_TMP}/runner-destination.log" 2>&1; then
     echo "FAIL: runner rejected the destination derived from another service slug"
     cat "${TEST_TMP}/runner-destination.log"
     exit 1
 fi
+
+while IFS= read -r curl_call; do
+    if [[ " ${curl_call} " != *" --connect-timeout "* || " ${curl_call} " != *" --max-time "* ]]; then
+        echo "FAIL: daemon curl is not explicitly bounded: ${curl_call}"
+        exit 1
+    fi
+done < "${RUNNER_CURL_LOG}"
 
 echo "PASS: runner derives the RabbitMQ destination from the service slug"
 

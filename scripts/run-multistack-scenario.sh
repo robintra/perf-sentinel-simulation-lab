@@ -35,6 +35,10 @@ color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
 color_red() { printf "\033[31m%s\033[0m\n" "$*"; }
 color_yellow() { printf "\033[33m%s\033[0m\n" "$*"; }
 
+daemon_curl() {
+    curl --connect-timeout 3 --max-time 10 "$@"
+}
+
 ANTI_PATTERNS=(
     "n_plus_one_sql:5:30s"
     "n_plus_one_http:5:30s"
@@ -75,7 +79,7 @@ endpoint_for() {
 probe_daemon() {
     local attempt=1
     while [ "${attempt}" -le 5 ]; do
-        curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 && return
+        daemon_curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1 && return
         [ "${attempt}" -eq 5 ] && { color_red "daemon not reachable at ${DAEMON_URL}"; exit 1; }
         color_yellow "daemon probe attempt ${attempt}/5 failed"
         sleep 2
@@ -84,13 +88,23 @@ probe_daemon() {
 }
 
 snapshot_pairs() {
-    curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" | python3 -c '
+    daemon_curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" | python3 -c '
 import json, sys
 items = json.load(sys.stdin)
 if not isinstance(items, list):
     raise SystemExit("daemon findings response must be a list")
-def unwrap(item): return item.get("finding", item) if isinstance(item, dict) else {}
-print(json.dumps(sorted({(f.get("trace_id"), f.get("source_endpoint")) for item in items if (f := unwrap(item)).get("trace_id") and f.get("source_endpoint")})))
+def unwrap(item):
+    if not isinstance(item, dict):
+        raise TypeError("daemon finding item must be an object")
+    finding = item.get("finding", item)
+    if not isinstance(finding, dict):
+        raise TypeError("daemon finding wrapper must contain an object")
+    return finding
+try:
+    findings = [unwrap(item) for item in items]
+except TypeError as error:
+    raise SystemExit(str(error))
+print(json.dumps(sorted({(f["trace_id"], f.get("source_endpoint") or "") for f in findings if f.get("trace_id")})))
 '
 }
 
@@ -105,6 +119,14 @@ try:
     baseline_pairs = json.load(open(os.environ["BASELINE_FILE"]))
     if not isinstance(items, list) or not isinstance(baseline_pairs, list):
         raise ValueError
+    def unwrap(item):
+        if not isinstance(item, dict):
+            raise ValueError
+        finding = item.get("finding", item)
+        if not isinstance(finding, dict):
+            raise ValueError
+        return finding
+    records = [(item, unwrap(item)) for item in items]
     baseline_trace_ids = {pair[0] for pair in baseline_pairs if isinstance(pair, list) and pair}
 except (json.JSONDecodeError, OSError, TypeError, ValueError):
     print("-1|malformed findings or baseline")
@@ -113,9 +135,7 @@ kind, service, endpoint = (os.environ[k] for k in ("EXPECTED_TYPE", "EXPECTED_SE
 framework, recommendation = (os.environ[k] for k in ("EXPECTED_FRAMEWORK", "EXPECTED_RECOMMENDATION"))
 expected_destination = "rabbitmq perfsim." + service
 started = int(os.environ["STARTED_AT_MS"])
-def unwrap(item): return item.get("finding", item) if isinstance(item, dict) else {}
-def match(item):
-    finding = unwrap(item)
+def match(item, finding):
     trace = finding.get("trace_id")
     if not (finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint and trace and trace not in baseline_trace_ids and isinstance(item.get("stored_at_ms"), (int, float)) and item["stored_at_ms"] > started):
         return False
@@ -131,7 +151,7 @@ def match(item):
     if kind == "slow_messaging":
         return pattern.get("template") == expected_destination and pattern.get("occurrences", 0) >= 3 and pattern.get("span_duration_us_p50", 0) > 500000
     return True
-matched = [unwrap(item) for item in items if match(item)]
+matched = [finding for item, finding in records if match(item, finding)]
 if not matched:
     print("0|no fresh type/service/source finding")
 else:
@@ -244,7 +264,7 @@ EOF
 
     sleep 15
     for attempt in 1 2 3 4 5 6; do
-        if ! findings_json="$(curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true")"; then
+        if ! findings_json="$(daemon_curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true")"; then
             RESULTS+=("FAIL|${pattern}|0|daemon findings unavailable")
             break
         fi

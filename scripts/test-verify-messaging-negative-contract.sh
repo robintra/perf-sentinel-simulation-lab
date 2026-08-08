@@ -11,14 +11,25 @@ cat > "${TEST_TMP}/bin/mvn" <<'SH'
 printf '%s\n' "$*" > "${MVN_CALL_LOG}"
 SH
 
+cat > "${TEST_TMP}/bin/cargo" <<'SH'
+#!/usr/bin/env bash
+: > "${NATIVE_CALL_LOG}"
+SH
+
+cat > "${TEST_TMP}/bin/go" <<'SH'
+#!/usr/bin/env bash
+: > "${NATIVE_CALL_LOG}"
+SH
+
 cat > "${TEST_TMP}/bin/kubectl" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
 
-chmod +x "${TEST_TMP}/bin/mvn" "${TEST_TMP}/bin/kubectl"
+chmod +x "${TEST_TMP}/bin/mvn" "${TEST_TMP}/bin/cargo" "${TEST_TMP}/bin/go" "${TEST_TMP}/bin/kubectl"
 export PATH="${TEST_TMP}/bin:${PATH}"
 export MVN_CALL_LOG="${TEST_TMP}/mvn-call.log"
+export NATIVE_CALL_LOG="${TEST_TMP}/native-call.log"
 
 output="$(cd "${REPO_ROOT}" && bash scripts/verify-messaging-negative-contract.sh quarkus)"
 expected='-B -ntp -f services/quarkus-svc/pom.xml -Dtest=MessagingInvalidContractTest test'
@@ -40,4 +51,25 @@ if [[ "${status}" -ne 2 ]]; then
     exit 1
 fi
 
-echo "PASS: negative-contract helper dispatches Quarkus natively and rejects unknown slugs"
+mkdir -p "${TEST_TMP}/repo/scripts" \
+    "${TEST_TMP}/repo/services/diesel-svc/src" \
+    "${TEST_TMP}/repo/services/seaorm-svc/src" \
+    "${TEST_TMP}/repo/services/go-svc/internal/web"
+cp "${REPO_ROOT}/scripts/verify-messaging-negative-contract.sh" "${TEST_TMP}/repo/scripts/"
+printf '#[test]\nfn messaging_invalid_contract() {}\n' > "${TEST_TMP}/repo/services/diesel-svc/src/main.rs"
+printf '#[test]\nfn messaging_invalid_contract() {}\n' > "${TEST_TMP}/repo/services/seaorm-svc/src/main.rs"
+printf 'package web\nfunc TestMessagingInvalidContract() {}\n' > "${TEST_TMP}/repo/services/go-svc/internal/web/messaging_invalid_contract_test.go"
+for stack in diesel seaorm go; do
+    rm -f "${NATIVE_CALL_LOG}"
+    if (cd "${TEST_TMP}/repo" && bash scripts/verify-messaging-negative-contract.sh "${stack}") \
+            > "${TEST_TMP}/${stack}-missing.log" 2>&1; then
+        echo "FAIL: ${stack} accepted a missing focused test"
+        exit 1
+    fi
+    if [[ -e "${NATIVE_CALL_LOG}" ]]; then
+        echo "FAIL: ${stack} invoked its native runner before proving the focused test exists"
+        exit 1
+    fi
+done
+
+echo "PASS: negative-contract helper dispatches Quarkus natively, rejects unknown slugs and requires focused tests"
