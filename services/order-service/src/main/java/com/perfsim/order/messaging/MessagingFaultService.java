@@ -30,6 +30,7 @@ public class MessagingFaultService {
     private static final String QUEUE = "perfsim.order-service";
     private static final String ROUTING_KEY = "order-service";
     private static final long CONFIRM_TIMEOUT_MS = 5_000;
+    private static final int NETWORK_MARGIN_MS = 5_000;
 
     private final String directHost;
     private final int directPort;
@@ -62,7 +63,7 @@ public class MessagingFaultService {
     }
 
     public Map<String, Object> publishSequentially(int messages) {
-        try (Connection connection = newConnection(directHost, directPort);
+        try (Connection connection = newConnection(directHost, directPort, 0);
                 Channel channel = connection.createChannel()) {
             declareTopology(channel);
             channel.confirmSelect();
@@ -84,7 +85,7 @@ public class MessagingFaultService {
         try {
             updateLatency(delayMs);
             int confirmed = 0;
-            try (Connection connection = newConnection(slowHost, slowPort);
+            try (Connection connection = newConnection(slowHost, slowPort, delayMs);
                     Channel channel = connection.createChannel()) {
                 declareTopology(channel);
                 channel.confirmSelect();
@@ -125,12 +126,20 @@ public class MessagingFaultService {
         }
     }
 
-    private Connection newConnection(String host, int port) throws IOException, TimeoutException {
+    private Connection newConnection(String host, int port, long downstreamDelayMs)
+            throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(host);
         factory.setPort(port);
         factory.setUsername(username);
         factory.setPassword(password);
+        int responseTimeoutMs = Math.toIntExact(downstreamDelayMs + NETWORK_MARGIN_MS);
+        factory.setConnectionTimeout((int) CONFIRM_TIMEOUT_MS);
+        factory.setHandshakeTimeout(downstreamDelayMs == 0
+                ? (int) CONFIRM_TIMEOUT_MS
+                : Math.toIntExact(2L * responseTimeoutMs + 1));
+        factory.setChannelRpcTimeout(responseTimeoutMs);
+        factory.setShutdownTimeout(responseTimeoutMs);
         return factory.newConnection();
     }
 
@@ -141,17 +150,31 @@ public class MessagingFaultService {
     }
 
     private void updateLatency(long delayMs) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(toxiproxyApi + "/proxies/rabbitmq-slow/toxics/latency_downstream"))
-                .timeout(Duration.ofSeconds(5))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"attributes\":{\"latency\":" + delayMs + ",\"jitter\":0}}"))
-                .build();
-        HttpResponse<Void> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+        String updatePath = "/proxies/rabbitmq-slow/toxics/latency_downstream";
+        String attributes = "{\"attributes\":{\"latency\":" + delayMs + ",\"jitter\":0}}";
+        HttpResponse<Void> response = sendToxiproxy(updatePath, attributes);
+        if (response.statusCode() == 404) {
+            String createBody = "{\"name\":\"latency_downstream\","
+                    + "\"type\":\"latency\",\"stream\":\"downstream\","
+                    + "\"attributes\":{\"latency\":" + delayMs + ",\"jitter\":0}}";
+            response = sendToxiproxy("/proxies/rabbitmq-slow/toxics", createBody);
+            if (response.statusCode() == 409) {
+                response = sendToxiproxy(updatePath, attributes);
+            }
+        }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IOException("Toxiproxy returned HTTP " + response.statusCode());
         }
+    }
+
+    private HttpResponse<Void> sendToxiproxy(String path, String body)
+            throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(toxiproxyApi + path))
+                .timeout(Duration.ofSeconds(5))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        return httpClient.send(request, HttpResponse.BodyHandlers.discarding());
     }
 }

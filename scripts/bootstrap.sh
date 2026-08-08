@@ -144,15 +144,18 @@ generate_rabbitmq_secret() {
   local password_file="${REPO_ROOT}/.rabbitmq-password"
   local password
   if [ -f "${password_file}" ]; then
+    chmod 0600 "${password_file}"
     password="$(cat "${password_file}")"
     ok "reusing password from .rabbitmq-password"
   else
     password="$(openssl rand -base64 24 | tr -cd '[:alnum:]')"
+    [ -n "${password}" ] || die "generated RabbitMQ password is empty"
     umask 077
     printf "%s" "${password}" > "${password_file}"
     chmod 0600 "${password_file}"
     ok "password persisted to .rabbitmq-password (mode 0600, gitignored)"
   fi
+  [ -n "${password}" ] || die ".rabbitmq-password is empty"
   for namespace in messaging shop; do
     kubectl -n "${namespace}" create secret generic rabbitmq-credentials \
       --from-literal=username=perfsim \

@@ -81,6 +81,8 @@ spec:
                 secretKeyRef:
                   name: rabbitmq-credentials
                   key: password
+            - name: RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS
+              value: "-rabbit handshake_timeout 30000"
           volumeMounts:
             - name: data
               mountPath: /var/lib/rabbitmq
