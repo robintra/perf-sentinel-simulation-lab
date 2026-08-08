@@ -11,7 +11,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
 
 .PHONY: help up down reset recover validate smoke status logs grafana inspect psql ps clean-images \
         seed-services teardown-services inject-all validate-findings \
-        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc seed-helidon-se-svc seed-dotnet-svc seed-go-svc seed-nest-svc seed-django-svc seed-fastapi-svc seed-diesel-svc seed-seaorm-svc seed-rails-svc seed-laravel-svc seed-symfony-svc \
+        seed-quarkus-svc seed-mutiny-svc seed-helidon-mp-svc seed-helidon-se-svc seed-ktor-svc seed-dotnet-svc seed-go-svc seed-nest-svc seed-django-svc seed-fastapi-svc seed-diesel-svc seed-seaorm-svc seed-rails-svc seed-laravel-svc seed-symfony-svc \
         seed-electricity-maps verify-electricity-maps capture-greenops-screenshot redeploy-services \
         up-gitlab down-gitlab seed-gitlab-project verify-gitlab-perf-sentinel \
         up-cni reset-cni install-cni apply-network-policies remove-network-policies \
@@ -121,6 +121,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/run-multistack-scenario.sh
 	@bash -n scripts/verify-messaging-negative-contract.sh
 	@bash -n scripts/test-verify-messaging-negative-contract.sh
+	@bash -n scripts/seed-ktor-svc.sh
 	@./scripts/test-validate-findings-freshness.sh
 	@bash scripts/test-verify-messaging-negative-contract.sh
 	@bash -n scripts/capture-trace-fixture.sh
@@ -250,6 +251,9 @@ seed-helidon-mp-svc: ## Build + import + helm install the Helidon MP 4.4 multist
 
 seed-helidon-se-svc: ## Build + import + helm install the Helidon SE 4.4 multistack member
 	./scripts/seed-helidon-se-svc.sh
+
+seed-ktor-svc: ## Build + import + helm install the Kotlin 2.4 + Ktor 3.5 multistack member
+	./scripts/seed-ktor-svc.sh
 
 seed-dotnet-svc: ## Build + import + helm install the .NET 10 LTS multistack member
 	./scripts/seed-dotnet-svc.sh

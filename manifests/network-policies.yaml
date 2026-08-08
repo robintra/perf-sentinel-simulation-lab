@@ -261,8 +261,8 @@ spec:
 # label and would otherwise be denied. Allow any pod in shop to
 # reach the lab service port range, plus service-to-service HTTP
 # calls (order calls notification, etc.) for the n+1-http and
-# chatty scenarios. Range 8080-8096 covers the 3 Java baseline
-# services (8080-8082) and the 14 multistack services (8083-8096),
+# chatty scenarios. Range 8080-8097 covers the 3 Java baseline
+# services (8080-8082) and the 15 multistack services (8083-8097),
 # see docs/MULTISTACK.md for the per-service mapping.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -282,12 +282,12 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-          endPort: 8096
+          endPort: 8097
 ---
 # 4.C.bis-egress allow shop pods (including k6 jobs without lab
 # label) to reach the lab services intra-namespace. This is broader
 # than the `app.kubernetes.io/part-of` selector because k6 pods
-# are ephemeral and not labeled. Range 8080-8096 mirrors the
+# are ephemeral and not labeled. Range 8080-8097 mirrors the
 # ingress rule above.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -305,7 +305,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-          endPort: 8096
+          endPort: 8097
 ---
 # 4.C.bis ingress on Postgres limited to the lab's shop pods.
 apiVersion: networking.k8s.io/v1

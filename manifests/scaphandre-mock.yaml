@@ -41,7 +41,7 @@ data:
     # services (order, payment, notification) all share the OpenJDK 25
     # runtime baked into gcr.io/distroless/java25:nonroot
     # (services/shared-dockerfile/Dockerfile). The 14 multistack
-    # services (quarkus, mutiny, helidon-se/mp, dotnet, diesel, seaorm,
+    # services (quarkus, mutiny, helidon-se/mp, ktor, dotnet, diesel, seaorm,
     # nest, django, fastapi, go, rails, laravel, symfony) each expose a
     # fictional process whose
     # exe matches the runtime path their container would bake. Temurin
@@ -54,11 +54,12 @@ data:
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/order-service.jar",        "pid": 1234},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/payment-service.jar",      "pid": 1235},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/notification-service.jar", "pid": 1236},
-        # Multistack services (4 Java-based: quarkus, mutiny, helidon-se, helidon-mp)
+        # Multistack services (5 Java-based: quarkus, mutiny, helidon-se, helidon-mp, ktor)
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/quarkus-svc.jar",          "pid": 1240},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/mutiny-svc.jar",           "pid": 1241},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/helidon-se-svc.jar",       "pid": 1242},
         {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/helidon-mp-svc.jar",       "pid": 1243},
+        {"exe": "/usr/lib/jvm/java-25-openjdk-amd64/bin/java", "cmdline": "java-jar/app/ktor-svc.jar",             "pid": 1244},
         # Multistack: .NET (chiseled Ubuntu Noble)
         {"exe": "/usr/share/dotnet/dotnet",                    "cmdline": "dotnet/app/dotnet-svc.dll",             "pid": 2240},
         # Multistack: Rust (static binary per service)

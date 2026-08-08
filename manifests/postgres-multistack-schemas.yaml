@@ -1,6 +1,6 @@
 ---
 # Multistack Postgres bootstrap. Idempotent Kubernetes Job that creates
-# the 14 schemas + service roles + GRANTs the multistack services need.
+# the 15 schemas + service roles + GRANTs the multistack services need.
 # Mirrors the pattern of manifests/postgres-init-schemas.yaml (which
 # only runs on a fresh Postgres bootstrap via docker-entrypoint-initdb.d)
 # but works on an already-running Postgres without dropping the PVC.
@@ -33,6 +33,7 @@ data:
     CREATE SCHEMA IF NOT EXISTS mutiny;
     CREATE SCHEMA IF NOT EXISTS helidon_se;
     CREATE SCHEMA IF NOT EXISTS helidon_mp;
+    CREATE SCHEMA IF NOT EXISTS ktor;
     CREATE SCHEMA IF NOT EXISTS dotnet;
     CREATE SCHEMA IF NOT EXISTS diesel;
     CREATE SCHEMA IF NOT EXISTS seaorm;
@@ -60,6 +61,9 @@ data:
       END IF;
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'helidon_mp_user') THEN
         CREATE ROLE helidon_mp_user LOGIN PASSWORD 'lab_helidon_mp';
+      END IF;
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ktor_user') THEN
+        CREATE ROLE ktor_user LOGIN PASSWORD 'lab_ktor';
       END IF;
       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'dotnet_user') THEN
         CREATE ROLE dotnet_user LOGIN PASSWORD 'lab_dotnet';
@@ -98,6 +102,7 @@ data:
     GRANT USAGE, CREATE ON SCHEMA mutiny     TO mutiny_user;
     GRANT USAGE, CREATE ON SCHEMA helidon_se TO helidon_se_user;
     GRANT USAGE, CREATE ON SCHEMA helidon_mp TO helidon_mp_user;
+    GRANT USAGE, CREATE ON SCHEMA ktor       TO ktor_user;
     GRANT USAGE, CREATE ON SCHEMA dotnet     TO dotnet_user;
     GRANT USAGE, CREATE ON SCHEMA diesel     TO diesel_user;
     GRANT USAGE, CREATE ON SCHEMA seaorm     TO seaorm_user;
@@ -113,6 +118,7 @@ data:
     ALTER ROLE mutiny_user     SET search_path = mutiny, public;
     ALTER ROLE helidon_se_user SET search_path = helidon_se, public;
     ALTER ROLE helidon_mp_user SET search_path = helidon_mp, public;
+    ALTER ROLE ktor_user       SET search_path = ktor, public;
     ALTER ROLE dotnet_user     SET search_path = dotnet, public;
     ALTER ROLE diesel_user     SET search_path = diesel, public;
     ALTER ROLE seaorm_user     SET search_path = seaorm, public;

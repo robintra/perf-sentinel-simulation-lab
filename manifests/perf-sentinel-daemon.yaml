@@ -125,6 +125,10 @@ data:
     exe_contains = "bin/java"
     cmdline_contains = "helidon-mp-svc"
 
+    [green.scaphandre.process_map."ktor-svc"]
+    exe_contains = "bin/java"
+    cmdline_contains = "ktor-svc"
+
     [green.scaphandre.process_map."dotnet-svc"]
     exe_contains = "share/dotnet"
     cmdline_contains = "dotnet-svc"

@@ -1,0 +1,36 @@
+image:
+  repository: ktor-svc
+  tag: s2
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8097
+
+database:
+  url: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=ktor
+  username: ktor_user
+  password: lab_ktor
+
+messaging:
+  host: rabbitmq.messaging.svc.cluster.local
+  port: 5672
+  slowHost: toxiproxy.messaging.svc.cluster.local
+  slowPort: 25672
+  toxiproxyApi: http://toxiproxy.messaging.svc.cluster.local:8474
+
+otel:
+  serviceName: ktor-svc
+  endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318
+  protocol: http/protobuf
+  cloudRegion: eu-west-3
+  cloudProvider: aws
+
+selfBaseUrl: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 384Mi
+  limits:
+    cpu: 800m
+    memory: 768Mi
