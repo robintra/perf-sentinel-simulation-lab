@@ -4,9 +4,11 @@ import jakarta.annotation.Priority;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.Initialized;
 import jakarta.enterprise.event.Observes;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /**
  * CDI startup observer that runs Flyway migrations against the
@@ -20,12 +22,23 @@ import org.flywaydb.core.Flyway;
 @ApplicationScoped
 public class FlywayBootstrap {
 
+    private final boolean migrateAtStart;
+    private final Instance<DataSource> dataSource;
+
     @Inject
-    DataSource dataSource;
+    public FlywayBootstrap(
+            @ConfigProperty(name = "flyway.migrate-at-start", defaultValue = "true") boolean migrateAtStart,
+            Instance<DataSource> dataSource) {
+        this.migrateAtStart = migrateAtStart;
+        this.dataSource = dataSource;
+    }
 
     public void onStart(@Observes @Priority(100) @Initialized(ApplicationScoped.class) Object init) {
+        if (!migrateAtStart) {
+            return;
+        }
         Flyway flyway = Flyway.configure()
-                .dataSource(dataSource)
+                .dataSource(dataSource.get())
                 .schemas("helidon_mp")
                 .defaultSchema("helidon_mp")
                 .baselineOnMigrate(true)

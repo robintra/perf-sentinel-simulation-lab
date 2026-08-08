@@ -1,5 +1,6 @@
 package com.perfsim.helidonmpsvc.web;
 
+import com.perfsim.helidonmpsvc.messaging.MessagingPublisher;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -26,7 +27,7 @@ import javax.sql.DataSource;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 /**
- * 10 fault endpoints, one per perf-sentinel anti-pattern. Helidon MP
+ * 12 fault endpoints, one per perf-sentinel anti-pattern. Helidon MP
  * idiom: MicroProfile JAX-RS + CDI + JPA Hibernate. SQL anti-patterns
  * go through the JPA EntityManager (literal-interpolated native
  * queries; the OTel Java agent at runtime tags them with the
@@ -44,14 +45,27 @@ public class FaultResource {
     @PersistenceContext(unitName = "helidonMpPU")
     EntityManager em;
 
-    @Inject
-    @RestClient
-    SelfClient self;
+    private final SelfClient self;
 
     // Helidon HikariCP datasource, looked up via CDI. Used by
     // pool-saturation to grab N raw connections that bypass JPA.
+    private final DataSource dataSource;
+
+    private final MessagingPublisher messagingPublisher;
+
     @Inject
-    DataSource dataSource;
+    public FaultResource(
+            @RestClient SelfClient self,
+            DataSource dataSource,
+            MessagingPublisher messagingPublisher) {
+        this.self = self;
+        this.dataSource = dataSource;
+        this.messagingPublisher = messagingPublisher;
+    }
+
+    FaultResource(MessagingPublisher messagingPublisher) {
+        this(null, null, messagingPublisher);
+    }
 
     private final Executor executor = Executors.newCachedThreadPool();
 
@@ -243,5 +257,40 @@ public class FaultResource {
             long wallClockMs = (System.nanoTime() - startNs) / 1_000_000L;
             return Map.of("steps_ok", ok, "wall_clock_ms", wallClockMs);
         });
+    }
+
+    @POST
+    @Path("/n-plus-one-messaging")
+    public Response nPlusOneMessaging(
+            @QueryParam("messages") @DefaultValue("8") int messages,
+            @QueryParam("broker") @DefaultValue("rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker) || messages < 5 || messages > 100) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        return Response.ok(runFault(
+                        "n_plus_one_messaging",
+                        Map.of("messages", messages, "broker", broker),
+                        () -> messagingPublisher.publishSequentially(messages)))
+                .build();
+    }
+
+    @POST
+    @Path("/slow-messaging")
+    public Response slowMessaging(
+            @QueryParam("delayMs") @DefaultValue("600") long delayMs,
+            @QueryParam("repeats") @DefaultValue("3") int repeats,
+            @QueryParam("broker") @DefaultValue("rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker)
+                || delayMs < 501
+                || delayMs > 5_000
+                || repeats < 3
+                || repeats > 20) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        return Response.ok(runFault(
+                        "slow_messaging",
+                        Map.of("delayMs", delayMs, "repeats", repeats, "broker", broker),
+                        () -> messagingPublisher.publishSlowly(delayMs, repeats)))
+                .build();
     }
 }

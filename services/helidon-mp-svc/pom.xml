@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>perf-sentinel helidon-mp-svc</name>
-    <description>Helidon MP 4.4.0 LTS stack member. Reproduces the 10 perf-sentinel anti-patterns via MicroProfile JAX-RS + CDI + JPA Hibernate.</description>
+    <description>Helidon MP 4.4.0 LTS stack member. Reproduces the 12 perf-sentinel anti-patterns via MicroProfile JAX-RS + CDI + JPA Hibernate.</description>
 
     <parent>
         <groupId>io.helidon.applications</groupId>
@@ -103,6 +103,29 @@
             <groupId>org.glassfish.jersey.media</groupId>
             <artifactId>jersey-media-json-binding</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.rabbitmq</groupId>
+            <artifactId>amqp-client</artifactId>
+            <version>5.27.1</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.12.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.glassfish.jersey.test-framework.providers</groupId>
+            <artifactId>jersey-test-framework-provider-inmemory</artifactId>
+            <version>3.1.11</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
