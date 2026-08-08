@@ -1,6 +1,8 @@
 package com.perfsim.helidonsesvc;
 
 import com.perfsim.helidonsesvc.db.DataSources;
+import com.perfsim.helidonsesvc.messaging.MessagingFaultService;
+import com.perfsim.helidonsesvc.messaging.MessagingPublisher;
 import com.perfsim.helidonsesvc.web.BusinessRoutes;
 import com.perfsim.helidonsesvc.web.FaultRoutes;
 import com.zaxxer.hikari.HikariDataSource;
@@ -50,7 +52,15 @@ public final class Main {
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
 
-        FaultRoutes faultRoutes = new FaultRoutes(dataSource, httpClient, selfBaseUrl);
+        MessagingPublisher messagingPublisher = new MessagingFaultService(
+                envOr("RABBITMQ_HOST", "rabbitmq.messaging.svc.cluster.local"),
+                envOrInt("RABBITMQ_PORT", 5672),
+                envOr("RABBITMQ_SLOW_HOST", "toxiproxy.messaging.svc.cluster.local"),
+                envOrInt("RABBITMQ_SLOW_PORT", 25672),
+                envOr("TOXIPROXY_API", "http://toxiproxy.messaging.svc.cluster.local:8474"),
+                envOr("RABBITMQ_USERNAME", null),
+                envOr("RABBITMQ_PASSWORD", null));
+        FaultRoutes faultRoutes = new FaultRoutes(dataSource, httpClient, selfBaseUrl, messagingPublisher);
         BusinessRoutes businessRoutes = new BusinessRoutes(dataSource);
 
         // Helidon Config does not expand ${VAR} on YAML sources, so

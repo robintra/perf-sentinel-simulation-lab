@@ -3,7 +3,7 @@
 // via __ENV.ANTI_PATTERN.
 
 import http from 'k6/http';
-import { sleep } from 'k6';
+import { check, fail, sleep } from 'k6';
 
 const STACK = 'helidon-se';
 const PORT  = '8085';
@@ -11,25 +11,38 @@ const PORT  = '8085';
 const SERVICE = `${STACK}-svc`;
 const BASE = __ENV.SERVICE_URL || `http://${SERVICE}.shop.svc.cluster.local:${PORT}`;
 
-function post(path) {
-    const r = http.post(`${BASE}${path}`);
-    if (r.status !== 200) {
-        console.error(`${path} on ${SERVICE} failed: ${r.status} ${r.body}`);
-    }
-    return r;
+export const options = {
+    thresholds: { checks: ['rate==1'] },
+};
+
+function postChecked(path, requested = null) {
+    const response = http.post(`${BASE}${path}`);
+    let body = null;
+    try { body = response.json(); } catch (_) { /* checked below */ }
+    const valid = check(response, {
+        'HTTP 200': (r) => r.status === 200,
+        'JSON object': () => body !== null && typeof body === 'object',
+        'messaging confirms requested count': () => requested === null || (
+            body.details && body.details.published === requested &&
+            body.details.confirmed === requested),
+    });
+    if (!valid) fail(`${path}: status=${response.status} body=${response.body}`);
+    return body;
 }
 
 const DISPATCH = {
-    n_plus_one_sql:    () => { post('/api/fault/n-plus-one-sql?items=15'); sleep(0.5); },
-    n_plus_one_http:   () => { post('/api/fault/n-plus-one-http?recipients=10'); sleep(0.5); },
-    redundant_sql:     () => { post('/api/fault/redundant-sql?repeats=10'); sleep(0.5); },
-    redundant_http:    () => { post('/api/fault/redundant-http?repeats=10'); sleep(0.5); },
-    slow_sql:          () => { post('/api/fault/slow-sql?delayMs=600&repeats=6'); sleep(1); },
-    slow_http:         () => { post('/api/fault/slow-http?delayMs=600&repeats=6'); sleep(1); },
-    excessive_fanout:  () => { post('/api/fault/fanout?width=40'); sleep(1); },
-    chatty_service:    () => { post('/api/fault/chatty?calls=30'); sleep(1); },
-    serialized_calls:  () => { post('/api/fault/serialized?steps=6'); sleep(1); },
-    pool_saturation:   () => { post('/api/fault/pool-saturation?concurrency=20'); sleep(2); },
+    n_plus_one_sql:    () => { postChecked('/api/fault/n-plus-one-sql?items=15'); sleep(0.5); },
+    n_plus_one_http:   () => { postChecked('/api/fault/n-plus-one-http?recipients=10'); sleep(0.5); },
+    redundant_sql:     () => { postChecked('/api/fault/redundant-sql?repeats=10'); sleep(0.5); },
+    redundant_http:    () => { postChecked('/api/fault/redundant-http?repeats=10'); sleep(0.5); },
+    slow_sql:          () => { postChecked('/api/fault/slow-sql?delayMs=600&repeats=6'); sleep(1); },
+    slow_http:         () => { postChecked('/api/fault/slow-http?delayMs=600&repeats=6'); sleep(1); },
+    excessive_fanout:  () => { postChecked('/api/fault/fanout?width=40'); sleep(1); },
+    chatty_service:    () => { postChecked('/api/fault/chatty?calls=30'); sleep(1); },
+    serialized_calls:  () => { postChecked('/api/fault/serialized?steps=6'); sleep(1); },
+    pool_saturation:   () => { postChecked('/api/fault/pool-saturation?concurrency=20'); sleep(2); },
+    n_plus_one_messaging: () => { postChecked('/api/fault/n-plus-one-messaging?messages=8&broker=rabbitmq', 8); sleep(0.5); },
+    slow_messaging: () => { postChecked('/api/fault/slow-messaging?delayMs=600&repeats=3&broker=rabbitmq', 3); sleep(1); },
 };
 
 export default function() {

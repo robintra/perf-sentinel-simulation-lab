@@ -48,6 +48,16 @@
             <artifactId>helidon-config-yaml</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>com.rabbitmq</groupId>
+            <artifactId>amqp-client</artifactId>
+            <version>5.27.1</version>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-api</artifactId>
+        </dependency>
+
         <!-- Outbound HTTP uses java.net.http.HttpClient (JDK 25 stdlib),
              not Helidon WebClient. The OTel Java agent v2.27 instruments
              the JDK client under the `io.opentelemetry.java-http-client`
@@ -87,6 +97,13 @@
             <artifactId>flyway-database-postgresql</artifactId>
             <version>${flyway.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.12.2</version>
+            <scope>test</scope>
         </dependency>
 
         <!-- Lightweight /health/live and /health/ready are served by

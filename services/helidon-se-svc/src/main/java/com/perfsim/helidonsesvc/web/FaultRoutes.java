@@ -1,5 +1,7 @@
 package com.perfsim.helidonsesvc.web;
 
+import com.perfsim.helidonsesvc.messaging.MessagingPublisher;
+import io.helidon.http.HttpMediaType;
 import io.helidon.webserver.http.HttpRules;
 import io.helidon.webserver.http.HttpService;
 import io.helidon.webserver.http.ServerRequest;
@@ -63,6 +65,7 @@ public final class FaultRoutes implements HttpService {
     private final DataSource dataSource;
     private final HttpClient httpClient;
     private final String selfBaseUrl;
+    private final MessagingPublisher messagingPublisher;
     // Cached pool for fanout / pool-saturation concurrency. Threads
     // are marked daemon and given a recognisable name so a SIGTERM
     // does not need to wait for them to drain (otherwise the JVM
@@ -76,12 +79,17 @@ public final class FaultRoutes implements HttpService {
         return t;
     });
 
-    public FaultRoutes(DataSource dataSource, HttpClient httpClient, String selfBaseUrl) {
+    public FaultRoutes(
+            DataSource dataSource,
+            HttpClient httpClient,
+            String selfBaseUrl,
+            MessagingPublisher messagingPublisher) {
         this.dataSource = dataSource;
         this.httpClient = httpClient;
         this.selfBaseUrl = selfBaseUrl.endsWith("/")
                 ? selfBaseUrl.substring(0, selfBaseUrl.length() - 1)
                 : selfBaseUrl;
+        this.messagingPublisher = messagingPublisher;
     }
 
     @Override
@@ -96,6 +104,8 @@ public final class FaultRoutes implements HttpService {
         rules.post("/chatty", this::chatty);
         rules.post("/serialized", this::serialized);
         rules.post("/pool-saturation", this::poolSaturation);
+        rules.post("/n-plus-one-messaging", this::nPlusOneMessaging);
+        rules.post("/slow-messaging", this::slowMessaging);
     }
 
     // === plumbing =============================================================
@@ -114,6 +124,11 @@ public final class FaultRoutes implements HttpService {
 
     private int statusOk(int status) {
         return status == 200 ? 1 : 0;
+    }
+
+    private void badRequest(ServerResponse res) {
+        res.headers().contentType(HttpMediaType.create("application/json"));
+        res.status(400).send("{\"error\":\"invalid messaging request\"}");
     }
 
     // Per-request timeout cap. The HttpClient builder's connectTimeout
@@ -332,5 +347,36 @@ public final class FaultRoutes implements HttpService {
             return Map.of("steps_ok", ok, "wall_clock_ms", wallClockMs);
         });
         res.send(body);
+    }
+
+    private void nPlusOneMessaging(ServerRequest req, ServerResponse res) {
+        int messages = req.query().first("messages").asInt().orElse(8);
+        String broker = req.query().first("broker").orElse("rabbitmq");
+        if (!"rabbitmq".equals(broker) || messages < 5 || messages > 100) {
+            badRequest(res);
+            return;
+        }
+        res.send(runFault(
+                "n_plus_one_messaging",
+                Map.of("messages", messages, "broker", broker),
+                () -> messagingPublisher.publishSequentially(messages)));
+    }
+
+    private void slowMessaging(ServerRequest req, ServerResponse res) {
+        long delayMs = req.query().first("delayMs").asLong().orElse(600L);
+        int repeats = req.query().first("repeats").asInt().orElse(3);
+        String broker = req.query().first("broker").orElse("rabbitmq");
+        if (!"rabbitmq".equals(broker)
+                || delayMs < 501
+                || delayMs > 5_000
+                || repeats < 3
+                || repeats > 20) {
+            badRequest(res);
+            return;
+        }
+        res.send(runFault(
+                "slow_messaging",
+                Map.of("delayMs", delayMs, "repeats", repeats, "broker", broker),
+                () -> messagingPublisher.publishSlowly(delayMs, repeats)));
     }
 }

@@ -53,6 +53,26 @@ spec:
                 secretKeyRef:
                   name: {{ .Chart.Name }}-db
                   key: password
+            - name: RABBITMQ_HOST
+              value: {{ .Values.messaging.host | quote }}
+            - name: RABBITMQ_PORT
+              value: {{ .Values.messaging.port | quote }}
+            - name: RABBITMQ_SLOW_HOST
+              value: {{ .Values.messaging.slowHost | quote }}
+            - name: RABBITMQ_SLOW_PORT
+              value: {{ .Values.messaging.slowPort | quote }}
+            - name: TOXIPROXY_API
+              value: {{ .Values.messaging.toxiproxyApi | quote }}
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: password
             # selfBaseUrl defaults from service.port so a chart-level
             # override of the port stays consistent with the self-loop
             # target. An explicit values.selfBaseUrl still wins.
