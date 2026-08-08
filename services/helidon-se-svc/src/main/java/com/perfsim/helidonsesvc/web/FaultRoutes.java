@@ -27,7 +27,7 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 
 /**
- * 10 fault endpoints for the perf-sentinel multistack contract. Pure
+ * 12 fault endpoints for the perf-sentinel multistack contract. Pure
  * Helidon SE: HttpService registered programmatically in {@link
  * com.perfsim.helidonsesvc.Main}, raw JDBC for SQL anti-patterns
  * (HikariCP-backed DataSource, no ORM), {@link java.net.http.HttpClient}
