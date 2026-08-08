@@ -50,6 +50,26 @@ spec:
                 secretKeyRef:
                   name: {{ .Chart.Name }}-db
                   key: password
+            - name: RABBITMQ_HOST
+              value: {{ .Values.messaging.host | quote }}
+            - name: RABBITMQ_PORT
+              value: {{ .Values.messaging.port | quote }}
+            - name: RABBITMQ_SLOW_HOST
+              value: {{ .Values.messaging.slowHost | quote }}
+            - name: RABBITMQ_SLOW_PORT
+              value: {{ .Values.messaging.slowPort | quote }}
+            - name: TOXIPROXY_API
+              value: {{ .Values.messaging.toxiproxyApi | quote }}
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: password
             - name: SELF_BASE_URL
               value: {{ .Values.selfBaseUrl | quote }}
             # OpenTelemetry: quarkus-opentelemetry extension reads these

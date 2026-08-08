@@ -118,6 +118,8 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/capture-greenops-screenshot.sh
 	@bash -n scripts/redeploy-services.sh
 	@bash -n scripts/test-validate-findings-freshness.sh
+	@bash -n scripts/run-multistack-scenario.sh
+	@bash -n scripts/verify-messaging-negative-contract.sh
 	@./scripts/test-validate-findings-freshness.sh
 	@bash -n scripts/capture-trace-fixture.sh
 	@bash -n scripts/up-gitlab.sh

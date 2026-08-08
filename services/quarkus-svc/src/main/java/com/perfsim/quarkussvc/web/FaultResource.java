@@ -1,5 +1,6 @@
 package com.perfsim.quarkussvc.web;
 
+import com.perfsim.quarkussvc.messaging.MessagingFaultService;
 import io.agroal.api.AgroalDataSource;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
@@ -19,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import org.eclipse.microprofile.context.ManagedExecutor;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
@@ -48,6 +51,9 @@ public class FaultResource {
 
     @Inject
     ManagedExecutor executor;
+
+    @Inject
+    MessagingFaultService messagingFaultService;
 
     // === fault response helper =================================================
 
@@ -138,6 +144,7 @@ public class FaultResource {
     public FaultResponse poolSaturation(
             @QueryParam("concurrency") @DefaultValue("20") int concurrency) {
         return runFault("pool_saturation", Map.of("concurrency", concurrency), () -> {
+            Context requestContext = Context.current();
             // Agroal pool cap = 10 (quarkus.datasource.jdbc.max-size in
             // application.properties). Launching concurrency=20 tasks each
             // holding a connection ~400 ms forces 10 tasks to queue behind
@@ -145,7 +152,8 @@ public class FaultResource {
             List<CompletableFuture<Integer>> futures = new ArrayList<>();
             for (int i = 0; i < concurrency; i++) {
                 futures.add(executor.supplyAsync(() -> {
-                    try (Connection conn = dataSource.getConnection();
+                    try (Scope ignored = requestContext.makeCurrent();
+                            Connection conn = dataSource.getConnection();
                          PreparedStatement ps = conn.prepareStatement("SELECT pg_sleep(0.4)")) {
                         ps.execute();
                         return 1;
@@ -266,5 +274,36 @@ public class FaultResource {
             long wallClockMs = (System.nanoTime() - startNs) / 1_000_000L;
             return Map.of("steps_ok", ok, "wall_clock_ms", wallClockMs);
         });
+    }
+
+    @POST
+    @Path("/n-plus-one-messaging")
+    public Response nPlusOneMessaging(
+            @QueryParam("messages") @DefaultValue("8") int messages,
+            @QueryParam("broker") @DefaultValue("rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker) || messages < 5 || messages > 100) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        return Response.ok(runFault(
+                        "n_plus_one_messaging",
+                        Map.of("messages", messages, "broker", broker),
+                        () -> messagingFaultService.publishSequentially(messages)))
+                .build();
+    }
+
+    @POST
+    @Path("/slow-messaging")
+    public Response slowMessaging(
+            @QueryParam("delayMs") @DefaultValue("600") long delayMs,
+            @QueryParam("repeats") @DefaultValue("3") int repeats,
+            @QueryParam("broker") @DefaultValue("rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker) || delayMs < 501 || delayMs > 5_000 || repeats < 3 || repeats > 20) {
+            return Response.status(Response.Status.BAD_REQUEST).build();
+        }
+        return Response.ok(runFault(
+                        "slow_messaging",
+                        Map.of("delayMs", delayMs, "repeats", repeats, "broker", broker),
+                        () -> messagingFaultService.publishSlowly(delayMs, repeats)))
+                .build();
     }
 }

@@ -9,7 +9,7 @@
 // 5-minute layout that conflicts with per-anti-pattern sub-runs).
 
 import http from 'k6/http';
-import { sleep } from 'k6';
+import { check, sleep } from 'k6';
 
 const STACK = 'quarkus';
 const PORT  = '8083';
@@ -17,11 +17,32 @@ const PORT  = '8083';
 const SERVICE = `${STACK}-svc`;
 const BASE = __ENV.SERVICE_URL || `http://${SERVICE}.shop.svc.cluster.local:${PORT}`;
 
+export const options = {
+    thresholds: { checks: ['rate==1'] },
+};
+
 function post(path) {
     const r = http.post(`${BASE}${path}`);
+    check(r, { 'HTTP 200': (response) => response.status === 200 });
     if (r.status !== 200) {
         console.error(`${path} on ${SERVICE} failed: ${r.status} ${r.body}`);
     }
+    return r;
+}
+
+function postChecked(path, requested) {
+    const r = post(path);
+    let body = {};
+    try {
+        body = r.json();
+    } catch (_) {
+        // The check below reports the malformed response as a k6 failure.
+    }
+    check(r, {
+        'published and confirmed requested': () => body.details
+            && body.details.published === requested
+            && body.details.confirmed === requested,
+    });
     return r;
 }
 
@@ -36,6 +57,8 @@ const DISPATCH = {
     chatty_service:    () => { post('/api/fault/chatty?calls=30'); sleep(1); },
     serialized_calls:  () => { post('/api/fault/serialized?steps=6'); sleep(1); },
     pool_saturation:   () => { post('/api/fault/pool-saturation?concurrency=20'); sleep(2); },
+    n_plus_one_messaging: () => { postChecked('/api/fault/n-plus-one-messaging?messages=8&broker=rabbitmq', 8); sleep(0.5); },
+    slow_messaging: () => { postChecked('/api/fault/slow-messaging?delayMs=600&repeats=3&broker=rabbitmq', 3); sleep(1); },
 };
 
 export default function() {
