@@ -316,11 +316,13 @@ fun Application.module(testing: Boolean = false, messagingPublisher: MessagingPu
 
         get("/health/live") { call.respond(mapOf("status" to "UP")) }
         get("/health/ready") {
-            val ready = testing || runCatching {
-                requireNotNull(dataSource).connection.use { connection ->
-                    connection.createStatement().use { it.execute("SELECT 1") }
-                }
-            }.isSuccess
+            val ready = testing || withContext(Dispatchers.IO) {
+                runCatching {
+                    requireNotNull(dataSource).connection.use { connection ->
+                        connection.createStatement().use { it.execute("SELECT 1") }
+                    }
+                }.isSuccess
+            }
             call.respond(
                 if (ready) HttpStatusCode.OK else HttpStatusCode.ServiceUnavailable,
                 mapOf("status" to if (ready) "UP" else "DOWN"),

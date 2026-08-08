@@ -40,7 +40,7 @@ data:
     # One process per service running in the lab. The 3 Java baseline
     # services (order, payment, notification) all share the OpenJDK 25
     # runtime baked into gcr.io/distroless/java25:nonroot
-    # (services/shared-dockerfile/Dockerfile). The 14 multistack
+    # (services/shared-dockerfile/Dockerfile). The 15 multistack
     # services (quarkus, mutiny, helidon-se/mp, ktor, dotnet, diesel, seaorm,
     # nest, django, fastapi, go, rails, laravel, symfony) each expose a
     # fictional process whose
