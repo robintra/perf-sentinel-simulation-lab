@@ -9,6 +9,7 @@ mkdir -p "${TEST_TMP}/bin"
 cat > "${TEST_TMP}/bin/mvn" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "${MVN_CALL_LOG}"
+printf '%s\n' "${NATIVE_OUTPUT:-}"
 SH
 
 cat > "${TEST_TMP}/bin/cargo" <<'SH'
@@ -30,7 +31,23 @@ chmod +x "${TEST_TMP}/bin/mvn" "${TEST_TMP}/bin/cargo" "${TEST_TMP}/bin/go" "${T
 export PATH="${TEST_TMP}/bin:${PATH}"
 export MVN_CALL_LOG="${TEST_TMP}/mvn-call.log"
 export NATIVE_CALL_LOG="${TEST_TMP}/native-call.log"
+MARKER='PERF_SENTINEL_MESSAGING_NEGATIVE_CONTRACT_PASS 7/7 boundary_calls=0'
 
+export NATIVE_OUTPUT=
+if (cd "${REPO_ROOT}" && bash scripts/verify-messaging-negative-contract.sh quarkus) \
+        > "${TEST_TMP}/no-marker.log" 2>&1; then
+    echo "FAIL: helper accepted native exit 0 without the exact success marker"
+    exit 1
+fi
+
+export NATIVE_OUTPUT='HTTP 400 1/7'
+if (cd "${REPO_ROOT}" && bash scripts/verify-messaging-negative-contract.sh quarkus) \
+        > "${TEST_TMP}/one-case.log" 2>&1; then
+    echo "FAIL: helper accepted a native runner that executed only one case"
+    exit 1
+fi
+
+export NATIVE_OUTPUT="${MARKER}"
 output="$(cd "${REPO_ROOT}" && bash scripts/verify-messaging-negative-contract.sh quarkus)"
 expected='-B -ntp -f services/quarkus-svc/pom.xml -Dtest=MessagingInvalidContractTest test'
 if [[ ! -f "${MVN_CALL_LOG}" ]] || [[ "$(cat "${MVN_CALL_LOG}")" != "${expected}" ]]; then
@@ -72,4 +89,4 @@ for stack in diesel seaorm go; do
     fi
 done
 
-echo "PASS: negative-contract helper dispatches Quarkus natively, rejects unknown slugs and requires focused tests"
+echo "PASS: negative-contract helper requires the exact native 7/7 boundary marker"
