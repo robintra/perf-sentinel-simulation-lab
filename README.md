@@ -17,7 +17,7 @@ local k3d cluster (Cilium CNI, zero-trust NetworkPolicy) with
 OpenTelemetry Collector, Tempo, Prometheus, Grafana, perf-sentinel
 daemon, PostgreSQL, plus the three core Java services in the `shop`
 namespace (`order-service`, `payment-service`, `notification-service`)
-that produce the ten canonical anti-pattern classes on demand via
+that produce the twelve canonical anti-pattern classes on demand via
 `/api/fault/*` endpoints. A multistack expansion adds fourteen more
 services that reproduce the same anti-patterns across the JVM
 (Quarkus, Quarkus + Mutiny, Helidon MP, Helidon SE), .NET, Go, NestJS,
@@ -25,7 +25,7 @@ Django, FastAPI, PHP (Laravel, Symfony), Ruby on Rails, and Rust
 (Diesel, SeaORM). See
 [docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md).
 
-`make seed-services && make validate-findings` runs the ten k6
+`make seed-services && make validate-findings` runs the twelve k6
 scenarios on the core Java services and reports how many anti-patterns
 perf-sentinel detected on the expected service. `make verify-all-scenarios`
 runs the full suite of deployment, CI, resilience, measured-energy,
@@ -121,7 +121,7 @@ make help         # list every target
 # Service deployment (depends on `make up` first)
 make seed-services                         # the 3 core Java services
 make seed-quarkus-svc ... seed-symfony-svc # the 14 multistack services (see make help)
-make validate-findings                     # 10 k6 scenarios on the core services, assert findings
+make validate-findings                     # 12 k6 scenarios on the core services, assert findings
 
 # Scenario suite
 make verify-all-scenarios   # run every scenario (see docs/SCENARIOS.md and make help)
@@ -229,12 +229,12 @@ plus actuator health and prometheus endpoints.
 
 | Service              | Port | Postgres schema | Faults exposed                                                      |
 |----------------------|------|-----------------|---------------------------------------------------------------------|
-| order-service        | 8080 | orders          | n_plus_one_sql, redundant_http, slow_sql, pool_saturation           |
+| order-service        | 8080 | orders          | n_plus_one_sql, redundant_http, slow_sql, pool_saturation, n_plus_one_messaging, slow_messaging |
 | payment-service      | 8081 | payments        | redundant_sql, slow_http                                            |
 | notification-service | 8082 | notifications   | n_plus_one_http, excessive_fanout, chatty_service, serialized_calls |
 
-Together they cover the ten canonical detection classes.
-`make validate-findings` exercises all ten through k6 Jobs running
+Together they cover the twelve canonical detection classes.
+`make validate-findings` exercises all twelve through k6 Jobs running
 in-cluster and asserts that each scenario produces at least one
 matching finding on the expected service. The fourteen multistack
 services reproduce the same ten patterns in other language stacks.
@@ -268,7 +268,7 @@ All planned milestones have shipped:
 - k3d cluster (Cilium CNI, zero-trust NetworkPolicy), observability
   stack, PostgreSQL, and the perf-sentinel daemon.
 - 3 core Java 25 + Spring Boot 4 services with `/api/fault/*`
-  endpoints, 10 k6 scenarios, and the validate-findings pipeline.
+  endpoints, 12 k6 scenarios, and the validate-findings pipeline.
 - A multistack expansion: 14 more services across the JVM, .NET, Go,
   NestJS, Django, FastAPI, PHP, Ruby, and Rust
   ([docs/MULTISTACK.md](https://github.com/robintra/perf-sentinel-simulation-lab/blob/main/docs/MULTISTACK.md)).

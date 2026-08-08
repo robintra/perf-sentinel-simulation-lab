@@ -125,7 +125,7 @@ jobs:
       - name: make seed-electricity-maps
         run: make seed-electricity-maps
 
-      - name: make validate-findings (10/10 anti-patterns)
+      - name: make validate-findings (12/12 anti-patterns)
         # Background kubectl port-forwards spawned by make up-cni survive
         # in the runner container but the seed-electricity-maps daemon
         # rollout leaves them in a zombie state holding the local port.

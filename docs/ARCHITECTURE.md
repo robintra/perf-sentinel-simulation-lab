@@ -264,7 +264,7 @@ perf-sentinel detector cannot tell N+1 from redundant_sql.
 
 ## Validation pipeline
 
-`scripts/validate-findings.sh` orchestrates the ten k6 scenarios
+`scripts/validate-findings.sh` orchestrates the twelve k6 scenarios
 sequentially. For each entry:
 
 1. The scenario JS is wrapped in a ConfigMap.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Drive the 10 k6 anti-pattern scenarios in sequence and assert that
+# Drive the 12 k6 anti-pattern scenarios in sequence and assert that
 # perf-sentinel produces at least one finding of the expected type on
 # the expected service per scenario. Writes tmp/validation-report.md
-# and prints a summary table. Exit code 0 if all 10 pass, 1 otherwise.
+# and prints a summary table. Exit code 0 if all 12 pass, 1 otherwise.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -32,6 +32,8 @@ SCENARIOS=(
     "chatty:chatty_service:notification-service:scenarios/chatty.js"
     "pool-saturation:pool_saturation:order-service:scenarios/pool-saturation.js"
     "serialized:serialized_calls:notification-service:scenarios/serialized.js"
+    "n-plus-one-messaging:n_plus_one_messaging:order-service:scenarios/n-plus-one-messaging.js"
+    "slow-messaging:slow_messaging:order-service:scenarios/slow-messaging.js"
 )
 
 declare -a RESULTS

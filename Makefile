@@ -275,10 +275,10 @@ seed-laravel-svc: ## Build + import + helm install the Laravel 11 + Eloquent (PH
 seed-symfony-svc: ## Build + import + helm install the Symfony 7 + Doctrine (PHP 8.3, native OTel) multistack member
 	./scripts/seed-symfony-svc.sh
 
-inject-all: ## Run all 10 k6 scenarios and assert findings (alias of validate-findings)
+inject-all: ## Run all 12 k6 scenarios and assert findings (alias of validate-findings)
 	./scripts/inject-all.sh
 
-validate-findings: ## Run all 10 k6 scenarios and write tmp/validation-report.md
+validate-findings: ## Run all 12 k6 scenarios and write tmp/validation-report.md
 	./scripts/validate-findings.sh
 
 status: ## Curl-only status of cluster + perf-sentinel daemon endpoints
