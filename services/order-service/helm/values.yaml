@@ -11,6 +11,13 @@ database:
   username: lab
   password: changeme
 
+messaging:
+  host: rabbitmq.messaging.svc.cluster.local
+  port: 5672
+  slowHost: toxiproxy.messaging.svc.cluster.local
+  slowPort: 25672
+  toxiproxyApi: http://toxiproxy.messaging.svc.cluster.local:8474
+
 otel:
   serviceName: order-service
   endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318

@@ -1,6 +1,7 @@
 package com.perfsim.order.web;
 
 import com.perfsim.order.domain.OrderRepository;
+import com.perfsim.order.messaging.MessagingFaultService;
 import com.perfsim.shared.BaseFaultController;
 import com.perfsim.shared.FaultResponse;
 import jakarta.persistence.EntityManager;
@@ -24,13 +25,18 @@ public class FaultController extends BaseFaultController {
 
     private final OrderRepository orders;
     private final RestClient paymentClient;
+    private final MessagingFaultService messagingFaultService;
 
     @PersistenceContext
     private EntityManager em;
 
-    public FaultController(OrderRepository orders, RestClient paymentClient) {
+    public FaultController(
+            OrderRepository orders,
+            RestClient paymentClient,
+            MessagingFaultService messagingFaultService) {
         this.orders = orders;
         this.paymentClient = paymentClient;
+        this.messagingFaultService = messagingFaultService;
     }
 
     @Override
@@ -145,6 +151,37 @@ public class FaultController extends BaseFaultController {
                         pool.shutdown();
                     }
                 });
+    }
+
+    @PostMapping("/n-plus-one-messaging")
+    public ResponseEntity<FaultResponse> nPlusOneMessaging(
+            @RequestParam(defaultValue = "8") int messages,
+            @RequestParam(defaultValue = "rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker) || messages < 5 || messages > 100) {
+            return ResponseEntity.badRequest().build();
+        }
+        return runFault(
+                "n_plus_one_messaging",
+                Map.of("messages", messages, "broker", broker),
+                () -> messagingFaultService.publishSequentially(messages));
+    }
+
+    @PostMapping("/slow-messaging")
+    public ResponseEntity<FaultResponse> slowMessaging(
+            @RequestParam(defaultValue = "600") long delayMs,
+            @RequestParam(defaultValue = "3") int repeats,
+            @RequestParam(defaultValue = "rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker)
+                || delayMs < 501
+                || delayMs > 5_000
+                || repeats < 3
+                || repeats > 20) {
+            return ResponseEntity.badRequest().build();
+        }
+        return runFault(
+                "slow_messaging",
+                Map.of("delayMs", delayMs, "repeats", repeats, "broker", broker),
+                () -> messagingFaultService.publishSlowly(delayMs, repeats));
     }
 
 }
