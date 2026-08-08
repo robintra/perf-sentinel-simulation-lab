@@ -53,8 +53,8 @@ public class MessagingFaultService {
             @ConfigProperty(name = "RABBITMQ_SLOW_PORT", defaultValue = "25672") int slowPort,
             @ConfigProperty(name = "TOXIPROXY_API", defaultValue = "http://toxiproxy.messaging.svc.cluster.local:8474")
                     String toxiproxyApi,
-            @ConfigProperty(name = "RABBITMQ_USERNAME", defaultValue = "guest") String username,
-            @ConfigProperty(name = "RABBITMQ_PASSWORD", defaultValue = "guest") String password) {
+            @ConfigProperty(name = "RABBITMQ_USERNAME") String username,
+            @ConfigProperty(name = "RABBITMQ_PASSWORD") String password) {
         this.directHost = directHost;
         this.directPort = directPort;
         this.slowHost = slowHost;

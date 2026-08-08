@@ -26,12 +26,12 @@ class MessagingInvalidContractTest {
 
     static Stream<String> invalidPaths() {
         return Stream.of(
-                "/api/fault/n-plus-one-messaging?messages=4",
-                "/api/fault/n-plus-one-messaging?messages=101",
-                "/api/fault/slow-messaging?delayMs=500&repeats=3",
-                "/api/fault/slow-messaging?delayMs=5001&repeats=3",
-                "/api/fault/slow-messaging?delayMs=600&repeats=2",
-                "/api/fault/slow-messaging?delayMs=600&repeats=21",
+                "/api/fault/n-plus-one-messaging?messages=4&broker=rabbitmq",
+                "/api/fault/n-plus-one-messaging?messages=101&broker=rabbitmq",
+                "/api/fault/slow-messaging?delayMs=500&repeats=3&broker=rabbitmq",
+                "/api/fault/slow-messaging?delayMs=5001&repeats=3&broker=rabbitmq",
+                "/api/fault/slow-messaging?delayMs=600&repeats=2&broker=rabbitmq",
+                "/api/fault/slow-messaging?delayMs=600&repeats=21&broker=rabbitmq",
                 "/api/fault/n-plus-one-messaging?messages=8&broker=unsupported");
     }
 }

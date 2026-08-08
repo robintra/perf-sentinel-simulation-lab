@@ -23,7 +23,7 @@ SCENARIO_FILE="scenarios/${SERVICE}-validation.js"
 NAMESPACE="${NAMESPACE:-shop}"
 K6_IMAGE="${K6_IMAGE:-grafana/k6:1.7.1}"
 DAEMON_URL="${DAEMON_URL:-http://localhost:14318}"
-TMP_DIR="${REPO_ROOT}/tmp"
+TMP_DIR="${VALIDATION_TMP_DIR:-${REPO_ROOT}/tmp}"
 REPORT="${TMP_DIR}/validation-report-${SERVICE}.md"
 if [ "${MODE}" = messaging ]; then
     REPORT="${TMP_DIR}/validation-report-${SERVICE}-messaging.md"
@@ -87,6 +87,8 @@ snapshot_pairs() {
     curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" | python3 -c '
 import json, sys
 items = json.load(sys.stdin)
+if not isinstance(items, list):
+    raise SystemExit("daemon findings response must be a list")
 def unwrap(item): return item.get("finding", item) if isinstance(item, dict) else {}
 print(json.dumps(sorted({(f.get("trace_id"), f.get("source_endpoint")) for item in items if (f := unwrap(item)).get("trace_id") and f.get("source_endpoint")})))
 '
@@ -100,18 +102,22 @@ evaluate_findings() {
 import json, os, sys
 try:
     items = json.load(sys.stdin)
-    baseline = {tuple(pair) for pair in json.load(open(os.environ["BASELINE_FILE"]))}
+    baseline_pairs = json.load(open(os.environ["BASELINE_FILE"]))
+    if not isinstance(items, list) or not isinstance(baseline_pairs, list):
+        raise ValueError
+    baseline_trace_ids = {pair[0] for pair in baseline_pairs if isinstance(pair, list) and pair}
 except (json.JSONDecodeError, OSError, TypeError, ValueError):
     print("-1|malformed findings or baseline")
     raise SystemExit
 kind, service, endpoint = (os.environ[k] for k in ("EXPECTED_TYPE", "EXPECTED_SERVICE", "EXPECTED_ENDPOINT"))
 framework, recommendation = (os.environ[k] for k in ("EXPECTED_FRAMEWORK", "EXPECTED_RECOMMENDATION"))
+expected_destination = "rabbitmq perfsim." + service
 started = int(os.environ["STARTED_AT_MS"])
 def unwrap(item): return item.get("finding", item) if isinstance(item, dict) else {}
 def match(item):
     finding = unwrap(item)
     trace = finding.get("trace_id")
-    if not (finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint and trace and (trace, endpoint) not in baseline and isinstance(item.get("stored_at_ms"), (int, float)) and item["stored_at_ms"] > started):
+    if not (finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint and trace and trace not in baseline_trace_ids and isinstance(item.get("stored_at_ms"), (int, float)) and item["stored_at_ms"] > started):
         return False
     if framework:
         suggestion = finding.get("suggested_fix") or {}
@@ -121,9 +127,9 @@ def match(item):
             return False
     pattern = finding.get("pattern") or {}
     if kind == "n_plus_one_messaging":
-        return pattern.get("template") == "rabbitmq perfsim.quarkus-svc" and pattern.get("occurrences", 0) >= 8
+        return pattern.get("template") == expected_destination and pattern.get("occurrences", 0) >= 8
     if kind == "slow_messaging":
-        return pattern.get("template") == "rabbitmq perfsim.quarkus-svc" and pattern.get("occurrences", 0) >= 3 and pattern.get("span_duration_us_p50", 0) > 500000
+        return pattern.get("template") == expected_destination and pattern.get("occurrences", 0) >= 3 and pattern.get("span_duration_us_p50", 0) > 500000
     return True
 matched = [unwrap(item) for item in items if match(item)]
 if not matched:
@@ -142,8 +148,42 @@ cleanup_one() {
     kubectl -n "${NAMESPACE}" delete "job/$1" --ignore-not-found >/dev/null
 }
 
+wait_for_job() {
+    local job_name="$1" complete_flag failed_flag complete_pid failed_pid
+    complete_flag="${TMP_DIR}/${job_name}-complete"
+    failed_flag="${TMP_DIR}/${job_name}-failed"
+    rm -f "${complete_flag}" "${failed_flag}"
+    (kubectl -n "${NAMESPACE}" wait "job/${job_name}" --for=condition=Complete --timeout=120s >/dev/null 2>&1 \
+        && : > "${complete_flag}") &
+    complete_pid=$!
+    (kubectl -n "${NAMESPACE}" wait "job/${job_name}" --for=condition=Failed --timeout=120s >/dev/null 2>&1 \
+        && : > "${failed_flag}") &
+    failed_pid=$!
+
+    while true; do
+        if [ -f "${complete_flag}" ]; then
+            JOB_STATE=Complete
+            break
+        fi
+        if [ -f "${failed_flag}" ]; then
+            JOB_STATE=Failed
+            break
+        fi
+        if ! kill -0 "${complete_pid}" 2>/dev/null && ! kill -0 "${failed_pid}" 2>/dev/null; then
+            JOB_STATE=Timeout
+            break
+        fi
+        sleep 1
+    done
+
+    kill "${complete_pid}" "${failed_pid}" 2>/dev/null || true
+    wait "${complete_pid}" "${failed_pid}" 2>/dev/null || true
+    rm -f "${complete_flag}" "${failed_flag}"
+    [ "${JOB_STATE}" = Complete ]
+}
+
 run_one() {
-    local pattern="$1" vus="$2" duration="$3" endpoint job_name cm_name baseline_file started_at_ms findings_json evaluation count note expectation expected_framework expected_recommendation
+    local pattern="$1" vus="$2" duration="$3" endpoint job_name cm_name baseline_file started_at_ms findings_json evaluation count note expectation expected_framework expected_recommendation attempt
     endpoint="$(endpoint_for "${pattern}")"
     expectation="$(framework_expectation "${STACK}" "${pattern}")"
     expected_framework="${expectation%%|*}"
@@ -188,8 +228,9 @@ spec:
           configMap:
             name: ${cm_name}
 EOF
-    if ! kubectl -n "${NAMESPACE}" wait "job/${job_name}" --for=condition=Complete --timeout=120s >/dev/null 2>&1; then
-        if [ "$(kubectl -n "${NAMESPACE}" get "job/${job_name}" -o jsonpath='{.status.failed}' 2>/dev/null || true)" != "" ]; then
+    JOB_STATE=""
+    if ! wait_for_job "${job_name}"; then
+        if [ "${JOB_STATE}" = Failed ]; then
             color_red "    k6 Job Failed; logs follow"
             kubectl -n "${NAMESPACE}" logs "job/${job_name}" --all-containers=true --tail=100 >&2 || true
             RESULTS+=("FAIL|${pattern}|0|k6 Job Failed condition")
@@ -202,20 +243,26 @@ EOF
     fi
 
     sleep 15
-    if ! findings_json="$(curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true")"; then
-        RESULTS+=("FAIL|${pattern}|0|daemon findings unavailable")
-    else
+    for attempt in 1 2 3 4 5 6; do
+        if ! findings_json="$(curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true")"; then
+            RESULTS+=("FAIL|${pattern}|0|daemon findings unavailable")
+            break
+        fi
         evaluation="$(evaluate_findings "${pattern}" "${endpoint}" "${baseline_file}" "${started_at_ms}" "${expected_framework}" "${expected_recommendation}" "${findings_json}")"
         count="${evaluation%%|*}"
         note="${evaluation#*|}"
         if [ "${count}" = "-1" ]; then
             RESULTS+=("FAIL|${pattern}|0|${note}")
+            break
         elif [ "${count}" -ge 1 ]; then
             RESULTS+=("PASS|${pattern}|${count}|${note}")
-        else
+            break
+        elif [ "${attempt}" -eq 6 ]; then
             RESULTS+=("FAIL|${pattern}|0|${note}")
+        else
+            sleep 5
         fi
-    fi
+    done
     cleanup_one "${job_name}"
     rm -f "${baseline_file}"
 }

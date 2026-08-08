@@ -26,7 +26,7 @@ import org.eclipse.microprofile.context.ManagedExecutor;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 /**
- * 10 fault endpoints, one per perf-sentinel anti-pattern. Contract is
+ * 12 fault endpoints, one per perf-sentinel anti-pattern. Contract is
  * defined in docs/MULTISTACK.md. Each endpoint reproduces the same
  * wire-format behaviour as the Java baseline order-service /
  * payment-service / notification-service but using Quarkus / Panache /
