@@ -2134,6 +2134,9 @@ declared (`[green.broker_static]`, the only option on a managed broker) and
 split by a messaging waste ratio, exactly like `database_waste`; measurement
 wins over declaration.
 
+Deterministic batch fixtures assert both `n_plus_one_messaging` and
+`slow_messaging` through executable code.
+
 The arbitration between those two sources is what this scenario is really for.
 It is already covered upstream by unit tests **against an injected clock**
 (`take_broker_energy` / `patch_broker_energy` take `now` as a parameter), and

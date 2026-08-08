@@ -10,6 +10,9 @@ carrying credentials (which MUST lose them), an IBM MQ / JMS queue
 (`ORDERS@QM1`, whose `@` must NOT be read as a userinfo delimiter), and a
 RabbitMQ routing-key glob.
 
+`slow-cases` — one RabbitMQ trace with three deliberately slow PRODUCER sends,
+which asserts the executable `slow_messaging` gate.
+
 `shapes` — four traces isolating where the CONSUMER `receive` span sits relative
 to the work it triggered, and which work it may explain. All carry the same span
 link, and they differ only in topology, so a diverging verdict names the topology
@@ -120,6 +123,19 @@ def build_cases():
     return out
 
 
+def build_slow_cases():
+    trace, root = f"{21:032x}", f"{21:016x}"
+    attrs = [attr("messaging.system", "rabbitmq"),
+             attr("messaging.destination.name", "probe.slow"),
+             attr("messaging.operation.type", "send")]
+    return [request("probe-slow-rabbitmq", [
+        span(trace, root, "", "POST /api/fault/slow-messaging", SERVER, BASE_NS, 2_000_000),
+        *[span(trace, f"{81 + i:016x}", root, "probe.slow send", PRODUCER,
+               BASE_NS + 1_000 + i * 600_000_000, 600_000, attrs)
+          for i in range(3)],
+    ])]
+
+
 MESSAGING = [attr("messaging.system", "kafka"),
              attr("messaging.destination.name", "orders"),
              attr("messaging.operation", "receive")]
@@ -208,11 +224,13 @@ def build_shapes():
 
 
 def main():
-    modes = ("cases", "shapes", "shapes-reversed")
+    modes = ("cases", "slow-cases", "shapes", "shapes-reversed")
     if len(sys.argv) != 3 or sys.argv[1] not in modes:
         sys.exit(f"usage: broker_cases.py {{{'|'.join(modes)}}} <out.ndjson>")
     if sys.argv[1] == "cases":
         payload = build_cases()
+    elif sys.argv[1] == "slow-cases":
+        payload = build_slow_cases()
     else:
         payload = build_shapes()
         if sys.argv[1] == "shapes-reversed":

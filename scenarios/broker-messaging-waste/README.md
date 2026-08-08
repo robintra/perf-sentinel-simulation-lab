@@ -9,6 +9,9 @@ business path was mute. They become `EventType::Messaging` with two finding
 types (`n_plus_one_messaging`, `slow_messaging`) and a producer → consumer edge
 resolved through OTel span links.
 
+Deterministic batch fixtures now assert both `n_plus_one_messaging` and
+`slow_messaging` through executable code.
+
 No joules-per-message coefficient is derivable — broker power stops tracking
 throughput past roughly 20% of capacity — so the **broker's** energy is measured
 and split by a ratio the traces can produce, exactly like `database_waste`. Two
@@ -49,6 +52,7 @@ and A7 exists because a fix to A4's path reopened it once already.
 | A7 | a late scrape banks a delta covering a hole the declaration already billed, with **no scoring window running while that sample is fresh** (quiet traffic, or shed batches). The path A4 cannot reach: there, a window scores while the sample is fresh, so the measurement legitimately owns it |
 | C  | `Broker waste` on `/api/export/report`, in `query monitor`'s Energy tab and in the HTML dashboard, with no flicker across windows |
 | E  | destination spellings the lab has no emitter for: a RabbitMQ named exchange, a Pulsar topic URL, an AMQP URI carrying credentials, an IBM MQ / JMS queue, a routing-key glob |
+| E2 | one RabbitMQ trace with three slow PRODUCER sends yields exactly one `slow_messaging` finding for `probe-slow-rabbitmq`, with three occurrences |
 | F3 | seven crafted topologies plus order invariance, which localise any F1/F2 failure: `receive` as a sibling, as an ancestor, a sibling that started **before** the `receive` (must stay unlinked — a false link is worse than none), work under an intermediate handler, I/O under a handler that **predates** the delivery (the guard judges the attributed node, so the handler shields its whole subtree), two deliveries under one parent (the nearest preceding one wins), and all six shapes resolving identically with the payload reversed — which receive explains a span is a question about start times, so exporter ordering must not answer it |
 | F1/F2 | the producer link on the **real** `astronomy-shop` capture, per slice. The rate is over the traces that are **analyzable**: half the linked consumer traces here are CONSUMER-only two-span traces, and messaging classification admits PRODUCER only, so they carry no analyzable event and never enter the analysis. `explain` cannot annotate what was never ingested |
 

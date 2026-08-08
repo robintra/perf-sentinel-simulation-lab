@@ -61,6 +61,8 @@
 #   E    destination spellings the lab has no emitter for: RabbitMQ named and
 #        default exchange, a Pulsar topic URL, an AMQP URI carrying credentials,
 #        an IBM MQ / JMS queue, a routing-key glob.
+#   E2   one RabbitMQ trace with three slow PRODUCER sends: exactly one
+#        slow_messaging finding for probe-slow-rabbitmq, with three occurrences.
 #   F3   the four crafted topologies, which localise any F1/F2 failure: receive
 #        as sibling, as ancestor, a sibling that started BEFORE the receive (must
 #        stay unlinked -- a false link is worse than none), and work under an
@@ -1175,6 +1177,44 @@ PY
   fi
 else
   assert_fail "E" "analyze failed on the crafted cases corpus"
+fi
+
+# =============================================================================
+# Leg E2: slow messaging (batch analyze, no daemon)
+# =============================================================================
+step "E2: slow RabbitMQ publications"
+python3 "${CASES_GEN}" slow-cases "${TMP_DIR}/slow-cases.ndjson" >/dev/null 2>&1 \
+  || die "slow case generator failed"
+if "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${TMP_DIR}/slow-cases.ndjson" --format json \
+     > "${TMP_DIR}/slow-cases-out.json" 2>/dev/null; then
+  python3 - "${TMP_DIR}/slow-cases-out.json" > "${TMP_DIR}/e2.txt" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1]) as stream:
+    data = json.load(stream)
+findings = [
+    finding
+    for finding in data["findings"]
+    if finding["type"] == "slow_messaging"
+    and finding["service"] == "probe-slow-rabbitmq"
+]
+if len(findings) != 1:
+    print(f"FAILS expected one slow_messaging finding, got {len(findings)}")
+elif findings[0]["pattern"]["occurrences"] != 3:
+    print("FAILS expected three slow_messaging occurrences, got "
+          f"{findings[0]['pattern']['occurrences']}")
+else:
+    print("OK")
+PY
+  E2_HEAD="$(head -1 "${TMP_DIR}/e2.txt")"
+  if [ "${E2_HEAD}" = "OK" ]; then
+    assert_pass "E2" "one slow_messaging finding for probe-slow-rabbitmq with three occurrences"
+  else
+    assert_fail "E2" "${E2_HEAD#FAILS }"
+  fi
+else
+  assert_fail "E2" "analyze failed on the crafted slow-messaging corpus"
 fi
 
 # =============================================================================
