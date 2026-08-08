@@ -1,10 +1,12 @@
 package com.perfsim.mutinysvc.web;
 
+import com.perfsim.mutinysvc.messaging.MessagingFaultService;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.pgclient.PgPool;
 import io.vertx.mutiny.sqlclient.Row;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -17,7 +19,7 @@ import java.util.Map;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 /**
- * Reactive (Mutiny) version of the 10 fault endpoints. Same contract
+ * Reactive (Mutiny) version of the 12 fault endpoints. Same contract
  * as quarkus-svc's FaultResource (see docs/MULTISTACK.md), but every
  * method returns Uni&lt;FaultResponse&gt; and threading goes through the
  * Vert.x event loop. PgPool drives the SQL anti-patterns; the reactive
@@ -37,6 +39,9 @@ public class FaultResource {
     @Inject
     @RestClient
     SelfClient self;
+
+    @Inject
+    MessagingFaultService messagingFaultService;
 
     private Uni<FaultResponse> runFault(
             String antiPattern, Map<String, Object> input, Uni<Map<String, Object>> body) {
@@ -240,6 +245,39 @@ public class FaultResource {
                                     "steps_ok", oks.stream().mapToInt(Integer::intValue).sum(),
                                     "wall_clock_ms", wallClockMs);
                         }));
+    }
+
+    @POST
+    @Path("/n-plus-one-messaging")
+    public Uni<FaultResponse> nPlusOneMessaging(
+            @QueryParam("messages") @DefaultValue("8") int messages,
+            @QueryParam("broker") @DefaultValue("rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker) || messages < 5 || messages > 100) {
+            throw new BadRequestException();
+        }
+        return runFault(
+                "n_plus_one_messaging",
+                Map.of("messages", messages, "broker", broker),
+                messagingFaultService.publishSequentially(messages));
+    }
+
+    @POST
+    @Path("/slow-messaging")
+    public Uni<FaultResponse> slowMessaging(
+            @QueryParam("delayMs") @DefaultValue("600") long delayMs,
+            @QueryParam("repeats") @DefaultValue("3") int repeats,
+            @QueryParam("broker") @DefaultValue("rabbitmq") String broker) {
+        if (!"rabbitmq".equals(broker)
+                || delayMs < 501
+                || delayMs > 5_000
+                || repeats < 3
+                || repeats > 20) {
+            throw new BadRequestException();
+        }
+        return runFault(
+                "slow_messaging",
+                Map.of("delayMs", delayMs, "repeats", repeats, "broker", broker),
+                messagingFaultService.publishSlowly(delayMs, repeats));
     }
 
 }
