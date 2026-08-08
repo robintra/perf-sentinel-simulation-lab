@@ -47,6 +47,16 @@ spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
 ---
+# 4.A.5 default-deny in messaging
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: messaging
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
 # 4.B DNS egress to kube-system kube-dns from every namespace.
 # Without this, no pod can resolve cluster-internal or external
 # hostnames. Repeated per namespace because NetworkPolicy is namespaced.
@@ -121,6 +131,28 @@ kind: NetworkPolicy
 metadata:
   name: allow-dns-egress
   namespace: gitlab-ce
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: messaging
 spec:
   podSelector: {}
   policyTypes: [Egress]
@@ -297,6 +329,109 @@ spec:
       ports:
         - protocol: TCP
           port: 5432
+---
+# 4.C.ter messaging access from labelled shop workloads.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rabbitmq-ingress
+  namespace: messaging
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: perf-sentinel-lab
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: toxiproxy
+      ports:
+        - protocol: TCP
+          port: 5672
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: toxiproxy-ingress
+  namespace: messaging
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: toxiproxy
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: perf-sentinel-lab
+      ports:
+        - protocol: TCP
+          port: 25672
+        - protocol: TCP
+          port: 8474
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: toxiproxy-egress
+  namespace: messaging
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: toxiproxy
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq
+      ports:
+        - protocol: TCP
+          port: 5672
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: shop-messaging-egress
+  namespace: shop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: perf-sentinel-lab
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: messaging
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rabbitmq
+      ports:
+        - protocol: TCP
+          port: 5672
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: messaging
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: toxiproxy
+      ports:
+        - protocol: TCP
+          port: 25672
+        - protocol: TCP
+          port: 8474
 ---
 # 4.D OTel collector egress to Tempo and the perf-sentinel daemon.
 apiVersion: networking.k8s.io/v1

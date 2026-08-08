@@ -25,6 +25,16 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: messaging
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+    app.kubernetes.io/part-of: perf-sentinel-lab
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: shop
   labels:
     pod-security.kubernetes.io/enforce: baseline

@@ -139,6 +139,29 @@ apply_namespaces() {
   ok "namespaces applied"
 }
 
+generate_rabbitmq_secret() {
+  step "Generating RabbitMQ credentials"
+  local password_file="${REPO_ROOT}/.rabbitmq-password"
+  local password
+  if [ -f "${password_file}" ]; then
+    password="$(cat "${password_file}")"
+    ok "reusing password from .rabbitmq-password"
+  else
+    password="$(openssl rand -base64 24 | tr -cd '[:alnum:]')"
+    umask 077
+    printf "%s" "${password}" > "${password_file}"
+    chmod 0600 "${password_file}"
+    ok "password persisted to .rabbitmq-password (mode 0600, gitignored)"
+  fi
+  for namespace in messaging shop; do
+    kubectl -n "${namespace}" create secret generic rabbitmq-credentials \
+      --from-literal=username=perfsim \
+      --from-literal=password="${password}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  done
+  ok "secret rabbitmq-credentials applied in messaging and shop"
+}
+
 generate_postgres_secret() {
   step "Generating postgres credentials"
   local password_file="${REPO_ROOT}/.postgres-password"
@@ -175,6 +198,27 @@ deploy_postgres() {
   kubectl apply -f "${REPO_ROOT}/manifests/postgres-multistack-schemas.yaml"
   kubectl -n db wait --for=condition=complete job/postgres-multistack-schemas --timeout=180s
   ok "multistack schemas ready"
+}
+
+deploy_messaging() {
+  step "Deploying RabbitMQ and Toxiproxy"
+  kubectl apply -f "${REPO_ROOT}/manifests/messaging-rabbitmq.yaml"
+  wait_for_deployment messaging rabbitmq 180s
+  wait_for_deployment messaging toxiproxy 180s
+
+  local remove_output
+  if ! remove_output="$(kubectl -n messaging exec deployment/toxiproxy -- \
+    /toxiproxy-cli toxic remove -n latency_downstream rabbitmq-slow 2>&1)"; then
+    case "${remove_output}" in
+      *"not found"*|*"does not exist"*) ;;
+      *) color_red "${remove_output}"; return 1 ;;
+    esac
+  fi
+  kubectl -n messaging exec deployment/toxiproxy -- \
+    /toxiproxy-cli toxic add -t latency -n latency_downstream \
+      -d -a latency=600 -a jitter=0 rabbitmq-slow
+  kubectl -n messaging exec deployment/toxiproxy -- /toxiproxy-cli list
+  ok "RabbitMQ and Toxiproxy ready"
 }
 
 deploy_kube_prometheus_stack() {
@@ -310,8 +354,10 @@ main() {
   import_image
   add_helm_repos
   apply_namespaces
+  generate_rabbitmq_secret
   generate_postgres_secret
   deploy_postgres
+  deploy_messaging
   deploy_kube_prometheus_stack
   deploy_tempo
   deploy_otel_collector

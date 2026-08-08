@@ -89,12 +89,14 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	  manifests/namespaces.yaml \
 	  manifests/postgres.yaml \
 	  manifests/postgres-init-schemas.yaml \
+	  manifests/messaging-rabbitmq.yaml \
 	  manifests/tempo.yaml \
 	  manifests/perf-sentinel-daemon.yaml \
 	  manifests/scaphandre-mock.yaml \
 	  cluster/k3d-config.yaml \
 	  helm/values/kube-prometheus-stack.yaml \
 	  helm/values/otel-collector.yaml
+	@python3 -c 'import yaml; docs=list(yaml.safe_load_all(open("manifests/messaging-rabbitmq.yaml"))); deployments={d["metadata"]["name"]: d for d in docs if d and d.get("kind") == "Deployment"}; services={d["metadata"]["name"]: d for d in docs if d and d.get("kind") == "Service"}; assert deployments["rabbitmq"]["spec"]["template"]["spec"]["containers"][0]["image"] == "rabbitmq:4.3.4-management-alpine"; assert deployments["toxiproxy"]["spec"]["template"]["spec"]["containers"][0]["image"] == "ghcr.io/shopify/toxiproxy:2.12.0"; assert 5672 in {p["port"] for p in services["rabbitmq"]["spec"]["ports"]}; assert 25672 in {p["port"] for p in services["toxiproxy"]["spec"]["ports"]}'
 	@echo "==> helm template kube-prometheus-stack"
 	@helm template lab-kps prometheus-community/kube-prometheus-stack --version 84.4.0 \
 	  -f helm/values/kube-prometheus-stack.yaml >/dev/null

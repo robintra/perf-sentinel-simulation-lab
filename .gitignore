@@ -20,6 +20,7 @@ cluster/.cni-active
 # Secrets generated at bootstrap
 .postgres-password
 .postgres-*-password
+.rabbitmq-password
 .electricity-maps-token
 *.pem
 *.key

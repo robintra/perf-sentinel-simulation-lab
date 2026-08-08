@@ -1,0 +1,212 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: toxiproxy-config
+  namespace: messaging
+  labels:
+    app.kubernetes.io/name: toxiproxy
+    app.kubernetes.io/part-of: perf-sentinel-lab
+data:
+  toxiproxy.json: |
+    [
+      {
+        "name": "rabbitmq-slow",
+        "listen": "[::]:25672",
+        "upstream": "rabbitmq.messaging.svc.cluster.local:5672",
+        "enabled": true
+      }
+    ]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: messaging
+  labels:
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: messaging
+  labels:
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rabbitmq
+        app.kubernetes.io/part-of: perf-sentinel-lab
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4.3.4-management-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: amqp
+              containerPort: 5672
+              protocol: TCP
+          env:
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: username
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: password
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            tcpSocket:
+              port: 5672
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            tcpSocket:
+              port: 5672
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: toxiproxy
+  namespace: messaging
+  labels:
+    app.kubernetes.io/name: toxiproxy
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: toxiproxy
+  ports:
+    - name: api
+      port: 8474
+      targetPort: 8474
+      protocol: TCP
+    - name: rabbitmq-slow
+      port: 25672
+      targetPort: 25672
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: toxiproxy
+  namespace: messaging
+  labels:
+    app.kubernetes.io/name: toxiproxy
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: toxiproxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: toxiproxy
+        app.kubernetes.io/part-of: perf-sentinel-lab
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: toxiproxy
+          image: ghcr.io/shopify/toxiproxy:2.12.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -host=0.0.0.0
+            - -config
+            - /config/toxiproxy.json
+          ports:
+            - name: api
+              containerPort: 8474
+              protocol: TCP
+            - name: rabbitmq-slow
+              containerPort: 25672
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /version
+              port: 8474
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /version
+              port: 8474
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+      volumes:
+        - name: config
+          configMap:
+            name: toxiproxy-config
