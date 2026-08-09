@@ -1,15 +1,16 @@
 # Multistack service contract
 
 This document is the canonical contract every multistack service in this lab
-must respect. The lab currently runs 3 Java/Spring Boot services
-(`order-service`, `payment-service`, `notification-service`) and is being
-extended with 14 additional services across distinct stacks (Quarkus,
+must respect. The lab runs 3 Java/Spring Boot services (`order-service`,
+`payment-service`, `notification-service`) and 15 additional services across
+distinct stacks (Quarkus,
 Quarkus+Mutiny, Helidon SE, Helidon MP, .NET 10, Rust+Diesel, Rust+SeaORM,
-NestJS, Django, FastAPI, Go, Rails, Laravel, Symfony).
+NestJS, Django, FastAPI, Go, Rails, Laravel, Symfony, Kotlin+Ktor).
 
-Every new stack reproduces the **same 10 perf-sentinel anti-patterns** in its
-own native runtime/ORM/HTTP-client. This makes perf-sentinel's detectors
-validated against the wire-format diversity an operator hits in production,
+Every stack reproduces the same **12 perf-sentinel finding types** in its own
+native runtime/ORM/HTTP/messaging clients: the 10 HTTP-triggered anti-patterns
+below plus `n_plus_one_messaging` and `slow_messaging`. This validates the
+detectors against the wire-format diversity an operator hits in production,
 not just against one canonical implementation.
 
 ## HTTP contract: 10 fault endpoints + 3 business endpoints
@@ -123,28 +124,29 @@ paths are documented in each service's `README.md`.
 ## Service inventory
 
 The lab namespace `shop` hosts all services. New stacks land on ports 8083
-through 8096 (Java baseline keeps 8080-8082). Each service owns its own
+through 8097 (Java baseline keeps 8080-8082). Each service owns its own
 Postgres schema in the shared `lab` database.
 
-| Service              | Port | Schema        | Stack                                           |
-|----------------------|------|---------------|-------------------------------------------------|
-| order-service        | 8080 | orders        | Spring Boot 4.0.6 + JPA (existing baseline)     |
-| payment-service      | 8081 | payments      | idem                                            |
-| notification-service | 8082 | notifications | idem                                            |
-| quarkus-svc          | 8083 | quarkus       | Quarkus 3.33.1.1 LTS + Panache                  |
-| mutiny-svc           | 8084 | mutiny        | Quarkus 3.33.1.1 LTS + reactive PG client       |
-| helidon-se-svc       | 8085 | helidon_se    | Helidon SE 4.4.0                                |
-| helidon-mp-svc       | 8086 | helidon_mp    | Helidon MP 4.4.0 + JPA                          |
-| dotnet-svc           | 8087 | dotnet        | .NET 10 + EF Core 10                            |
-| diesel-svc           | 8088 | diesel        | Rust 1.95 + Diesel 2.3                          |
-| seaorm-svc           | 8089 | seaorm        | Rust 1.95 + SeaORM 1.1                          |
-| nest-svc             | 8090 | nest          | NestJS 11 + Prisma 7.8                          |
-| django-svc           | 8091 | django        | Django 5.2 LTS + psycopg 3                      |
-| fastapi-svc          | 8092 | fastapi       | FastAPI 0.141 + SQLAlchemy 2 async              |
-| go-svc               | 8093 | go            | Go 1.26 + pgx v5                                |
-| rails-svc            | 8094 | rails         | Rails 8 + Active Record (Ruby 4.0)              |
-| laravel-svc          | 8095 | laravel       | Laravel 11 + Eloquent (PHP 8.3, native OTel)    |
-| symfony-svc          | 8096 | symfony       | Symfony 7 + Doctrine ORM (PHP 8.3, native OTel) |
+| Service              | Port | Schema        | Effective stack                                      |
+|----------------------|------|---------------|------------------------------------------------------|
+| order-service        | 8080 | orders        | Spring Boot 4.0.6 + JPA                             |
+| payment-service      | 8081 | payments      | Spring Boot 4.0.6 + JPA                             |
+| notification-service | 8082 | notifications | Spring Boot 4.0.6 + JPA                             |
+| quarkus-svc          | 8083 | quarkus       | Quarkus 3.33.1.1 LTS + Panache                      |
+| mutiny-svc           | 8084 | mutiny        | Quarkus 3.33.1.1 LTS + Mutiny                       |
+| helidon-se-svc       | 8085 | helidon_se    | Helidon SE 4.4.0                                    |
+| helidon-mp-svc       | 8086 | helidon_mp    | Helidon MP 4.4.0 + JPA                              |
+| dotnet-svc           | 8087 | dotnet        | .NET 10 + EF Core 10.0.8                            |
+| diesel-svc           | 8088 | diesel        | Rust 1.97 + Diesel 2.3.9                            |
+| seaorm-svc           | 8089 | seaorm        | Rust 1.97 + SeaORM 1.1.20                           |
+| nest-svc             | 8090 | nest          | NestJS 11.1.23 + Prisma 6.19.3                      |
+| django-svc           | 8091 | django        | Django 5.2.17 LTS + psycopg 3.3.4                   |
+| fastapi-svc          | 8092 | fastapi       | FastAPI 0.141.1 + SQLAlchemy 2.0.51 async           |
+| go-svc               | 8093 | go            | Go 1.26 + pgx 5.9.2                                 |
+| rails-svc            | 8094 | rails         | Rails 8.1.3.1 + Active Record (Ruby 4.0)            |
+| laravel-svc          | 8095 | laravel       | Laravel 11.55.0 + Eloquent (PHP 8.5, native OTel)   |
+| symfony-svc          | 8096 | symfony       | Symfony 7.4.16 LTS + Doctrine 3.6.8 (PHP 8.5)       |
+| ktor-svc             | 8097 | ktor          | Ktor 3.5.1 + Kotlin 2.4.10                          |
 
 The two PHP members exercise perf-sentinel's framework-aware `suggested_fix`:
 Laravel's app-wide `io.opentelemetry.contrib.php.laravel` scope tags every finding
@@ -155,46 +157,31 @@ scope tags only SQL findings `php_doctrine` (non-SQL Symfony findings fall throu
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
 
-### Pinned versions (verified 2026-08-09)
+### Effective versions (verified 2026-08-09)
 
-Strategy: **LTS wherever the project offers one**, otherwise latest
-stable. Re-verify before each Dockerfile bump.
+This is an inventory of the versions resolved by the committed manifests,
+lockfiles, and Dockerfiles. It does not claim that they are the latest or
+recommended upstream versions. Runtime image tags that intentionally track a
+patch line are shown at the precision committed in the repository.
 
-| Component       | Pinned version               | LTS?                                                                  | Notes                                                                                  |
-|-----------------|------------------------------|-----------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| Quarkus         | **3.33.1.1** (2026-05-04)    | Yes — Quarkus 3.33 LTS line, ~12-month support, EOL ~2027-03          | Latest non-LTS 3.35.4 not chosen on purpose.                                           |
-| Mutiny          | **3.2.0** (2026-04-28)       | No LTS                                                                | Bundled in Quarkus BOM.                                                                |
-| Helidon SE      | **4.4.0** (2026-03-17)       | Yes — Java Verified Portfolio LTS, next Tip is Helidon 27 (Sept 2026) | See Helidon notes section below.                                                       |
-| Helidon MP      | **4.4.0** (MicroProfile 6.1) | Yes — same JVP LTS                                                    | idem                                                                                   |
-| .NET runtime    | **10.0.8** (2026-05-12)      | Yes — .NET 10.0 LTS, EOL 2028-11-14                                   | C# 14 ships with .NET 10.                                                              |
-| EF Core         | **10.0.8** (2026-05-12)      | Yes — ships in lockstep with .NET 10 LTS                              | + Npgsql.EntityFrameworkCore.PostgreSQL 10.0.1                                         |
-| Rust            | **1.95.0** (2026-04-16)      | No LTS (6-week cadence)                                               | 1.96 not yet shipped at 2026-05-24.                                                    |
-| Diesel          | **2.3.9** (2026-04-30)       | No LTS                                                                | + `diesel-async 0.7` optional.                                                         |
-| SeaORM          | **1.1.20** (2026-03-31)      | No LTS                                                                | 2.0 line still in RC at 2026-05-24, do not use yet.                                    |
-| NestJS          | **11.1.23** (2026-05-21)     | No LTS                                                                | v12 ESM-only milestone targeted Q3 2026.                                               |
-| Node.js runtime | **24 "Krypton" Active LTS**  | Yes — Active LTS, EOL ~2028-04                                        | Node 22 is Maintenance LTS only.                                                       |
-| Prisma          | **7.8.0** (2026-04-22)       | No LTS                                                                | Prisma 7 GA was 2025-11-19.                                                            |
-| Django          | **5.2.17 LTS**                | Yes — security support through ~April 2028                            | 6.0.5 latest non-LTS not chosen. Next LTS is 6.2 (~April 2027).                        |
-| FastAPI         | **0.141.1**                   | No LTS                                                                | Pydantic ≥ 2.13 required.                                                              |
-| Go              | **1.26.3** (2026-05-07)      | No LTS (6-month cadence, N and N-1)                                   | + `pgx v5.7.5`.                                                                        |
-| Rails           | **8.x** (Active Record)      | No LTS                                                                | Ruby 4.0; opentelemetry-instrumentation-rails + active_record.                         |
-| Ruby            | **4.0** (slim-bookworm)      | Stable (latest)                                                       | The ActiveRecord ORM scope is emitted by record loads (`_query_by_sql`), not `.count`. |
-
-Verification sources (re-fetched per stack at delivery time):
-
-- Quarkus: https://github.com/quarkusio/quarkus/releases + https://quarkus.io/blog/tag/release/
-- Mutiny: https://github.com/smallrye/smallrye-mutiny/releases
-- Helidon: https://github.com/helidon-io/helidon/releases + Medium release post
-- .NET / EF Core: https://github.com/dotnet/runtime/releases + https://github.com/dotnet/efcore/releases
-- Rust: https://blog.rust-lang.org/category/releases/
-- Diesel: https://github.com/diesel-rs/diesel/releases
-- SeaORM: https://github.com/SeaQL/sea-orm/releases
-- NestJS: https://github.com/nestjs/nest/releases
-- Node.js: https://nodejs.org/en/about/previous-releases
-- Prisma: https://github.com/prisma/prisma/releases
-- Django: https://www.djangoproject.com/download/
-- FastAPI: https://github.com/fastapi/fastapi/releases
-- Go: https://go.dev/doc/devel/release
+| Stack (services) | Effective framework and runtime | Effective data, messaging, and telemetry dependencies |
+|------------------|---------------------------------|-------------------------------------------------------|
+| Spring Boot / JPA (`order-service`, `payment-service`, `notification-service`) | Spring Boot 4.0.6; Java 25 / Temurin 25.0.3_9; Hibernate 7.2.12.Final | PostgreSQL JDBC 42.7.4; Flyway 11.0.0; RabbitMQ Java 5.27.1; OTel Java agent 2.30.0 |
+| Quarkus Panache (`quarkus-svc`) | Quarkus 3.33.1.1 LTS; Java 25 / Temurin 25.0.3_9; Hibernate 7.2.6.Final | PostgreSQL JDBC 42.7.10; RabbitMQ Java 5.27.1; Quarkus OTel extension + OTel Java agent 2.30.0 |
+| Quarkus Mutiny (`mutiny-svc`) | Quarkus 3.33.1.1 LTS; Mutiny 3.2.0; Java 25 / Temurin 25.0.3_9 | Vert.x PG client 4.5.26; RabbitMQ Java 5.27.1; native Quarkus OTel extension |
+| Helidon SE (`helidon-se-svc`) | Helidon SE 4.4.0; Java 25 / Temurin 25.0.3_9 | HikariCP 6.0.0; Flyway 11.7.2; PostgreSQL JDBC 42.7.2; RabbitMQ Java 5.27.1; OTel Java agent 2.30.0 |
+| Helidon MP (`helidon-mp-svc`) | Helidon MP 4.4.0 / MicroProfile 6.1; Java 25 / Temurin 25.0.3_9 | Hibernate 6.3.1.Final; HikariCP 5.0.1; Flyway 11.7.2; PostgreSQL JDBC 42.7.2; RabbitMQ Java 5.27.1; OTel Java agent 2.30.0 |
+| Kotlin / Ktor (`ktor-svc`) | Kotlin 2.4.10; Ktor 3.5.1; Java 25 / Temurin 25.0.3_9 | Exposed 2.0.18; HikariCP 6.0.0; PostgreSQL JDBC 42.7.4; Flyway 11.7.2; RabbitMQ Java 5.27.1; OTel API 1.51.0 + Java agent 2.30.0 |
+| .NET / EF Core (`dotnet-svc`) | .NET 10 (`net10.0`); EF Core 10.0.8 | Npgsql EF 10.0.1; OTel Hosting/OTLP 1.15.3, ASP.NET Core 1.15.2, HTTP 1.15.0, EF 1.15.1-beta.1 |
+| Rust / Diesel (`diesel-svc`) | Rust 1.97; axum 0.8.9; Diesel 2.3.9 | OTel Rust 0.32.0; tracing-opentelemetry 0.33.0; axum-tracing-opentelemetry 0.38.0 |
+| Rust / SeaORM (`seaorm-svc`) | Rust 1.97; axum 0.8.9; SeaORM 1.1.20 | OTel Rust 0.32.0; tracing-opentelemetry 0.33.0; axum-tracing-opentelemetry 0.38.0 |
+| NestJS / Node (`nest-svc`) | Node.js 24; NestJS 11.1.23; Prisma/client 6.19.3 | pg 8.21.0; OTel sdk-node/HTTP/OTLP 0.218.0, trace-node 2.7.1, pg instrumentation 0.70.0 |
+| Django (`django-svc`) | Python 3.14; Django 5.2.17 LTS | psycopg 3.3.4; Pika 1.3.2; OTel SDK/exporter 1.44.0, instrumentations 0.65b0 |
+| FastAPI (`fastapi-svc`) | Python 3.14; FastAPI 0.141.1; Pydantic 2.13.4 | SQLAlchemy 2.0.51; asyncpg 0.31.0; aio-pika 9.6.2; OTel SDK/exporter 1.44.0, instrumentations 0.65b0 |
+| Go / pgx (`go-svc`) | Go 1.26; chi 5.3.0; pgx 5.9.2 | OTel Go 1.43.0; otelhttp 0.68.0; otelpgx 0.11.1 |
+| Rails (`rails-svc`) | Ruby 4.0; Rails/Active Record 8.1.3.1 | pg 1.6.3; Puma 8.0.2; OTel SDK 1.13.0, OTLP 0.34.1, Rails 0.42.0, Active Record 0.13.0 |
+| Laravel (`laravel-svc`) | PHP 8.5; Laravel 11.55.0 | php-amqplib 3.7.4; OTel SDK 1.15.0, Laravel 1.8.0, PDO 0.5.0, PECL extension 1.2.1 |
+| Symfony (`symfony-svc`) | PHP 8.5; Symfony 7.4.16 LTS; Doctrine ORM 3.6.8 | php-amqplib 3.7.4; OTel SDK 1.15.0, Symfony 1.4.0, Doctrine/PDO 0.5.0, PECL extension 1.2.1 |
 
 ## Postgres conventions
 
@@ -217,7 +204,7 @@ Seed data is the responsibility of the service's own migration tool (Flyway,
 EF Core migrations, diesel-cli, sea-orm-cli, Prisma migrate, django migrate,
 alembic, golang-migrate, Active Record / a startup bootstrap).
 
-The shared schema bootstrap (schema + role + GRANT + search_path) for the 14
+The shared schema bootstrap (schema + role + GRANT + search_path) for the 15
 new services lives in `manifests/postgres-multistack-schemas.yaml` as a
 Kubernetes Job. It must be applied once before any new service comes up,
 and is idempotent (`CREATE SCHEMA IF NOT EXISTS`, `CREATE ROLE` guarded by
@@ -243,23 +230,25 @@ OTEL_RESOURCE_ATTRIBUTES=service.namespace=shop,deployment.environment=lab,cloud
 
 Stack-specific instrumentation choice:
 
-- **Quarkus / Mutiny**: prefer the `quarkus-opentelemetry` extension over the
-  Java agent. Auto-instruments JAX-RS, JDBC (Agroal), RestClient.
-- **Helidon**: built-in `helidon-telemetry` module, exports OTLP natively.
+- **Spring Boot baseline**: OTel Java agent 2.30.0.
+- **Quarkus Panache**: `quarkus-opentelemetry` plus OTel Java agent 2.30.0.
+- **Quarkus Mutiny**: native `quarkus-opentelemetry`, without the Java agent.
+- **Helidon SE / MP** and **Ktor**: OTel Java agent 2.30.0.
 - **.NET 10**: `OpenTelemetry.AspNetCore` + `OpenTelemetry.Instrumentation.EntityFrameworkCore`
   + `OpenTelemetry.Exporter.OpenTelemetryProtocol`, configured in `Program.cs`
   via the `ResourceBuilder` and `TracerProviderBuilder` chain.
-- **Rust** (Diesel / SeaORM): `opentelemetry-rust 0.30` + `tracing-opentelemetry`
-  + `opentelemetry-otlp`, initialised at startup. HTTP layer instrumented via
-  `tower-otel-http-metrics` or equivalent.
-- **NestJS**: `@opentelemetry/sdk-node` (or `@opentelemetry/auto-instrumentations-node`)
-  configured at `main.ts` boot.
+- **Rust** (Diesel / SeaORM): `opentelemetry` 0.32 +
+  `tracing-opentelemetry` 0.33 + `opentelemetry-otlp`, initialised at startup;
+  the HTTP layer uses `axum-tracing-opentelemetry` 0.38.
+- **NestJS**: `@opentelemetry/sdk-node` 0.218 configured at `main.ts` boot.
 - **Django / FastAPI**: `opentelemetry-instrumentation-django` /
   `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-psycopg`
   / `opentelemetry-instrumentation-sqlalchemy`.
+- **Rails**: OTel SDK + Rails, Active Record, Net::HTTP, and pg instrumentations.
+- **Laravel / Symfony**: OTel PHP SDK, framework/PDO instrumentation, and the
+  PECL extension pinned to 1.2.1.
 - **Go**: `go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp`
-  middleware + `go.opentelemetry.io/contrib/instrumentation/database/sql/otelsql`
-  wrapper.
+  middleware + `github.com/exaring/otelpgx` tracing.
 
 ## Process map (perf-sentinel Scaphandre integration)
 
@@ -283,7 +272,7 @@ per service so the sub-test 7 of `scaphandre-mock-validation` keeps passing.
 ## Network policies
 
 The intra-shop NetworkPolicy in `manifests/network-policies.yaml` (rule
-`shop-intra-namespace`) covers ports 8080-8096 for ingress between pods in
+`shop-intra-namespace`) covers ports 8080-8097 for ingress between pods in
 the `shop` namespace. Any pod arboring `app.kubernetes.io/part-of:
 perf-sentinel-lab` inherits Postgres + OTel Collector egress for free.
 
@@ -303,14 +292,13 @@ Per-stack validation flow (run in sequence by the multistack harness):
    `/api/findings` and asserts at least one finding per anti-pattern type
    with `service = <stack>-svc`.
 
-Success criterion per stack: 10/10 PASS in
-`tmp/validation-report-<stack>-svc.md`. The Java baseline
-(`make validate-findings`) must keep returning 10/10 untouched (regression
+Success criterion per stack: the default 10/10 gate and the messaging 2/2
+gate both pass. The Java baseline must keep returning 12/12 (regression
 guard).
 
-End-to-end target after the 14 stacks are landed: **170 findings** total
-(17 services × 10 anti-patterns) on the daemon `/api/findings`, with
-non-regression on the Java baseline. See the plan file for details.
+End-to-end target after the 15 additional stacks are landed: all **18
+services** satisfy the current finding contract exposed by the daemon
+`/api/findings`, with non-regression on the Java baseline.
 
 ## Stack-specific release notes
 
