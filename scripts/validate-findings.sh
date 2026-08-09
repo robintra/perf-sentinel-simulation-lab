@@ -48,7 +48,7 @@ monotonic_seconds() {
     if [ -n "${VALIDATION_MONOTONIC_CLOCK_FILE:-}" ]; then
         cat "${VALIDATION_MONOTONIC_CLOCK_FILE}"
     else
-        printf '%s\n' "${SECONDS}"
+        python3 -c 'import time; print(time.monotonic_ns() // 1_000_000_000)'
     fi
 }
 
@@ -181,18 +181,19 @@ EOF
     job_completed_s="$(monotonic_seconds)"
     deadline_s=$((job_completed_s + FINDINGS_POLL_DEADLINE_S))
     next_probe_s=$((job_completed_s + FINDINGS_INITIAL_DELAY_S))
-    color_blue "    waiting ${FINDINGS_INITIAL_DELAY_S}s, then polling up to ${FINDINGS_MAX_PROBES} times on ${FINDINGS_POLL_INTERVAL_S}s slots (${FINDINGS_POLL_DEADLINE_S}s total deadline including curl)"
+    color_blue "    waiting ${FINDINGS_INITIAL_DELAY_S}s, then running up to ${FINDINGS_MAX_PROBES} bounded probes on ${FINDINGS_POLL_INTERVAL_S}s slots within a ${FINDINGS_POLL_DEADLINE_S}s total envelope"
     now_s="$(monotonic_seconds)"
     sleep_s=$((next_probe_s - now_s))
     [ "${sleep_s}" -gt 0 ] && sleep "${sleep_s}"
 
-    local findings_json count note="" attempt
+    local findings_json count attempt note
+    note="no fresh endpoint-matched finding during up to ${FINDINGS_MAX_PROBES} bounded probes in the ${FINDINGS_POLL_DEADLINE_S}s envelope"
     for ((attempt = 1; attempt <= FINDINGS_MAX_PROBES; attempt++)); do
         now_s="$(monotonic_seconds)"
         remaining_s=$((deadline_s - now_s))
         if [ "${remaining_s}" -le 0 ]; then
             color_red "    FAIL (0 matching findings by the ${FINDINGS_POLL_DEADLINE_S}s deadline)"
-            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within ${FINDINGS_POLL_DEADLINE_S}s of job completion")
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|${note}")
             break
         fi
         curl_timeout_s="${FINDINGS_CURL_MAX_TIME_S}"
@@ -201,7 +202,7 @@ EOF
             now_s="$(monotonic_seconds)"
             if [ "${now_s}" -ge "${deadline_s}" ]; then
                 color_red "    FAIL (daemon findings request exhausted the ${FINDINGS_POLL_DEADLINE_S}s deadline)"
-                RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within ${FINDINGS_POLL_DEADLINE_S}s of job completion")
+                RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|${note}")
             else
                 color_red "    FAIL (daemon /api/findings unreachable)"
                 RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon /api/findings unreachable")
@@ -257,9 +258,13 @@ print(len(matched))
         fi
 
         now_s="$(monotonic_seconds)"
-        if [ "${attempt}" -eq "${FINDINGS_MAX_PROBES}" ] || [ "${now_s}" -ge "${deadline_s}" ]; then
+        if [ "${attempt}" -eq "${FINDINGS_MAX_PROBES}" ]; then
+            color_red "    FAIL (0 matching findings after ${FINDINGS_MAX_PROBES} bounded probes in the ${FINDINGS_POLL_DEADLINE_S}s envelope)"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|${note}")
+            break
+        elif [ "${now_s}" -ge "${deadline_s}" ]; then
             color_red "    FAIL (0 matching findings by the ${FINDINGS_POLL_DEADLINE_S}s deadline)"
-            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within ${FINDINGS_POLL_DEADLINE_S}s of job completion")
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|${note}")
             break
         fi
 

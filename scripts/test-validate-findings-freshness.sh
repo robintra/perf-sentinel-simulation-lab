@@ -136,13 +136,27 @@ source "${REPO_ROOT}/scripts/validate-findings.sh"
 TMP_DIR="${TEST_TMP}/gate"
 REPORT="${TMP_DIR}/validation-report.md"
 
+unset VALIDATION_MONOTONIC_CLOCK_FILE
+SECONDS=0
+python_monotonic_before="$(python3 -c 'import time; print(time.monotonic_ns() // 1_000_000_000)')"
+runner_monotonic="$(monotonic_seconds)"
+python_monotonic_after="$(python3 -c 'import time; print(time.monotonic_ns() // 1_000_000_000)')"
+if [[ "${runner_monotonic}" -lt "${python_monotonic_before}" \
+        || "${runner_monotonic}" -gt "${python_monotonic_after}" ]]; then
+    echo "FAIL: production clock is not Python time.monotonic_ns: ${runner_monotonic}"
+    exit 1
+fi
+export VALIDATION_MONOTONIC_CLOCK_FILE="${GATE_CLOCK_FILE}"
+
+echo "PASS: production deadline clock uses Python time.monotonic_ns"
+
 printf '0\n' > "${CURL_COUNT_FILE}"
 : > "${GATE_SLEEP_LOG}"
 export FINDINGS_MODE=stale
 RESULTS=()
 run_scenario slow-messaging slow_messaging order-service \
     scenarios/slow-messaging.js /api/fault/slow-messaging
-if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|no fresh endpoint-matched finding within 55s of job completion' \
+if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|no fresh endpoint-matched finding during up to 6 bounded probes in the 55s envelope' \
         || "$(cat "${CURL_COUNT_FILE}")" -ne 7 \
         || "$(grep -c '^15$' "${GATE_SLEEP_LOG}")" -ne 1 \
         || "$(grep -c '^5$' "${GATE_SLEEP_LOG}")" -ne 5 ]]; then
