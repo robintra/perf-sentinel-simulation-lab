@@ -102,7 +102,7 @@ case "${STACK}" in
         ;;
     go)
         require_focused_test services/go-svc/internal/web/messaging_invalid_contract_test.go TestMessagingInvalidContract
-        run_focused_test go -C services/go-svc test ./internal/web -run '^TestMessagingInvalidContract$'
+        run_focused_test go -C services/go-svc test -v ./internal/web -run '^TestMessagingInvalidContract$'
         ;;
     *)
         echo "unknown stack: ${STACK}" >&2
