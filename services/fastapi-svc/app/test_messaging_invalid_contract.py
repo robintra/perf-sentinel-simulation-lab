@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 from aio_pika.robust_connection import RobustConnection
@@ -69,12 +69,51 @@ class MessagingConnectionContract(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertNotIn("fail_fast", connect.await_args.kwargs)
+        self.assertEqual(
+            connect.await_args.kwargs["timeout"],
+            messaging.CONFIRM_TIMEOUT_SECONDS,
+        )
         fail_fast = next(
             parameter
             for parameter in RobustConnection.PARAMETERS
             if parameter.name == "fail_fast"
         )
         self.assertEqual(fail_fast.default, "1")
+
+    async def test_publish_many_propagates_slow_handshake_timeout_to_connection(self):
+        exchange = object()
+        queue = SimpleNamespace(bind=AsyncMock())
+        channel = SimpleNamespace(
+            declare_exchange=AsyncMock(return_value=exchange),
+            declare_queue=AsyncMock(return_value=queue),
+        )
+        channel_context = MagicMock()
+        channel_context.__aenter__ = AsyncMock(return_value=channel)
+        channel_context.__aexit__ = AsyncMock(return_value=False)
+        connection = MagicMock()
+        connection.__aenter__ = AsyncMock(return_value=connection)
+        connection.__aexit__ = AsyncMock(return_value=False)
+        connection.channel.return_value = channel_context
+        connect = AsyncMock(return_value=connection)
+
+        with (
+            patch.object(messaging.aio_pika, "connect_robust", connect),
+            patch.object(messaging, "_publish_confirmed", AsyncMock()),
+        ):
+            await messaging._publish_many(
+                "RABBITMQ_SLOW_HOST",
+                "RABBITMQ_SLOW_PORT",
+                "toxiproxy",
+                25672,
+                3,
+                "slow-message",
+                10,
+                "guest",
+                "guest",
+                connection_timeout=21,
+            )
+
+        self.assertEqual(connect.await_args.kwargs["timeout"], 21)
 
 
 if __name__ == "__main__":

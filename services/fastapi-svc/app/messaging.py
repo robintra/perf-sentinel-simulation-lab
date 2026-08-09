@@ -24,13 +24,21 @@ def _credentials():
     return _required("RABBITMQ_USERNAME"), _required("RABBITMQ_PASSWORD")
 
 
-async def _connect(host_name, port_name, default_host, default_port, username, password):
+async def _connect(
+    host_name,
+    port_name,
+    default_host,
+    default_port,
+    username,
+    password,
+    timeout=CONFIRM_TIMEOUT_SECONDS,
+):
     return await aio_pika.connect_robust(
         host=os.environ.get(host_name, default_host),
         port=int(os.environ.get(port_name, str(default_port))),
         login=username,
         password=password,
-        timeout=CONFIRM_TIMEOUT_SECONDS,
+        timeout=timeout,
     )
 
 
@@ -80,6 +88,7 @@ async def _publish_many(
     timeout,
     username,
     password,
+    connection_timeout=None,
 ):
     connection = await _connect(
         host_name,
@@ -88,6 +97,7 @@ async def _publish_many(
         default_port,
         username,
         password,
+        timeout if connection_timeout is None else connection_timeout,
     )
     async with connection:
         async with connection.channel(
@@ -156,6 +166,7 @@ async def publish_sequentially(messages):
 async def publish_slowly(delay_ms, repeats):
     username, password = _credentials()
     await _update_latency(delay_ms)
+    operation_timeout = delay_ms / 1000 + CONFIRM_TIMEOUT_SECONDS
     confirmed = await _publish_many(
         "RABBITMQ_SLOW_HOST",
         "RABBITMQ_SLOW_PORT",
@@ -163,8 +174,9 @@ async def publish_slowly(delay_ms, repeats):
         25672,
         repeats,
         "slow-fastapi-message",
-        delay_ms / 1000 + CONFIRM_TIMEOUT_SECONDS,
+        operation_timeout,
         username,
         password,
+        connection_timeout=2 * operation_timeout + 1,
     )
     return {"published": repeats, "confirmed": confirmed, "delay_ms": delay_ms}
