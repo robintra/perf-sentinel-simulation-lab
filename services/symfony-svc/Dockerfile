@@ -16,8 +16,8 @@ FROM php:8.5-cli-bookworm
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git unzip libpq-dev $PHPIZE_DEPS \
- && docker-php-ext-install -j"$(nproc)" pdo_pgsql \
- && pecl install opentelemetry \
+ && docker-php-ext-install -j"$(nproc)" pdo_pgsql sockets \
+ && pecl install opentelemetry-1.2.1 \
  && docker-php-ext-enable opentelemetry \
  && apt-get purge -y --auto-remove $PHPIZE_DEPS \
  && rm -rf /var/lib/apt/lists/*
@@ -35,20 +35,13 @@ RUN composer config --global policy.advisories.block false \
  && composer config --global --no-plugins allow-plugins.tbachert/spi true
 
 WORKDIR /app
-# Symfony 7 skeleton (--no-scripts so no flex recipes run; we provide every config
-# file via the overlay for determinism), then Doctrine ORM + OTel packages.
-RUN composer create-project symfony/skeleton:^7.1 /app --no-scripts --prefer-dist \
- && composer require --no-scripts --with-all-dependencies \
-      doctrine/orm \
-      doctrine/doctrine-bundle \
-      symfony/property-access \
-      open-telemetry/sdk \
-      open-telemetry/exporter-otlp \
-      open-telemetry/opentelemetry-auto-symfony \
-      open-telemetry/opentelemetry-auto-doctrine \
-      open-telemetry/opentelemetry-auto-pdo \
-      php-http/guzzle7-adapter \
-      guzzlehttp/psr7
+# Lay down the ranged Symfony skeleton so Flex creates its boot files, then use
+# the committed application dependency graph. --no-check-all suppresses only
+# Composer's warning about the plan-required exact php-amqplib version.
+RUN composer create-project symfony/skeleton:^7.1 /app --no-scripts --prefer-dist
+COPY composer.json composer.lock /app/
+RUN composer validate --strict --no-check-all \
+ && composer install --no-scripts --prefer-dist
 
 COPY overlay/ /app/
 COPY docker/bootstrap-schema.php /app/docker/bootstrap-schema.php

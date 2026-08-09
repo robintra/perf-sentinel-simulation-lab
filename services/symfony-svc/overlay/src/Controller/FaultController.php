@@ -5,7 +5,10 @@ namespace App\Controller;
 use App\Entity\OrderItem;
 use App\Entity\Payment;
 use App\Support\Http;
+use App\Support\Messaging;
 use Doctrine\ORM\EntityManagerInterface;
+use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Trace\SpanKind;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -15,7 +18,10 @@ class FaultController extends AbstractController
 {
     use Common;
 
-    public function __construct(private EntityManagerInterface $em)
+    public function __construct(
+        private EntityManagerInterface $em,
+        private Messaging $messaging,
+    )
     {
     }
 
@@ -64,9 +70,23 @@ class FaultController extends AbstractController
         $start = hrtime(true);
         $executed = 0;
         $conn = $this->em->getConnection();
+        $statement = 'SELECT pg_sleep(?), orders.id FROM orders ORDER BY id OFFSET ? LIMIT 1';
         for ($i = 0; $i < $repeats; $i++) {
-            $conn->executeQuery('SELECT pg_sleep(?), orders.id FROM orders ORDER BY id OFFSET ? LIMIT 1', [$seconds, $i]);
-            $executed++;
+            $span = Globals::tracerProvider()->getTracer('symfony-svc-db')
+                ->spanBuilder('SELECT orders')
+                ->setSpanKind(SpanKind::KIND_CLIENT)
+                ->setAttribute('db.system', 'postgresql')
+                ->setAttribute('db.statement', $statement)
+                ->setAttribute('db.operation', 'SELECT')
+                ->startSpan();
+            $scope = $span->activate();
+            try {
+                $conn->executeQuery($statement, [$seconds, $i]);
+                $executed++;
+            } finally {
+                $scope->detach();
+                $span->end();
+            }
         }
         return $this->envelope('slow_sql', $start, [
             'delayMs' => $delayMs, 'repeats' => $repeats, 'queries_executed' => $executed,
@@ -176,5 +196,42 @@ class FaultController extends AbstractController
         return $this->envelope('serialized_calls', $start, [
             'steps' => $steps, 'steps_ok' => $ok,
         ]);
+    }
+
+    #[Route('/api/fault/n-plus-one-messaging', methods: ['POST'])]
+    public function nPlusOneMessaging(Request $r): JsonResponse
+    {
+        $messages = $this->intParam($r, 'messages', 8);
+        if ($r->query->get('broker', 'rabbitmq') !== 'rabbitmq' || $messages < 5 || $messages > 100) {
+            return new JsonResponse(['error' => 'invalid messaging parameters'], 400);
+        }
+
+        $start = hrtime(true);
+        return $this->envelope(
+            'n_plus_one_messaging',
+            $start,
+            $this->messaging->publishSequentially($messages),
+        );
+    }
+
+    #[Route('/api/fault/slow-messaging', methods: ['POST'])]
+    public function slowMessaging(Request $r): JsonResponse
+    {
+        $delayMs = $this->intParam($r, 'delayMs', 600);
+        $repeats = $this->intParam($r, 'repeats', 3);
+        if (
+            $r->query->get('broker', 'rabbitmq') !== 'rabbitmq'
+            || $delayMs < 501 || $delayMs > 5000
+            || $repeats < 3 || $repeats > 20
+        ) {
+            return new JsonResponse(['error' => 'invalid messaging parameters'], 400);
+        }
+
+        $start = hrtime(true);
+        return $this->envelope(
+            'slow_messaging',
+            $start,
+            $this->messaging->publishSlowly($delayMs, $repeats),
+        );
     }
 }
