@@ -62,7 +62,10 @@ SH
 cat > "${TEST_TMP}/bin/sleep" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "${1:-}" >> "${GATE_SLEEP_LOG}"
-if [[ "${1:-}" == 1 ]]; then
+if [[ -n "${GATE_CLOCK_FILE:-}" ]]; then
+    now="$(cat "${GATE_CLOCK_FILE}")"
+    printf '%s\n' "$((now + ${1:-0}))" > "${GATE_CLOCK_FILE}"
+elif [[ "${1:-}" == 1 ]]; then
     /bin/sleep 0.05
 fi
 exit 0
@@ -91,6 +94,7 @@ JSON
 
 cat > "${TEST_TMP}/bin/curl" <<'SH'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "${GATE_CURL_LOG}"
 count="$(cat "${CURL_COUNT_FILE}")"
 printf '%s\n' "$((count + 1))" > "${CURL_COUNT_FILE}"
 if [[ "${count}" -eq 0 ]]; then
@@ -101,6 +105,10 @@ elif [[ "${FINDINGS_MODE}" == "malformed" ]]; then
     printf '{}\n'
 elif [[ "${FINDINGS_MODE}" == "unreachable" ]]; then
     exit 22
+elif [[ "${FINDINGS_MODE}" == "slow" ]]; then
+    now="$(cat "${GATE_CLOCK_FILE}")"
+    printf '%s\n' "$((now + 1))" > "${GATE_CLOCK_FILE}"
+    cat "${STALE_FINDINGS_FILE}"
 elif [[ "${FINDINGS_MODE}" == "fresh" ]]; then
     cat "${FRESH_FINDINGS_FILE}"
 elif [[ "${FINDINGS_MODE}" == "delayed" ]]; then
@@ -118,7 +126,11 @@ export STALE_FINDINGS_FILE="${TEST_TMP}/stale.json"
 export FRESH_FINDINGS_FILE="${TEST_TMP}/fresh.json"
 export GATE_SLEEP_LOG="${TEST_TMP}/gate-sleep.log"
 export GATE_JOB_LOG="${TEST_TMP}/gate-job.log"
+export GATE_CURL_LOG="${TEST_TMP}/gate-curl.log"
+export GATE_CLOCK_FILE="${TEST_TMP}/gate-clock"
+export VALIDATION_MONOTONIC_CLOCK_FILE="${GATE_CLOCK_FILE}"
 export GATE_JOB_STATE=complete
+printf '0\n' > "${GATE_CLOCK_FILE}"
 
 source "${REPO_ROOT}/scripts/validate-findings.sh"
 TMP_DIR="${TEST_TMP}/gate"
@@ -130,7 +142,7 @@ export FINDINGS_MODE=stale
 RESULTS=()
 run_scenario slow-messaging slow_messaging order-service \
     scenarios/slow-messaging.js /api/fault/slow-messaging
-if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|no fresh endpoint-matched finding within 40s of job completion' \
+if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|no fresh endpoint-matched finding within 55s of job completion' \
         || "$(cat "${CURL_COUNT_FILE}")" -ne 7 \
         || "$(grep -c '^15$' "${GATE_SLEEP_LOG}")" -ne 1 \
         || "$(grep -c '^5$' "${GATE_SLEEP_LOG}")" -ne 5 ]]; then
@@ -169,6 +181,30 @@ if [[ "$(cat "${CURL_COUNT_FILE}")" -ne 4 \
 fi
 
 echo "PASS: foundation runner polls until a delayed fresh finding appears"
+
+printf '0\n' > "${CURL_COUNT_FILE}"
+printf '0\n' > "${GATE_CLOCK_FILE}"
+: > "${GATE_CURL_LOG}"
+export FINDINGS_MODE=slow
+export FINDINGS_INITIAL_DELAY_S=0 FINDINGS_POLL_DEADLINE_S=3
+export FINDINGS_POLL_INTERVAL_S=1 FINDINGS_MAX_PROBES=6 FINDINGS_CURL_MAX_TIME_S=10
+RESULTS=()
+run_scenario slow-messaging slow_messaging order-service \
+    scenarios/slow-messaging.js /api/fault/slow-messaging
+observed_timeouts="$(awk '{ for (i = 1; i <= NF; i++) if ($i == "--max-time") print $(i + 1) }' "${GATE_CURL_LOG}" | tail -n 3)"
+if [[ "${RESULTS[0]}" != FAIL\|slow-messaging\|* \
+        || "$(cat "${CURL_COUNT_FILE}")" -ne 4 \
+        || "$(cat "${GATE_CLOCK_FILE}")" -ne 4 \
+        || "${observed_timeouts}" != $'3\n2\n1' ]]; then
+    echo "FAIL: slow findings calls exceeded the monotonic deadline: ${RESULTS[0]}"
+    cat "${GATE_CURL_LOG}"
+    cat "${GATE_CLOCK_FILE}"
+    exit 1
+fi
+export FINDINGS_INITIAL_DELAY_S=15 FINDINGS_POLL_DEADLINE_S=55
+export FINDINGS_POLL_INTERVAL_S=5 FINDINGS_MAX_PROBES=6 FINDINGS_CURL_MAX_TIME_S=10
+
+echo "PASS: slow findings calls consume the remaining monotonic deadline"
 
 for failure_mode in malformed unreachable; do
     printf '0\n' > "${CURL_COUNT_FILE}"

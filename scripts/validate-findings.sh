@@ -15,6 +15,12 @@ TMP_DIR="${REPO_ROOT}/tmp"
 REPORT="${TMP_DIR}/validation-report.md"
 mkdir -p "${TMP_DIR}"
 
+FINDINGS_INITIAL_DELAY_S="${FINDINGS_INITIAL_DELAY_S:-15}"
+FINDINGS_POLL_DEADLINE_S="${FINDINGS_POLL_DEADLINE_S:-55}"
+FINDINGS_POLL_INTERVAL_S="${FINDINGS_POLL_INTERVAL_S:-5}"
+FINDINGS_MAX_PROBES="${FINDINGS_MAX_PROBES:-6}"
+FINDINGS_CURL_MAX_TIME_S="${FINDINGS_CURL_MAX_TIME_S:-10}"
+
 color_blue()   { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green()  { printf "\033[32m%s\033[0m\n" "$*"; }
 color_red()    { printf "\033[31m%s\033[0m\n" "$*"; }
@@ -37,6 +43,14 @@ SCENARIOS=(
 )
 
 declare -a RESULTS
+
+monotonic_seconds() {
+    if [ -n "${VALIDATION_MONOTONIC_CLOCK_FILE:-}" ]; then
+        cat "${VALIDATION_MONOTONIC_CLOCK_FILE}"
+    else
+        printf '%s\n' "${SECONDS}"
+    fi
+}
 
 wait_for_job() {
     local job_name="$1" complete_flag failed_flag complete_pid failed_pid
@@ -75,7 +89,7 @@ wait_for_job() {
 run_scenario() {
     local name="$1" finding_type="$2" service="$3" file="$4" endpoint="$5"
     local baseline_file="${TMP_DIR}/k6-${name}-baseline-trace-ids.json"
-    local started_at_ms
+    local started_at_ms job_completed_s deadline_s next_probe_s now_s remaining_s curl_timeout_s sleep_s
 
     color_blue "==> ${name} (expects type=${finding_type} service=${service} endpoint=${endpoint})"
 
@@ -164,14 +178,34 @@ EOF
         return
     fi
 
-    color_blue "    waiting 15s, then polling findings up to 6 times every 5s (40s deadline)"
-    sleep 15
+    job_completed_s="$(monotonic_seconds)"
+    deadline_s=$((job_completed_s + FINDINGS_POLL_DEADLINE_S))
+    next_probe_s=$((job_completed_s + FINDINGS_INITIAL_DELAY_S))
+    color_blue "    waiting ${FINDINGS_INITIAL_DELAY_S}s, then polling up to ${FINDINGS_MAX_PROBES} times on ${FINDINGS_POLL_INTERVAL_S}s slots (${FINDINGS_POLL_DEADLINE_S}s total deadline including curl)"
+    now_s="$(monotonic_seconds)"
+    sleep_s=$((next_probe_s - now_s))
+    [ "${sleep_s}" -gt 0 ] && sleep "${sleep_s}"
 
     local findings_json count note="" attempt
-    for attempt in 1 2 3 4 5 6; do
-        if ! findings_json="$(curl --connect-timeout 3 --max-time 10 -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" 2>&1)"; then
-            color_red "    FAIL (daemon /api/findings unreachable)"
-            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon /api/findings unreachable")
+    for ((attempt = 1; attempt <= FINDINGS_MAX_PROBES; attempt++)); do
+        now_s="$(monotonic_seconds)"
+        remaining_s=$((deadline_s - now_s))
+        if [ "${remaining_s}" -le 0 ]; then
+            color_red "    FAIL (0 matching findings by the ${FINDINGS_POLL_DEADLINE_S}s deadline)"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within ${FINDINGS_POLL_DEADLINE_S}s of job completion")
+            break
+        fi
+        curl_timeout_s="${FINDINGS_CURL_MAX_TIME_S}"
+        [ "${remaining_s}" -lt "${curl_timeout_s}" ] && curl_timeout_s="${remaining_s}"
+        if ! findings_json="$(curl --connect-timeout 3 --max-time "${curl_timeout_s}" -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" 2>&1)"; then
+            now_s="$(monotonic_seconds)"
+            if [ "${now_s}" -ge "${deadline_s}" ]; then
+                color_red "    FAIL (daemon findings request exhausted the ${FINDINGS_POLL_DEADLINE_S}s deadline)"
+                RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within ${FINDINGS_POLL_DEADLINE_S}s of job completion")
+            else
+                color_red "    FAIL (daemon /api/findings unreachable)"
+                RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon /api/findings unreachable")
+            fi
             break
         fi
 
@@ -217,15 +251,27 @@ print(len(matched))
             RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon returned malformed JSON")
             break
         elif [ "${count:-0}" -ge 1 ]; then
-            color_green "    PASS (${count} matching findings on probe ${attempt}/6)"
+            color_green "    PASS (${count} matching findings on probe ${attempt}/${FINDINGS_MAX_PROBES})"
             RESULTS+=("PASS|${name}|${finding_type}|${service}|${count}|")
             break
-        elif [ "${attempt}" -eq 6 ]; then
-            color_red "    FAIL (0 matching findings by the 40s deadline)"
-            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within 40s of job completion")
+        fi
+
+        now_s="$(monotonic_seconds)"
+        if [ "${attempt}" -eq "${FINDINGS_MAX_PROBES}" ] || [ "${now_s}" -ge "${deadline_s}" ]; then
+            color_red "    FAIL (0 matching findings by the ${FINDINGS_POLL_DEADLINE_S}s deadline)"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within ${FINDINGS_POLL_DEADLINE_S}s of job completion")
+            break
+        fi
+
+        next_probe_s=$((job_completed_s + FINDINGS_INITIAL_DELAY_S + attempt * FINDINGS_POLL_INTERVAL_S))
+        sleep_s=$((next_probe_s - now_s))
+        if [ "${sleep_s}" -gt 0 ]; then
+            remaining_s=$((deadline_s - now_s))
+            [ "${sleep_s}" -gt "${remaining_s}" ] && sleep_s="${remaining_s}"
+            color_yellow "    no match on probe ${attempt}/${FINDINGS_MAX_PROBES}; retrying in ${sleep_s}s"
+            sleep "${sleep_s}"
         else
-            color_yellow "    no match on probe ${attempt}/6; retrying in 5s"
-            sleep 5
+            color_yellow "    no match on probe ${attempt}/${FINDINGS_MAX_PROBES}; next slot already due"
         fi
     done
 
