@@ -11,7 +11,8 @@ FROM python:3.14-slim-bookworm AS builder
 WORKDIR /app
 
 COPY requirements.txt requirements.lock ./
-RUN pip install --no-cache-dir --require-hashes -r requirements.lock
+RUN test "$(sha256sum requirements.txt | cut -d ' ' -f 1)" = "$(sed -n 's/^# requirements-sha256: //p' requirements.lock)" \
+    && pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY djangosvc ./djangosvc
 

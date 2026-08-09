@@ -155,7 +155,7 @@ scope tags only SQL findings `php_doctrine` (non-SQL Symfony findings fall throu
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
 
-### Pinned versions (verified 2026-05-24)
+### Pinned versions (verified 2026-08-09)
 
 Strategy: **LTS wherever the project offers one**, otherwise latest
 stable. Re-verify before each Dockerfile bump.
@@ -174,7 +174,7 @@ stable. Re-verify before each Dockerfile bump.
 | NestJS          | **11.1.23** (2026-05-21)     | No LTS                                                                | v12 ESM-only milestone targeted Q3 2026.                                               |
 | Node.js runtime | **24 "Krypton" Active LTS**  | Yes — Active LTS, EOL ~2028-04                                        | Node 22 is Maintenance LTS only.                                                       |
 | Prisma          | **7.8.0** (2026-04-22)       | No LTS                                                                | Prisma 7 GA was 2025-11-19.                                                            |
-| Django          | **5.2.14 LTS** (2026-05-05)  | Yes — security support through ~April 2028                            | 6.0.5 latest non-LTS not chosen. Next LTS is 6.2 (~April 2027).                        |
+| Django          | **5.2.17 LTS**                | Yes — security support through ~April 2028                            | 6.0.5 latest non-LTS not chosen. Next LTS is 6.2 (~April 2027).                        |
 | FastAPI         | **0.141.1**                   | No LTS                                                                | Pydantic ≥ 2.13 required.                                                              |
 | Go              | **1.26.3** (2026-05-07)      | No LTS (6-month cadence, N and N-1)                                   | + `pgx v5.7.5`.                                                                        |
 | Rails           | **8.x** (Active Record)      | No LTS                                                                | Ruby 4.0; opentelemetry-instrumentation-rails + active_record.                         |
