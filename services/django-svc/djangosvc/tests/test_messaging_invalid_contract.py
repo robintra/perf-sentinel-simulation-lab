@@ -1,6 +1,4 @@
 import os
-import sys
-import types
 import unittest
 from unittest.mock import patch
 
@@ -73,9 +71,8 @@ class MessagingInvalidContract(unittest.TestCase):
             calls["slow"] += 1
             self.fail("invalid request reached RabbitMQ or Toxiproxy")
 
-        messaging = types.ModuleType("djangosvc.messaging")
-        messaging.publish_sequentially = publish_sequentially
-        messaging.publish_slowly = publish_slowly
+        from djangosvc import messaging
+
         invalid = [
             "/api/fault/n-plus-one-messaging?messages=4&broker=rabbitmq",
             "/api/fault/n-plus-one-messaging?messages=101&broker=rabbitmq",
@@ -86,10 +83,16 @@ class MessagingInvalidContract(unittest.TestCase):
             "/api/fault/n-plus-one-messaging?messages=8&broker=unsupported",
         ]
 
-        with patch.dict(sys.modules, {"djangosvc.messaging": messaging}):
+        with (
+            patch.object(messaging, "publish_sequentially", publish_sequentially),
+            patch.object(messaging, "publish_slowly", publish_slowly),
+        ):
             client = Client()
             for path in invalid:
                 self.assertEqual(client.post(path).status_code, 400, path)
 
         self.assertEqual(calls, {"sequential": 0, "slow": 0})
-        print("PERF_SENTINEL_MESSAGING_NEGATIVE_CONTRACT_PASS 7/7 boundary_calls=0")
+        print(
+            "\nPERF_SENTINEL_MESSAGING_NEGATIVE_CONTRACT_PASS 7/7 boundary_calls=0",
+            flush=True,
+        )
