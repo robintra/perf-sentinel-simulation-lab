@@ -47,7 +47,7 @@ $controller = new FaultController($entityManager, $spy);
 $controller->setContainer($container);
 $container->set(FaultController::class, $controller);
 
-$invalid = [
+$globalInvalid = [
     '/api/fault/n-plus-one-messaging?messages=4&broker=rabbitmq',
     '/api/fault/n-plus-one-messaging?messages=101&broker=rabbitmq',
     '/api/fault/slow-messaging?delayMs=500&repeats=3&broker=rabbitmq',
@@ -56,6 +56,22 @@ $invalid = [
     '/api/fault/slow-messaging?delayMs=600&repeats=21&broker=rabbitmq',
     '/api/fault/n-plus-one-messaging?messages=8&broker=unsupported',
 ];
+
+$strictInputInvalid = [
+    '/api/fault/n-plus-one-messaging?messages[]=8&broker=rabbitmq',
+    '/api/fault/n-plus-one-messaging?messages=8items&broker=rabbitmq',
+    '/api/fault/n-plus-one-messaging?messages=%208&broker=rabbitmq',
+    '/api/fault/n-plus-one-messaging?messages=%2B8&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs[]=600&repeats=3&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=600ms&repeats=3&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=%20600&repeats=3&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=%2B600&repeats=3&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=600&repeats[]=3&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=600&repeats=3times&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=600&repeats=%203&broker=rabbitmq',
+    '/api/fault/slow-messaging?delayMs=600&repeats=%2B3&broker=rabbitmq',
+];
+$invalid = [...$globalInvalid, ...$strictInputInvalid];
 
 $accepted = 0;
 foreach ($invalid as $path) {
@@ -71,7 +87,7 @@ foreach ($invalid as $path) {
 
 $kernel->shutdown();
 
-if ($accepted !== 7 || $spy->publishSequentiallyCalls !== 0 || $spy->publishSlowlyCalls !== 0) {
+if ($accepted !== count($invalid) || $spy->publishSequentiallyCalls !== 0 || $spy->publishSlowlyCalls !== 0) {
     fwrite(
         STDERR,
         "contract mismatch: accepted={$accepted} sequential={$spy->publishSequentiallyCalls} slow={$spy->publishSlowlyCalls}\n",
@@ -79,4 +95,5 @@ if ($accepted !== 7 || $spy->publishSequentiallyCalls !== 0 || $spy->publishSlow
     exit(1);
 }
 
+echo 'PERF_SENTINEL_MESSAGING_STRICT_INPUT_PASS '.count($strictInputInvalid).'/'.count($strictInputInvalid)." boundary_calls=0\n";
 echo "PERF_SENTINEL_MESSAGING_NEGATIVE_CONTRACT_PASS 7/7 boundary_calls=0\n";

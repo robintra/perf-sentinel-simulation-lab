@@ -2,7 +2,7 @@
     "name": "perfsentinel/symfony-svc",
     "description": "Symfony simulation service for the Perf Sentinel lab.",
     "type": "project",
-    "license": "proprietary",
+    "license": "AGPL-3.0-or-later",
     "minimum-stability": "stable",
     "prefer-stable": true,
     "require": {

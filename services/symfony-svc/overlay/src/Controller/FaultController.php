@@ -201,8 +201,8 @@ class FaultController extends AbstractController
     #[Route('/api/fault/n-plus-one-messaging', methods: ['POST'])]
     public function nPlusOneMessaging(Request $r): JsonResponse
     {
-        $messages = $this->intParam($r, 'messages', 8);
-        if ($r->query->get('broker', 'rabbitmq') !== 'rabbitmq' || $messages < 5 || $messages > 100) {
+        $messages = $this->messagingIntParam($r, 'messages', 8);
+        if ($r->query->get('broker', 'rabbitmq') !== 'rabbitmq' || $messages === null || $messages < 5 || $messages > 100) {
             return new JsonResponse(['error' => 'invalid messaging parameters'], 400);
         }
 
@@ -217,12 +217,12 @@ class FaultController extends AbstractController
     #[Route('/api/fault/slow-messaging', methods: ['POST'])]
     public function slowMessaging(Request $r): JsonResponse
     {
-        $delayMs = $this->intParam($r, 'delayMs', 600);
-        $repeats = $this->intParam($r, 'repeats', 3);
+        $delayMs = $this->messagingIntParam($r, 'delayMs', 600);
+        $repeats = $this->messagingIntParam($r, 'repeats', 3);
         if (
             $r->query->get('broker', 'rabbitmq') !== 'rabbitmq'
-            || $delayMs < 501 || $delayMs > 5000
-            || $repeats < 3 || $repeats > 20
+            || $delayMs === null || $delayMs < 501 || $delayMs > 5000
+            || $repeats === null || $repeats < 3 || $repeats > 20
         ) {
             return new JsonResponse(['error' => 'invalid messaging parameters'], 400);
         }
@@ -233,5 +233,18 @@ class FaultController extends AbstractController
             $start,
             $this->messaging->publishSlowly($delayMs, $repeats),
         );
+    }
+
+    private function messagingIntParam(Request $r, string $key, int $default): ?int
+    {
+        $parameters = $r->query->all();
+        if (!array_key_exists($key, $parameters)) {
+            return $default;
+        }
+
+        $value = $parameters[$key];
+        return is_string($value) && preg_match('/\A[0-9]+\z/D', $value) === 1
+            ? (int) $value
+            : null;
     }
 }
