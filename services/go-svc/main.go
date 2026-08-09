@@ -2,11 +2,12 @@
 // chi router wrapped by otelhttp, pgx pool wrapped by otelpgx.
 //
 // Env overrides:
-//   HTTP_PORT      — overrides the default port 8093.
-//   SELF_BASE_URL  — overrides the self-loop base URL.
-//   DB_DSN         — Postgres connection string (Postgres URL or
-//                    key=value form parseable by pgxpool).
-//   OTEL_*         — standard OTel env vars consumed by the SDK.
+//
+//	HTTP_PORT      — overrides the default port 8093.
+//	SELF_BASE_URL  — overrides the self-loop base URL.
+//	DB_DSN         — Postgres connection string (Postgres URL or
+//	                 key=value form parseable by pgxpool).
+//	OTEL_*         — standard OTel env vars consumed by the SDK.
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/perf-sentinel/lab/go-svc/internal/db"
+	"github.com/perf-sentinel/lab/go-svc/internal/messaging"
 	otelinit "github.com/perf-sentinel/lab/go-svc/internal/otel"
 	"github.com/perf-sentinel/lab/go-svc/internal/web"
 
@@ -67,7 +69,11 @@ func main() {
 		Timeout:   15 * time.Second,
 	}
 
-	handler := web.Mount(pool, httpClient, selfBase)
+	publisher, err := messaging.NewFromEnv()
+	if err != nil {
+		log.Fatalf("messaging config: %v", err)
+	}
+	handler := web.Mount(pool, httpClient, selfBase, publisher)
 	// otelhttp.NewHandler wraps the chi router so SERVER spans carry
 	// the http.route attribute. Inner middleware (otelhttp) sees the
 	// chi route template via the RouteTag pattern below.

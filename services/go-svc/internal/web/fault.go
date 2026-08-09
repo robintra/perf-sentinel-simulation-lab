@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -13,7 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// FaultRoutes mounts the 10 perf-sentinel anti-pattern endpoints under
+// FaultRoutes mounts the perf-sentinel anti-pattern endpoints under
 // /api/fault. SQL faults go through pgx with the otelpgx tracer
 // attached (scope `github.com/exaring/otelpgx`). HTTP-side faults go
 // through the otelhttp-wrapped http.Client passed in from main, so
@@ -23,6 +25,12 @@ type FaultRoutes struct {
 	Pool       *pgxpool.Pool
 	HTTPClient *http.Client
 	SelfBase   string
+	Messaging  messagingPublisher
+}
+
+type messagingPublisher interface {
+	PublishSequentially(context.Context, int) (map[string]any, error)
+	PublishSlowly(context.Context, int, int) (map[string]any, error)
 }
 
 const serviceName = "go-svc"
@@ -40,6 +48,80 @@ func (f *FaultRoutes) Mount(r chi.Router) {
 	r.Post("/chatty", f.chatty)
 	r.Post("/serialized", f.serialized)
 	r.Post("/pool-saturation", f.poolSaturation)
+	r.Post("/n-plus-one-messaging", f.nPlusOneMessaging)
+	r.Post("/slow-messaging", f.slowMessaging)
+}
+
+func messagingInt(query url.Values, key string, fallback, minimum, maximum int) (int, bool) {
+	values, ok := query[key]
+	if !ok {
+		return fallback, true
+	}
+	if len(values) != 1 || values[0] == "" {
+		return 0, false
+	}
+	for _, character := range values[0] {
+		if character < '0' || character > '9' {
+			return 0, false
+		}
+	}
+	value, err := strconv.Atoi(values[0])
+	return value, err == nil && value >= minimum && value <= maximum
+}
+
+func validMessagingQuery(query url.Values, allowed ...string) bool {
+	allowedKeys := make(map[string]struct{}, len(allowed))
+	for _, key := range allowed {
+		allowedKeys[key] = struct{}{}
+	}
+	for key, values := range query {
+		if _, ok := allowedKeys[key]; !ok || len(values) != 1 {
+			return false
+		}
+	}
+	broker, ok := query["broker"]
+	return ok && len(broker) == 1 && broker[0] == "rabbitmq"
+}
+
+func (f *FaultRoutes) nPlusOneMessaging(w http.ResponseWriter, r *http.Request) {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		http.Error(w, "invalid messaging parameters", http.StatusBadRequest)
+		return
+	}
+	messages, valid := messagingInt(query, "messages", 8, 5, 100)
+	if !valid || !validMessagingQuery(query, "messages", "broker") {
+		http.Error(w, "invalid messaging parameters", http.StatusBadRequest)
+		return
+	}
+	start := time.Now()
+	details, err := f.Messaging.PublishSequentially(r.Context(), messages)
+	if err != nil {
+		http.Error(w, "RabbitMQ operation failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope("n_plus_one_messaging", serviceName, start, details))
+}
+
+func (f *FaultRoutes) slowMessaging(w http.ResponseWriter, r *http.Request) {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		http.Error(w, "invalid messaging parameters", http.StatusBadRequest)
+		return
+	}
+	delayMs, delayValid := messagingInt(query, "delayMs", 600, 501, 5000)
+	repeats, repeatsValid := messagingInt(query, "repeats", 3, 3, 20)
+	if !delayValid || !repeatsValid || !validMessagingQuery(query, "delayMs", "repeats", "broker") {
+		http.Error(w, "invalid messaging parameters", http.StatusBadRequest)
+		return
+	}
+	start := time.Now()
+	details, err := f.Messaging.PublishSlowly(r.Context(), delayMs, repeats)
+	if err != nil {
+		http.Error(w, "RabbitMQ operation failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope("slow_messaging", serviceName, start, details))
 }
 
 // === SQL anti-patterns ===========================================================
@@ -284,7 +366,7 @@ func HealthHandler(w http.ResponseWriter, _ *http.Request) {
 // Mount registers everything under the http.Handler returned by
 // chi.NewRouter(). The router is then wrapped by otelhttp.NewHandler
 // in main.go so SERVER spans carry the right `http.route` template.
-func Mount(pool *pgxpool.Pool, httpClient *http.Client, selfBase string) http.Handler {
+func Mount(pool *pgxpool.Pool, httpClient *http.Client, selfBase string, messaging messagingPublisher) http.Handler {
 	r := chi.NewRouter()
 	r.Get("/health/live", HealthHandler)
 	r.Get("/health/ready", HealthHandler)
@@ -292,10 +374,9 @@ func Mount(pool *pgxpool.Pool, httpClient *http.Client, selfBase string) http.Ha
 	r.Route("/api", func(api chi.Router) {
 		(&BusinessRoutes{Pool: pool}).Mount(api)
 		api.Route("/fault", func(fr chi.Router) {
-			(&FaultRoutes{Pool: pool, HTTPClient: httpClient, SelfBase: selfBase}).Mount(fr)
+			(&FaultRoutes{Pool: pool, HTTPClient: httpClient, SelfBase: selfBase, Messaging: messaging}).Mount(fr)
 		})
 	})
 
 	return r
 }
-
