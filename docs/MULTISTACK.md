@@ -140,7 +140,7 @@ Postgres schema in the shared `lab` database.
 | seaorm-svc           | 8089 | seaorm        | Rust 1.95 + SeaORM 1.1                          |
 | nest-svc             | 8090 | nest          | NestJS 11 + Prisma 7.8                          |
 | django-svc           | 8091 | django        | Django 5.2 LTS + psycopg 3                      |
-| fastapi-svc          | 8092 | fastapi       | FastAPI 0.136 + SQLAlchemy 2 async              |
+| fastapi-svc          | 8092 | fastapi       | FastAPI 0.141 + SQLAlchemy 2 async              |
 | go-svc               | 8093 | go            | Go 1.26 + pgx v5                                |
 | rails-svc            | 8094 | rails         | Rails 8 + Active Record (Ruby 4.0)              |
 | laravel-svc          | 8095 | laravel       | Laravel 11 + Eloquent (PHP 8.3, native OTel)    |
@@ -175,7 +175,7 @@ stable. Re-verify before each Dockerfile bump.
 | Node.js runtime | **24 "Krypton" Active LTS**  | Yes — Active LTS, EOL ~2028-04                                        | Node 22 is Maintenance LTS only.                                                       |
 | Prisma          | **7.8.0** (2026-04-22)       | No LTS                                                                | Prisma 7 GA was 2025-11-19.                                                            |
 | Django          | **5.2.14 LTS** (2026-05-05)  | Yes — security support through ~April 2028                            | 6.0.5 latest non-LTS not chosen. Next LTS is 6.2 (~April 2027).                        |
-| FastAPI         | **0.136.3** (2026-05-23)     | No LTS                                                                | Pydantic ≥ 2.13 required.                                                              |
+| FastAPI         | **0.141.1**                   | No LTS                                                                | Pydantic ≥ 2.13 required.                                                              |
 | Go              | **1.26.3** (2026-05-07)      | No LTS (6-month cadence, N and N-1)                                   | + `pgx v5.7.5`.                                                                        |
 | Rails           | **8.x** (Active Record)      | No LTS                                                                | Ruby 4.0; opentelemetry-instrumentation-rails + active_record.                         |
 | Ruby            | **4.0** (slim-bookworm)      | Stable (latest)                                                       | The ActiveRecord ORM scope is emitted by record loads (`_query_by_sql`), not `.count`. |

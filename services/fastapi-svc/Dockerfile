@@ -6,8 +6,8 @@ FROM python:3.14-slim-bookworm
 RUN useradd -r -u 65532 -d /app nonroot
 WORKDIR /app
 
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY app ./app
 
