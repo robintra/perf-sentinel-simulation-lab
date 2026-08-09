@@ -1,6 +1,8 @@
 require "pg"
 
 class FaultController < ApplicationController
+  class_attribute :messaging_service_factory, default: -> { MessagingFaultService.new }
+
   # === SQL faults (through ActiveRecord -> ActiveRecord scope) =============
 
   # N distinct ActiveRecord record loads, one per order id -> n_plus_one_sql.
@@ -112,7 +114,40 @@ class FaultController < ApplicationController
     envelope("serialized_calls", start, { steps: steps, steps_ok: ok })
   end
 
+  def n_plus_one_messaging
+    messages = messaging_int_param(:messages, 8)
+    if params.fetch(:broker, "rabbitmq") != "rabbitmq" || messages.nil? || !messages.between?(5, 100)
+      return render json: { error: "invalid messaging parameters" }, status: :bad_request
+    end
+
+    start = monotonic
+    details = self.class.messaging_service_factory.call.publish_sequentially(messages)
+    envelope("n_plus_one_messaging", start, details)
+  end
+
+  def slow_messaging
+    delay_ms = messaging_int_param(:delayMs, 600)
+    repeats = messaging_int_param(:repeats, 3)
+    if params.fetch(:broker, "rabbitmq") != "rabbitmq" || delay_ms.nil? || repeats.nil? ||
+       !delay_ms.between?(501, 5000) || !repeats.between?(3, 20)
+      return render json: { error: "invalid messaging parameters" }, status: :bad_request
+    end
+
+    start = monotonic
+    details = self.class.messaging_service_factory.call.publish_slowly(delay_ms, repeats)
+    envelope("slow_messaging", start, details)
+  end
+
   private
+
+  def messaging_int_param(key, default)
+    return default unless params.key?(key)
+
+    value = params[key]
+    return unless value.is_a?(String) && /\A[0-9]+\z/.match?(value)
+
+    Integer(value, 10)
+  end
 
   def raw_pg_sleep(seconds)
     conn = nil

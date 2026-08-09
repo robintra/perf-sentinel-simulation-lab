@@ -22,6 +22,13 @@ otel:
 
 selfBaseUrl: ""
 
+messaging:
+  rabbitmqHost: rabbitmq.messaging.svc.cluster.local
+  rabbitmqPort: "5672"
+  rabbitmqSlowHost: toxiproxy.messaging.svc.cluster.local
+  rabbitmqSlowPort: "25672"
+  toxiproxyApi: http://toxiproxy.messaging.svc.cluster.local:8474
+
 resources:
   requests:
     cpu: 100m

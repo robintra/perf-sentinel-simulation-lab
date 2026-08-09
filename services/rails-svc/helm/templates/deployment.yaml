@@ -56,6 +56,26 @@ spec:
                   key: password
             - name: SELF_BASE_URL
               value: {{ .Values.selfBaseUrl | default (printf "http://localhost:%d" (int .Values.service.port)) | quote }}
+            - name: RABBITMQ_HOST
+              value: {{ .Values.messaging.rabbitmqHost | quote }}
+            - name: RABBITMQ_PORT
+              value: {{ .Values.messaging.rabbitmqPort | quote }}
+            - name: RABBITMQ_SLOW_HOST
+              value: {{ .Values.messaging.rabbitmqSlowHost | quote }}
+            - name: RABBITMQ_SLOW_PORT
+              value: {{ .Values.messaging.rabbitmqSlowPort | quote }}
+            - name: TOXIPROXY_API
+              value: {{ .Values.messaging.toxiproxyApi | quote }}
+            - name: RABBITMQ_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: username
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-credentials
+                  key: password
             - name: OTEL_SERVICE_NAME
               value: {{ .Values.otel.serviceName | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

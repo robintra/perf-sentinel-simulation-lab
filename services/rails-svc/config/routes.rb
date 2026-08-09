@@ -19,4 +19,6 @@ Rails.application.routes.draw do
   post "api/fault/chatty",          to: "fault#chatty"
   post "api/fault/serialized",      to: "fault#serialized"
   post "api/fault/pool-saturation", to: "fault#pool_saturation"
+  post "api/fault/n-plus-one-messaging", to: "fault#n_plus_one_messaging"
+  post "api/fault/slow-messaging",      to: "fault#slow_messaging"
 end

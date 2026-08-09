@@ -19,3 +19,12 @@ production:
 
 development:
   <<: *default
+
+test:
+  <<: *default
+  host: 127.0.0.1
+  port: 1
+  database: rails_test_tripwire
+  username: tripwire
+  password: tripwire
+  connect_timeout: 1
