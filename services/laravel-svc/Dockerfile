@@ -17,7 +17,7 @@ FROM php:8.5-cli-bookworm
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git unzip libpq-dev $PHPIZE_DEPS \
- && docker-php-ext-install -j"$(nproc)" pdo_pgsql \
+ && docker-php-ext-install -j"$(nproc)" pdo_pgsql sockets \
  && pecl install opentelemetry \
  && docker-php-ext-enable opentelemetry \
  && apt-get purge -y --auto-remove $PHPIZE_DEPS \
@@ -41,17 +41,13 @@ RUN composer config --global policy.advisories.block false \
  && composer config --global --no-plugins allow-plugins.tbachert/spi true
 
 WORKDIR /app
-# Real Laravel 11 skeleton, then the OTel SDK + auto-instrumentation packages.
-# --no-scripts skips the post-create artisan hooks (key:generate needs a writable
-# .env we provide via the overlay instead).
-RUN composer create-project laravel/laravel:^11.0 /app --no-scripts --prefer-dist \
- && composer require --with-all-dependencies \
-      open-telemetry/sdk \
-      open-telemetry/exporter-otlp \
-      open-telemetry/opentelemetry-auto-laravel \
-      open-telemetry/opentelemetry-auto-pdo \
-      php-http/guzzle7-adapter \
-      guzzlehttp/psr7
+# Lay down the Laravel 11 skeleton without resolving dependencies, then replace
+# its metadata with the committed dependency graph. The framework selector is
+# intentionally still a range; composer.lock makes the installed graph stable.
+RUN composer create-project laravel/laravel:^11.0 /app --no-scripts --prefer-dist --no-install
+COPY composer.json composer.lock /app/
+RUN composer validate --strict --no-check-all \
+ && composer install --no-scripts --prefer-dist
 
 # Overlay our customisations on top of the skeleton (routes, controllers, models,
 # bootstrap wiring, config, env) then re-dump the optimised autoloader.

@@ -6,12 +6,17 @@ use App\Http\Controllers\Concerns\Common;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Support\Http;
+use App\Support\Messaging;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class FaultController extends Controller
 {
     use Common;
+
+    public function __construct(private Messaging $messaging)
+    {
+    }
 
     // === SQL faults (through Eloquent -> php.laravel + php.pdo scopes) ========
 
@@ -163,5 +168,40 @@ class FaultController extends Controller
         return $this->envelope('serialized_calls', $start, [
             'steps' => $steps, 'steps_ok' => $ok,
         ]);
+    }
+
+    public function nPlusOneMessaging(Request $r)
+    {
+        $messages = $this->intParam($r, 'messages', 8);
+        if ($r->query('broker', 'rabbitmq') !== 'rabbitmq' || $messages < 5 || $messages > 100) {
+            return response()->json(['error' => 'invalid messaging parameters'], 400);
+        }
+
+        $start = hrtime(true);
+        return $this->envelope(
+            'n_plus_one_messaging',
+            $start,
+            $this->messaging->publishSequentially($messages),
+        );
+    }
+
+    public function slowMessaging(Request $r)
+    {
+        $delayMs = $this->intParam($r, 'delayMs', 600);
+        $repeats = $this->intParam($r, 'repeats', 3);
+        if (
+            $r->query('broker', 'rabbitmq') !== 'rabbitmq'
+            || $delayMs < 501 || $delayMs > 5000
+            || $repeats < 3 || $repeats > 20
+        ) {
+            return response()->json(['error' => 'invalid messaging parameters'], 400);
+        }
+
+        $start = hrtime(true);
+        return $this->envelope(
+            'slow_messaging',
+            $start,
+            $this->messaging->publishSlowly($delayMs, $repeats),
+        );
     }
 }
