@@ -45,6 +45,8 @@ cat > "${TEST_TMP}/bin/kubectl" <<'SH'
 #!/usr/bin/env bash
 if [[ " $* " == *" create configmap "* ]]; then
     printf 'apiVersion: v1\n'
+elif [[ " $* " == *" apply -f -"* ]]; then
+    cat >/dev/null
 elif [[ " $* " == *" wait job/"* ]]; then
     if [[ "${GATE_JOB_STATE:-complete}" == failed ]]; then
         if [[ " $* " == *"condition=Failed"* ]]; then exit 0; fi
@@ -65,9 +67,8 @@ printf '%s\n' "${1:-}" >> "${GATE_SLEEP_LOG}"
 if [[ -n "${GATE_CLOCK_FILE:-}" ]]; then
     now="$(cat "${GATE_CLOCK_FILE}")"
     printf '%s\n' "$((now + ${1:-0}))" > "${GATE_CLOCK_FILE}"
-elif [[ "${1:-}" == 1 ]]; then
-    /bin/sleep 0.05
 fi
+/bin/sleep 0.05
 exit 0
 SH
 
@@ -255,6 +256,8 @@ export GATE_JOB_STATE=complete
 
 echo "PASS: foundation runner diagnoses a failed k6 Job promptly"
 
+unset GATE_CLOCK_FILE VALIDATION_MONOTONIC_CLOCK_FILE
+
 # Exercise the Task 1 sequential runner itself. A trace observed before the Job
 # stays stale even if a later finding reports it under the expected endpoint.
 cat > "${TEST_TMP}/bin/kubectl" <<'SH'
@@ -264,6 +267,8 @@ if [[ -n "${RUNNER_KUBECTL_LOG:-}" ]]; then
 fi
 if [[ " $* " == *" create configmap "* ]]; then
     printf 'apiVersion: v1\n'
+elif [[ " $* " == *" apply -f -"* ]]; then
+    cat >/dev/null
 elif [[ " $* " == *" wait job/"* ]]; then
     if [[ "${RUNNER_JOB_STATE:-complete}" == failed ]]; then
         if [[ " $* " == *"condition=Failed"* ]]; then exit 0; fi
