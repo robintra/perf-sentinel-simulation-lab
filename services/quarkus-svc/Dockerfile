@@ -1,6 +1,6 @@
 # Quarkus multistage Dockerfile for quarkus-svc. Three stages, aligned
 # on the Spring Boot baseline `services/shared-dockerfile/Dockerfile`:
-#   1. Fetch the OpenTelemetry Java agent v2.27. Required because the
+#   1. Fetch the OpenTelemetry Java agent v2.30. Required because the
 #      `quarkus-opentelemetry` extension instruments JDBC but does NOT
 #      emit the `org.hibernate.*` scope marker that perf-sentinel's
 #      strict sanitizer-aware classifier needs to reclassify a
@@ -16,12 +16,10 @@
 
 # ---- otel agent download ----
 FROM alpine:3.24 AS otel-agent
-ARG OTEL_AGENT_VERSION=2.27.0
-# SHA-256 of the v2.27.0 javaagent.jar, captured 2026-05-24. Fails the
-# build if the upstream asset changes — supply-chain hygiene that the
-# Spring Boot baseline `services/shared-dockerfile/Dockerfile` should
-# also adopt (cf review notes).
-ARG OTEL_AGENT_SHA256=bd01fea1304e8c8803fff827a0bdda02b2266742a85c62548053c6761474bb5b
+ARG OTEL_AGENT_VERSION=2.30.0
+# SHA-256 published for the v2.30.0 release asset and verified against
+# the downloaded JAR. Fails the build if the upstream asset changes.
+ARG OTEL_AGENT_SHA256=9d6bc2ad8dd8fb7f730984988e57b8ac0a82d81c7b3b8ae795378718733a509d
 RUN apk add --no-cache wget \
  && wget -q -O /opentelemetry-javaagent.jar \
     "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar" \

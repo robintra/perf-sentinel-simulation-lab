@@ -7,10 +7,12 @@
 # Stage 1: download the OpenTelemetry Java agent. Cached independently
 # from the maven build so source changes do not refetch the jar.
 FROM alpine:3.24 AS otel-agent
-ARG OTEL_AGENT_VERSION=2.27.0
+ARG OTEL_AGENT_VERSION=2.30.0
+ARG OTEL_AGENT_SHA256=9d6bc2ad8dd8fb7f730984988e57b8ac0a82d81c7b3b8ae795378718733a509d
 RUN apk add --no-cache wget \
  && wget -q -O /opentelemetry-javaagent.jar \
-    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
+    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar" \
+ && echo "${OTEL_AGENT_SHA256}  /opentelemetry-javaagent.jar" | sha256sum -c -
 
 # Stage 2: maven build. The parent pom declares all 3 service modules,
 # so we copy all of them even when building only one. With `-pl
