@@ -18,7 +18,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       git unzip libpq-dev $PHPIZE_DEPS \
  && docker-php-ext-install -j"$(nproc)" pdo_pgsql sockets \
- && pecl install opentelemetry \
+ && pecl install opentelemetry-1.2.1 \
  && docker-php-ext-enable opentelemetry \
  && apt-get purge -y --auto-remove $PHPIZE_DEPS \
  && rm -rf /var/lib/apt/lists/*
