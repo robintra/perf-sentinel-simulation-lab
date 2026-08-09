@@ -15,13 +15,13 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 WORKDIR /src
 
-# Restore first for layer cache. Copy only the .csproj so the package
-# graph survives subsequent source edits. No RID — the published
+# Restore first for layer cache. Copy the project and lock file so the
+# package graph survives subsequent source edits. No RID — the published
 # framework-dependent assemblies are portable and run on whatever
 # architecture the runtime image lands on (k3d on Mac M-series is
 # arm64, k3d on Linux x86_64 hosts is amd64).
-COPY DotnetSvc.csproj ./
-RUN dotnet restore
+COPY DotnetSvc.csproj packages.lock.json ./
+RUN dotnet restore DotnetSvc.csproj --locked-mode
 
 COPY . ./
 RUN dotnet publish DotnetSvc.csproj \

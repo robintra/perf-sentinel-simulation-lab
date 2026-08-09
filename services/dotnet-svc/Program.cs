@@ -1,5 +1,6 @@
 using DotnetSvc.Data;
 using DotnetSvc.Endpoints;
+using DotnetSvc.Messaging;
 using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
@@ -19,6 +20,8 @@ var builder = WebApplication.CreateBuilder(args);
 int httpPort = EnvOrInt("HTTP_PORT", builder.Configuration.GetValue<int?>("Service:Port") ?? 8087);
 string selfBaseUrl = EnvOr("SELF_BASE_URL",
         builder.Configuration["Service:SelfBaseUrl"] ?? $"http://localhost:{httpPort}");
+bool disableTelemetry = builder.Configuration.GetValue<bool>("Service:DisableTelemetry");
+bool skipSchemaBootstrap = builder.Configuration.GetValue<bool>("Service:SkipSchemaBootstrap");
 
 builder.WebHost.ConfigureKestrel(k => k.ListenAnyIP(httpPort));
 
@@ -37,27 +40,27 @@ builder.Services.AddHttpClient("self", c =>
     // slow-http worst case + scheduling jitter.
     c.Timeout = TimeSpan.FromSeconds(15);
 });
+builder.Services.AddHttpClient("toxiproxy", c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddSingleton<IMessagingFaultService, MessagingFaultService>();
 
-builder.Services.AddOpenTelemetry()
-        .ConfigureResource(r => r.AddService(
-                serviceName: Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME") ?? "dotnet-svc"))
-        .WithTracing(t => t
-                .AddAspNetCoreInstrumentation()
-                .AddHttpClientInstrumentation()
-                // EF Core instrumentation emits the SQL text on the
-                // db.* attributes by default in 1.15.x — perf-sentinel
-                // template-matches N+1 patterns the same way it does
-                // on the Hibernate side. The ActivitySource it adds is
-                // `OpenTelemetry.Instrumentation.EntityFrameworkCore`,
-                // which is the ORM scope marker the strict classifier
-                // needs to keep the n+1_sql verdict.
-                .AddEntityFrameworkCoreInstrumentation()
-                .AddOtlpExporter());
+if (!disableTelemetry)
+{
+    builder.Services.AddOpenTelemetry()
+            .ConfigureResource(r => r.AddService(
+                    serviceName: Environment.GetEnvironmentVariable("OTEL_SERVICE_NAME") ?? "dotnet-svc"))
+            .WithTracing(t => t
+                    .AddAspNetCoreInstrumentation()
+                    .AddHttpClientInstrumentation()
+                    .AddEntityFrameworkCoreInstrumentation()
+                    .AddSource("DotnetSvc.HttpBoundary", "DotnetSvc.Messaging")
+                    .AddOtlpExporter());
+}
 
 var app = builder.Build();
 
-await using (var scope = app.Services.CreateAsyncScope())
+if (!skipSchemaBootstrap)
 {
+    await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await SchemaBootstrap.EnsureSchemaAsync(db);
 }
@@ -81,3 +84,5 @@ static int EnvOrInt(string key, int fallback)
     string? v = Environment.GetEnvironmentVariable(key);
     return int.TryParse(v, out int parsed) ? parsed : fallback;
 }
+
+public partial class Program { }

@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
 using DotnetSvc.Data;
+using DotnetSvc.Messaging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Primitives;
 
 namespace DotnetSvc.Endpoints;
 
@@ -24,6 +26,7 @@ internal static class FaultEndpoints
 {
     private const string Service = "dotnet-svc";
     private static readonly string[] Channels = { "email", "sms", "push", "webhook", "slack", "teams" };
+    private static readonly ActivitySource HttpBoundary = new("DotnetSvc.HttpBoundary");
 
     public static IEndpointRouteBuilder MapFaultEndpoints(this IEndpointRouteBuilder app)
     {
@@ -39,6 +42,8 @@ internal static class FaultEndpoints
         fault.MapPost("/chatty", Chatty);
         fault.MapPost("/serialized", Serialized);
         fault.MapPost("/pool-saturation", PoolSaturation);
+        fault.MapPost("/n-plus-one-messaging", NPlusOneMessaging);
+        fault.MapPost("/slow-messaging", SlowMessaging);
 
         return app;
     }
@@ -74,6 +79,29 @@ internal static class FaultEndpoints
     }
 
     private static int StatusOk(HttpResponseMessage r) => r.IsSuccessStatusCode ? 1 : 0;
+
+    private static bool TryQueryInt(HttpRequest request, string name, int fallback, out int value)
+    {
+        StringValues raw = request.Query[name];
+        if (raw.Count == 0
+            && !request.Query.Keys.Any(key => key.StartsWith($"{name}[", StringComparison.Ordinal)))
+        {
+            value = fallback;
+            return true;
+        }
+        value = 0;
+        return raw.Count == 1
+               && int.TryParse(raw[0], NumberStyles.None, CultureInfo.InvariantCulture, out value);
+    }
+
+    private static bool IsRabbitMq(HttpRequest request)
+    {
+        StringValues broker = request.Query["broker"];
+        return !request.Query.Keys.Any(key => key.StartsWith("broker[", StringComparison.Ordinal))
+               && (broker.Count == 0
+                   || (broker.Count == 1
+                       && string.Equals(broker[0], "rabbitmq", StringComparison.Ordinal)));
+    }
 
     // === SQL anti-patterns =====================================================
 
@@ -190,7 +218,7 @@ internal static class FaultEndpoints
             int ok = 0;
             for (int i = 0; i < n; i++)
             {
-                using var r = await http.GetAsync($"/api/external/mock?delayMs=0&seq={i}&op=0");
+                using var r = await GetWithBoundaryAsync(http, $"/api/external/mock?delayMs=0&seq={i}&op=0");
                 ok += StatusOk(r);
             }
             return new Dictionary<string, object?>
@@ -211,7 +239,7 @@ internal static class FaultEndpoints
             int ok = 0;
             for (int i = 0; i < n; i++)
             {
-                using var r = await http.GetAsync("/api/payments/history?customerId=1&limit=10");
+                using var r = await GetWithBoundaryAsync(http, "/api/payments/history?customerId=1&limit=10");
                 ok += StatusOk(r);
             }
             return new Dictionary<string, object?>
@@ -233,7 +261,7 @@ internal static class FaultEndpoints
             int ok = 0;
             for (int i = 0; i < n; i++)
             {
-                using var r = await http.GetAsync($"/api/external/mock?delayMs={ms}&seq={i}&op=0");
+                using var r = await GetWithBoundaryAsync(http, $"/api/external/mock?delayMs={ms}&seq={i}&op=0");
                 ok += StatusOk(r);
             }
             return new Dictionary<string, object?>
@@ -258,7 +286,7 @@ internal static class FaultEndpoints
                 int seq = i;
                 tasks[i] = Task.Run(async () =>
                 {
-                    using var r = await http.GetAsync($"/api/external/mock?delayMs=10&seq={seq}&op=0");
+                    using var r = await GetWithBoundaryAsync(http, $"/api/external/mock?delayMs=10&seq={seq}&op=0");
                     return StatusOk(r);
                 });
             }
@@ -281,7 +309,7 @@ internal static class FaultEndpoints
             int ok = 0;
             for (int i = 0; i < n; i++)
             {
-                using var r = await http.GetAsync($"/api/external/mock?delayMs=5&seq={i}&op={i % 7}");
+                using var r = await GetWithBoundaryAsync(http, $"/api/external/mock?delayMs=5&seq={i}&op={i % 7}");
                 ok += StatusOk(r);
             }
             return new Dictionary<string, object?>
@@ -303,7 +331,7 @@ internal static class FaultEndpoints
             int ok = 0;
             for (int i = 0; i < n; i++)
             {
-                using var r = await http.GetAsync($"/api/dispatch/{Channels[i]}?delayMs=80");
+                using var r = await GetWithBoundaryAsync(http, $"/api/dispatch/{Channels[i]}?delayMs=80");
                 ok += StatusOk(r);
             }
             long wallClockMs = (long)Stopwatch.GetElapsedTime(startNs).TotalMilliseconds;
@@ -313,4 +341,88 @@ internal static class FaultEndpoints
                 ["wall_clock_ms"] = wallClockMs,
             };
         });
+
+    private static async Task<HttpResponseMessage> GetWithBoundaryAsync(HttpClient client, string path)
+    {
+        Uri url = new(client.BaseAddress ?? throw new InvalidOperationException("self BaseAddress is required"), path);
+        using Activity? activity = HttpBoundary.StartActivity("HTTP GET", ActivityKind.Client);
+        activity?.SetTag("http.request.method", "GET");
+        activity?.SetTag("url.full", url.ToString());
+        try
+        {
+            return await client.GetAsync(path);
+        }
+        catch (Exception exception)
+        {
+            activity?.AddEvent(new ActivityEvent(
+                "exception",
+                tags: new ActivityTagsCollection
+                {
+                    ["exception.type"] = exception.GetType().FullName,
+                    ["exception.message"] = exception.Message,
+                }));
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            throw;
+        }
+    }
+
+    private static async Task<IResult> NPlusOneMessaging(
+        HttpRequest request,
+        IMessagingFaultService messaging,
+        CancellationToken cancellationToken)
+    {
+        if (!TryQueryInt(request, "messages", 8, out int messages)
+            || messages is < 5 or > 100
+            || !IsRabbitMq(request))
+        {
+            return Results.BadRequest();
+        }
+
+        return await Timed(
+            "n_plus_one_messaging",
+            new Dictionary<string, object?> { ["messages"] = messages, ["broker"] = "rabbitmq" },
+            async () =>
+            {
+                MessagingResult result = await messaging.PublishSequentiallyAsync(messages, cancellationToken);
+                return new Dictionary<string, object?>
+                {
+                    ["published"] = result.Published,
+                    ["confirmed"] = result.Confirmed,
+                };
+            });
+    }
+
+    private static async Task<IResult> SlowMessaging(
+        HttpRequest request,
+        IMessagingFaultService messaging,
+        CancellationToken cancellationToken)
+    {
+        if (!TryQueryInt(request, "delayMs", 600, out int delayMs)
+            || !TryQueryInt(request, "repeats", 3, out int repeats)
+            || delayMs is < 501 or > 5_000
+            || repeats is < 3 or > 20
+            || !IsRabbitMq(request))
+        {
+            return Results.BadRequest();
+        }
+
+        return await Timed(
+            "slow_messaging",
+            new Dictionary<string, object?>
+            {
+                ["delayMs"] = delayMs,
+                ["repeats"] = repeats,
+                ["broker"] = "rabbitmq",
+            },
+            async () =>
+            {
+                MessagingResult result = await messaging.PublishSlowlyAsync(delayMs, repeats, cancellationToken);
+                return new Dictionary<string, object?>
+                {
+                    ["published"] = result.Published,
+                    ["confirmed"] = result.Confirmed,
+                    ["delay_ms"] = result.DelayMs,
+                };
+            });
+    }
 }
