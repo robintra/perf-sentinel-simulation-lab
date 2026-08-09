@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
-sea-orm = { version = "1.1", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+sea-orm = { version = "=1.1.20", features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+lapin = "=4.10.0"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
 reqwest-middleware = "0.5"
 reqwest-tracing = { version = "0.7", features = ["opentelemetry_0_32"] }
@@ -20,6 +21,9 @@ tracing-opentelemetry = "0.33"
 opentelemetry = "0.32"
 opentelemetry_sdk = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["http-proto", "reqwest-blocking-client"] }
+
+[dev-dependencies]
+tower = { version = "=0.5.3", features = ["util"] }
 
 [profile.release]
 strip = true
