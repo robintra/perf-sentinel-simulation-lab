@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import asyncpg
 import httpx
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -170,6 +170,12 @@ def _envelope(anti_pattern, start, details):
         "details": details,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
+
+
+def get_messaging_publisher():
+    from app import messaging
+
+    return messaging
 
 
 # === health ================================================================
@@ -329,6 +335,33 @@ async def slow_http(delayMs: int = 600, repeats: int = 6):
         "delayMs": delayMs, "repeats": repeats,
         "calls_made": repeats, "calls_ok": ok, "delay_ms": delayMs,
     })
+
+
+@app.post("/api/fault/n-plus-one-messaging")
+async def n_plus_one_messaging(
+    messages: int = 8,
+    broker: str = "rabbitmq",
+    publisher=Depends(get_messaging_publisher),
+):
+    if broker != "rabbitmq" or not 5 <= messages <= 100:
+        return JSONResponse({"error": "invalid messaging parameters"}, status_code=400)
+    start = time.monotonic()
+    details = await publisher.publish_sequentially(messages)
+    return _envelope("n_plus_one_messaging", start, details)
+
+
+@app.post("/api/fault/slow-messaging")
+async def slow_messaging(
+    delayMs: int = 600,
+    repeats: int = 3,
+    broker: str = "rabbitmq",
+    publisher=Depends(get_messaging_publisher),
+):
+    if broker != "rabbitmq" or not 501 <= delayMs <= 5000 or not 3 <= repeats <= 20:
+        return JSONResponse({"error": "invalid messaging parameters"}, status_code=400)
+    start = time.monotonic()
+    details = await publisher.publish_slowly(delayMs, repeats)
+    return _envelope("slow_messaging", start, details)
 
 
 @app.post("/api/fault/fanout")
