@@ -23,7 +23,10 @@ use lapin::{
     types::{AMQPValue, FieldTable},
     uri::{AMQPAuthority, AMQPUri, AMQPUserInfo},
 };
-use opentelemetry::{global, trace::TracerProvider};
+use opentelemetry::{
+    KeyValue, global,
+    trace::{Status, TracerProvider},
+};
 use opentelemetry_otlp::SpanExporter;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
@@ -39,7 +42,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::Instrument;
-use tracing_opentelemetry::OpenTelemetryLayer;
+use tracing_opentelemetry::{OpenTelemetryLayer, OpenTelemetrySpanExt};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 type PgPool = Pool<ConnectionManager<PgConnection>>;
@@ -56,8 +59,242 @@ const CHANNELS: &[&str] = &["email", "sms", "push", "webhook", "slack", "teams"]
 const MESSAGING_DESTINATION: &str = "perfsim.diesel-svc";
 const MESSAGING_ROUTING_KEY: &str = "diesel-svc";
 const CONFIRM_TIMEOUT_MS: u64 = 5_000;
+const SESSION_SETUP_ROUND_TRIPS: u32 = 8;
 
 type PublishFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, String>> + Send + 'a>>;
+type BoundaryFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+type ConfirmationFuture = BoundaryFuture<'static, Result<PublishConfirmation, String>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PublishConfirmation {
+    Ack,
+    Returned,
+    Nack,
+    NotRequested,
+}
+
+trait PublishSession: Send + Sync {
+    fn publish<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoundaryFuture<'a, Result<ConfirmationFuture, String>>;
+    fn wait_for_confirms(&self) -> BoundaryFuture<'_, Result<PublishConfirmation, String>>;
+    fn close(&self, timeout: Duration) -> BoundaryFuture<'_, Result<(), String>>;
+}
+
+struct LapinSession {
+    connection: Connection,
+    channel: lapin::Channel,
+}
+
+fn map_confirmation(confirmation: Confirmation) -> PublishConfirmation {
+    match confirmation {
+        Confirmation::Ack(None) => PublishConfirmation::Ack,
+        Confirmation::Ack(Some(_)) => PublishConfirmation::Returned,
+        Confirmation::Nack(_) => PublishConfirmation::Nack,
+        Confirmation::NotRequested => PublishConfirmation::NotRequested,
+    }
+}
+
+impl PublishSession for LapinSession {
+    fn publish<'a>(
+        &'a self,
+        payload: &'a [u8],
+    ) -> BoundaryFuture<'a, Result<ConfirmationFuture, String>> {
+        Box::pin(async move {
+            let confirmation = self
+                .channel
+                .basic_publish(
+                    MESSAGING_DESTINATION.into(),
+                    MESSAGING_ROUTING_KEY.into(),
+                    BasicPublishOptions {
+                        mandatory: true,
+                        ..Default::default()
+                    },
+                    payload,
+                    BasicProperties::default().with_delivery_mode(2),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok(Box::pin(async move {
+                confirmation
+                    .await
+                    .map(map_confirmation)
+                    .map_err(|error| error.to_string())
+            }) as ConfirmationFuture)
+        })
+    }
+
+    fn wait_for_confirms(&self) -> BoundaryFuture<'_, Result<PublishConfirmation, String>> {
+        Box::pin(async move {
+            self.channel
+                .wait_for_confirms()
+                .await
+                .map(|returned| {
+                    if returned.is_empty() {
+                        PublishConfirmation::Ack
+                    } else {
+                        PublishConfirmation::Returned
+                    }
+                })
+                .map_err(|error| error.to_string())
+        })
+    }
+
+    fn close(&self, timeout: Duration) -> BoundaryFuture<'_, Result<(), String>> {
+        Box::pin(async move {
+            let channel_result =
+                tokio::time::timeout(timeout, self.channel.close(200, "done".into()))
+                    .await
+                    .map_err(|_| "RabbitMQ channel close timed out".to_string())
+                    .and_then(|result| result.map_err(|error| error.to_string()));
+            let connection_result =
+                tokio::time::timeout(timeout, self.connection.close(200, "done".into()))
+                    .await
+                    .map_err(|_| "RabbitMQ connection close timed out".to_string())
+                    .and_then(|result| result.map_err(|error| error.to_string()));
+            channel_result.and(connection_result)
+        })
+    }
+}
+
+fn producer_span() -> tracing::Span {
+    tracing::info_span!(
+        "perfsim.diesel-svc send",
+        otel.kind = "PRODUCER",
+        messaging.system = "rabbitmq",
+        messaging.destination.name = MESSAGING_DESTINATION,
+        messaging.operation.type = "send",
+    )
+}
+
+fn record_publish_error(spans: &[tracing::Span], error: &str) {
+    for span in spans {
+        span.add_event(
+            "exception",
+            vec![
+                KeyValue::new("exception.type", "RabbitMqPublishError"),
+                KeyValue::new("exception.message", error.to_owned()),
+            ],
+        );
+        span.set_status(Status::error(error.to_owned()));
+    }
+}
+
+fn confirmation_result(confirmation: PublishConfirmation) -> Result<(), String> {
+    match confirmation {
+        PublishConfirmation::Ack => Ok(()),
+        PublishConfirmation::Returned => Err("RabbitMQ returned an unroutable message".into()),
+        PublishConfirmation::Nack => Err("RabbitMQ rejected a message".into()),
+        PublishConfirmation::NotRequested => Err("RabbitMQ did not confirm a message".into()),
+    }
+}
+
+fn session_setup_timeout(operation_timeout: Duration) -> Duration {
+    operation_timeout * SESSION_SETUP_ROUND_TRIPS
+}
+
+async fn publish_direct_session<S: PublishSession + ?Sized>(
+    session: &S,
+    count: i32,
+    prefix: &str,
+    operation_timeout: Duration,
+) -> Result<i32, String> {
+    let mut spans = Vec::with_capacity(count as usize);
+    let mut confirmations = Vec::with_capacity(count as usize);
+    let mut publish_error = None;
+
+    for index in 0..count {
+        let payload = format!("{prefix}-{index}");
+        let span = producer_span();
+        let result = tokio::time::timeout(
+            operation_timeout,
+            session.publish(payload.as_bytes()).instrument(span.clone()),
+        )
+        .await
+        .map_err(|_| "RabbitMQ basic_publish timed out".to_string())
+        .and_then(|result| result);
+        spans.push(span);
+        match result {
+            Ok(confirmation) => confirmations.push(confirmation),
+            Err(error) => {
+                record_publish_error(&spans, &error);
+                publish_error = Some(error);
+                break;
+            }
+        }
+    }
+
+    let result = if let Some(error) = publish_error {
+        Err(error)
+    } else {
+        let grouped = tokio::time::timeout(operation_timeout, session.wait_for_confirms())
+            .await
+            .map_err(|_| "RabbitMQ group publisher confirm timed out".to_string())
+            .and_then(|result| result)
+            .and_then(confirmation_result);
+        if let Err(error) = grouped {
+            record_publish_error(&spans, &error);
+            Err(error)
+        } else {
+            let mut first_error = None;
+            for (span, confirmation) in spans.iter().zip(confirmations) {
+                let outcome =
+                    tokio::time::timeout(operation_timeout, confirmation.instrument(span.clone()))
+                        .await
+                        .map_err(|_| "RabbitMQ publisher confirmation timed out".to_string())
+                        .and_then(|result| result)
+                        .and_then(confirmation_result);
+                if let Err(error) = outcome {
+                    record_publish_error(std::slice::from_ref(span), &error);
+                    first_error.get_or_insert(error);
+                }
+            }
+            first_error.map_or(Ok(count), Err)
+        }
+    };
+
+    let close_result = session.close(operation_timeout).await;
+    result.and(close_result.map(|()| count))
+}
+
+async fn publish_slow_session<S: PublishSession + ?Sized>(
+    session: &S,
+    count: i32,
+    prefix: &str,
+    operation_timeout: Duration,
+) -> Result<i32, String> {
+    let mut result = Ok(count);
+    for index in 0..count {
+        let payload = format!("{prefix}-{index}");
+        let span = producer_span();
+        let outcome = match tokio::time::timeout(
+            operation_timeout,
+            session.publish(payload.as_bytes()).instrument(span.clone()),
+        )
+        .await
+        .map_err(|_| "RabbitMQ basic_publish timed out".to_string())
+        .and_then(|result| result)
+        {
+            Ok(confirmation) => {
+                tokio::time::timeout(operation_timeout, confirmation.instrument(span.clone()))
+                    .await
+                    .map_err(|_| "RabbitMQ publisher confirmation timed out".to_string())
+                    .and_then(|result| result)
+                    .and_then(confirmation_result)
+            }
+            Err(error) => Err(error),
+        };
+        if let Err(error) = outcome {
+            record_publish_error(std::slice::from_ref(&span), &error);
+            result = Err(error);
+            break;
+        }
+    }
+
+    let close_result = session.close(operation_timeout).await;
+    result.and(close_result.map(|()| count))
+}
 
 trait MessagingPublisher: Send + Sync {
     fn publish_sequentially(&self, messages: i32) -> PublishFuture<'_>;
@@ -159,17 +396,13 @@ impl RabbitMqPublisher {
             .map_err(|error| error.to_string())
     }
 
-    async fn publish_many(
+    async fn open_session(
         &self,
         host: &str,
         port: u16,
-        count: i32,
-        prefix: &str,
-        downstream_delay_ms: u64,
-    ) -> Result<i32, String> {
-        let operation_timeout = Duration::from_millis(downstream_delay_ms + CONFIRM_TIMEOUT_MS);
-        let total_timeout = operation_timeout * u32::try_from(count + 8).unwrap_or(108);
-        tokio::time::timeout(total_timeout, async {
+        operation_timeout: Duration,
+    ) -> Result<LapinSession, String> {
+        tokio::time::timeout(session_setup_timeout(operation_timeout), async {
             let connection = Connection::connect_uri(
                 self.uri(host, port, operation_timeout.as_millis() as u64),
                 ConnectionProperties::default().with_connection_name(SERVICE.into()),
@@ -220,78 +453,26 @@ impl RabbitMqPublisher {
                 .confirm_select(ConfirmSelectOptions::default())
                 .await
                 .map_err(|error| error.to_string())?;
-
-            let mut confirmed = 0;
-            for index in 0..count {
-                let payload = format!("{prefix}-{index}");
-                let span = tracing::info_span!(
-                    "perfsim.diesel-svc send",
-                    otel.kind = "PRODUCER",
-                    messaging.system = "rabbitmq",
-                    messaging.destination.name = MESSAGING_DESTINATION,
-                    messaging.operation.type = "send",
-                );
-                let confirmation = tokio::time::timeout(
-                    operation_timeout,
-                    async {
-                        channel
-                            .basic_publish(
-                                MESSAGING_DESTINATION.into(),
-                                MESSAGING_ROUTING_KEY.into(),
-                                BasicPublishOptions {
-                                    mandatory: true,
-                                    ..Default::default()
-                                },
-                                payload.as_bytes(),
-                                BasicProperties::default().with_delivery_mode(2),
-                            )
-                            .await?
-                            .await
-                    }
-                    .instrument(span),
-                )
-                .await
-                .map_err(|_| "RabbitMQ publisher confirm timed out".to_string())?
-                .map_err(|error| error.to_string())?;
-                match confirmation {
-                    Confirmation::Ack(None) => confirmed += 1,
-                    Confirmation::Ack(Some(_)) => {
-                        return Err("RabbitMQ returned an unroutable message".into());
-                    }
-                    Confirmation::Nack(_) => return Err("RabbitMQ rejected a message".into()),
-                    Confirmation::NotRequested => {
-                        return Err("RabbitMQ did not confirm a message".into());
-                    }
-                }
-            }
-
-            channel
-                .close(200, "done".into())
-                .await
-                .map_err(|error| error.to_string())?;
-            connection
-                .close(200, "done".into())
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok(confirmed)
+            Ok(LapinSession {
+                connection,
+                channel,
+            })
         })
         .await
-        .map_err(|_| "RabbitMQ request timed out".to_string())?
+        .map_err(|_| "RabbitMQ session setup timed out".to_string())?
     }
 }
 
 impl MessagingPublisher for RabbitMqPublisher {
     fn publish_sequentially(&self, messages: i32) -> PublishFuture<'_> {
         Box::pin(async move {
-            let confirmed = self
-                .publish_many(
-                    &self.direct_host,
-                    self.direct_port,
-                    messages,
-                    "diesel-message",
-                    0,
-                )
+            let operation_timeout = Duration::from_millis(CONFIRM_TIMEOUT_MS);
+            let session = self
+                .open_session(&self.direct_host, self.direct_port, operation_timeout)
                 .await?;
+            let confirmed =
+                publish_direct_session(&session, messages, "diesel-message", operation_timeout)
+                    .await?;
             Ok(json!({"published": messages, "confirmed": confirmed}))
         })
     }
@@ -299,15 +480,13 @@ impl MessagingPublisher for RabbitMqPublisher {
     fn publish_slowly(&self, delay_ms: i64, repeats: i32) -> PublishFuture<'_> {
         Box::pin(async move {
             self.update_latency(delay_ms).await?;
-            let confirmed = self
-                .publish_many(
-                    &self.slow_host,
-                    self.slow_port,
-                    repeats,
-                    "slow-diesel-message",
-                    delay_ms as u64,
-                )
+            let operation_timeout = Duration::from_millis(delay_ms as u64 + CONFIRM_TIMEOUT_MS);
+            let session = self
+                .open_session(&self.slow_host, self.slow_port, operation_timeout)
                 .await?;
+            let confirmed =
+                publish_slow_session(&session, repeats, "slow-diesel-message", operation_timeout)
+                    .await?;
             Ok(json!({"published": repeats, "confirmed": confirmed, "delay_ms": delay_ms}))
         })
     }
@@ -1047,17 +1226,30 @@ fn internal_messaging_error(error: String) -> (StatusCode, Json<Value>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{MessagingPublisher, PublishFuture, messaging_router};
+    use super::{
+        BoundaryFuture, MessagingPublisher, PublishConfirmation, PublishFuture, PublishSession,
+        messaging_router, publish_direct_session, publish_slow_session, session_setup_timeout,
+    };
     use axum::{body::Body, http::Request};
+    use opentelemetry::trace::{Status, TracerProvider};
+    use opentelemetry_sdk::{
+        error::OTelSdkResult,
+        trace::{SdkTracerProvider, SpanData, SpanExporter},
+    };
     use serde_json::json;
     use std::{
+        collections::VecDeque,
+        fmt,
+        future::{Future, pending},
         process::Command,
         sync::{
-            Arc,
+            Arc, Mutex,
             atomic::{AtomicUsize, Ordering},
         },
+        time::Duration,
     };
     use tower::ServiceExt;
+    use tracing_subscriber::layer::SubscriberExt;
 
     struct RecordingPublisher {
         calls: Arc<AtomicUsize>,
@@ -1074,6 +1266,318 @@ mod tests {
             Box::pin(async move {
                 Ok(json!({"published": repeats, "confirmed": repeats, "delay_ms": delay_ms}))
             })
+        }
+    }
+
+    #[derive(Clone)]
+    enum FakeStep<T> {
+        Ready(Result<T, String>),
+        Pending,
+    }
+
+    struct FakeSession {
+        calls: Arc<Mutex<Vec<String>>>,
+        deferred: Mutex<VecDeque<FakeStep<()>>>,
+        deferred_confirms: Mutex<VecDeque<FakeStep<PublishConfirmation>>>,
+        grouped: Mutex<FakeStep<PublishConfirmation>>,
+    }
+
+    impl FakeSession {
+        fn direct(steps: Vec<FakeStep<()>>, grouped: FakeStep<PublishConfirmation>) -> Self {
+            let confirmations = vec![FakeStep::Ready(Ok(PublishConfirmation::Ack)); steps.len()];
+            Self::direct_with_confirms(steps, confirmations, grouped)
+        }
+
+        fn direct_with_confirms(
+            steps: Vec<FakeStep<()>>,
+            confirmations: Vec<FakeStep<PublishConfirmation>>,
+            grouped: FakeStep<PublishConfirmation>,
+        ) -> Self {
+            Self {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                deferred: Mutex::new(steps.into()),
+                deferred_confirms: Mutex::new(confirmations.into()),
+                grouped: Mutex::new(grouped),
+            }
+        }
+
+        fn slow(steps: Vec<FakeStep<PublishConfirmation>>) -> Self {
+            Self {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                deferred: Mutex::new(vec![FakeStep::Ready(Ok(())); steps.len()].into()),
+                deferred_confirms: Mutex::new(steps.into()),
+                grouped: Mutex::new(FakeStep::Ready(Ok(PublishConfirmation::Ack))),
+            }
+        }
+
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    fn resolve_step<T: Send + 'static>(
+        step: FakeStep<T>,
+    ) -> BoundaryFuture<'static, Result<T, String>> {
+        match step {
+            FakeStep::Ready(result) => Box::pin(async move { result }),
+            FakeStep::Pending => Box::pin(pending()),
+        }
+    }
+
+    impl PublishSession for FakeSession {
+        fn publish<'a>(
+            &'a self,
+            payload: &'a [u8],
+        ) -> BoundaryFuture<'a, Result<super::ConfirmationFuture, String>> {
+            let payload = String::from_utf8_lossy(payload).into_owned();
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("publish:{payload}"));
+            let publish = self.deferred.lock().unwrap().pop_front().unwrap();
+            let confirm = self.deferred_confirms.lock().unwrap().pop_front().unwrap();
+            let calls = self.calls.clone();
+            Box::pin(async move {
+                resolve_step(publish).await?;
+                Ok(Box::pin(async move {
+                    let result = resolve_step(confirm).await;
+                    calls.lock().unwrap().push(format!("confirm:{payload}"));
+                    result
+                }) as super::ConfirmationFuture)
+            })
+        }
+
+        fn wait_for_confirms(&self) -> BoundaryFuture<'_, Result<PublishConfirmation, String>> {
+            self.calls.lock().unwrap().push("group_confirm".into());
+            resolve_step(self.grouped.lock().unwrap().clone())
+        }
+
+        fn close(&self, _timeout: Duration) -> BoundaryFuture<'_, Result<(), String>> {
+            self.calls.lock().unwrap().push("close".into());
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingExporter(Arc<Mutex<Vec<SpanData>>>);
+
+    impl fmt::Debug for RecordingExporter {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.debug_struct("RecordingExporter").finish()
+        }
+    }
+
+    impl SpanExporter for RecordingExporter {
+        async fn export(&self, batch: Vec<SpanData>) -> OTelSdkResult {
+            self.0.lock().unwrap().extend(batch);
+            Ok(())
+        }
+    }
+
+    async fn capture_spans(
+        future: impl Future<Output = Result<i32, String>>,
+    ) -> (Result<i32, String>, Vec<SpanData>) {
+        let exporter = RecordingExporter::default();
+        let provider = SdkTracerProvider::builder()
+            .with_simple_exporter(exporter.clone())
+            .build();
+        let tracer = provider.tracer("diesel-messaging-test");
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_opentelemetry::OpenTelemetryLayer::new(tracer));
+        let dispatch = tracing::Dispatch::new(subscriber);
+        let _guard = tracing::dispatcher::set_default(&dispatch);
+        let result = future.await;
+        provider.force_flush().unwrap();
+        let spans = exporter.0.lock().unwrap().clone();
+        (result, spans)
+    }
+
+    fn assert_error_spans(spans: &[SpanData], count: usize) {
+        assert_eq!(spans.len(), count);
+        for span in spans {
+            assert!(matches!(span.status, Status::Error { .. }));
+            assert!(
+                span.events
+                    .events
+                    .iter()
+                    .any(|event| event.name == "exception")
+            );
+        }
+    }
+
+    #[test]
+    fn slow_session_setup_allows_each_broker_round_trip() {
+        assert_eq!(
+            session_setup_timeout(Duration::from_secs(10)),
+            Duration::from_secs(80)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn direct_publish_batches_one_confirmation_after_all_messages() {
+        let session = FakeSession::direct(
+            vec![FakeStep::Ready(Ok(())); 3],
+            FakeStep::Ready(Ok(PublishConfirmation::Ack)),
+        );
+
+        assert_eq!(
+            publish_direct_session(&session, 3, "direct", Duration::from_secs(1)).await,
+            Ok(3)
+        );
+        assert_eq!(
+            session.calls(),
+            [
+                "publish:direct-0",
+                "publish:direct-1",
+                "publish:direct-2",
+                "group_confirm",
+                "confirm:direct-0",
+                "confirm:direct-1",
+                "confirm:direct-2",
+                "close",
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn slow_publish_confirms_each_message_before_the_next() {
+        let session = FakeSession::slow(vec![
+            FakeStep::Ready(Ok(PublishConfirmation::Ack)),
+            FakeStep::Ready(Ok(PublishConfirmation::Ack)),
+            FakeStep::Ready(Ok(PublishConfirmation::Ack)),
+        ]);
+
+        assert_eq!(
+            publish_slow_session(&session, 3, "slow", Duration::from_secs(1)).await,
+            Ok(3)
+        );
+        assert_eq!(
+            session.calls(),
+            [
+                "publish:slow-0",
+                "confirm:slow-0",
+                "publish:slow-1",
+                "confirm:slow-1",
+                "publish:slow-2",
+                "confirm:slow-2",
+                "close",
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn direct_failures_mark_all_live_spans_and_close() {
+        let cases = [
+            (
+                "wait error",
+                vec![FakeStep::Ready(Ok(())); 2],
+                FakeStep::Ready(Err("wait failed".into())),
+            ),
+            (
+                "returned",
+                vec![FakeStep::Ready(Ok(())); 2],
+                FakeStep::Ready(Ok(PublishConfirmation::Returned)),
+            ),
+            (
+                "nack",
+                vec![FakeStep::Ready(Ok(())); 2],
+                FakeStep::Ready(Ok(PublishConfirmation::Nack)),
+            ),
+            (
+                "not requested",
+                vec![FakeStep::Ready(Ok(())); 2],
+                FakeStep::Ready(Ok(PublishConfirmation::NotRequested)),
+            ),
+        ];
+
+        for (name, publishes, grouped) in cases {
+            let session = FakeSession::direct(publishes, grouped);
+            let (result, spans) = capture_spans(publish_direct_session(
+                &session,
+                2,
+                "direct",
+                Duration::from_secs(1),
+            ))
+            .await;
+            assert!(result.is_err(), "{name}");
+            assert_error_spans(&spans, 2);
+            assert_eq!(session.calls().last().map(String::as_str), Some("close"));
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn direct_per_message_confirmation_failures_are_rejected() {
+        let cases = [
+            FakeStep::Ready(Err("confirmation failed".into())),
+            FakeStep::Ready(Ok(PublishConfirmation::Returned)),
+            FakeStep::Ready(Ok(PublishConfirmation::Nack)),
+            FakeStep::Ready(Ok(PublishConfirmation::NotRequested)),
+            FakeStep::Pending,
+        ];
+
+        for confirmation in cases {
+            let session = FakeSession::direct_with_confirms(
+                vec![FakeStep::Ready(Ok(()))],
+                vec![confirmation],
+                FakeStep::Ready(Ok(PublishConfirmation::Ack)),
+            );
+            let (result, spans) = capture_spans(publish_direct_session(
+                &session,
+                1,
+                "direct",
+                Duration::from_millis(1),
+            ))
+            .await;
+            assert!(result.is_err());
+            assert_error_spans(&spans, 1);
+            assert_eq!(session.calls().last().map(String::as_str), Some("close"));
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn publish_error_and_timeout_mark_spans_and_close() {
+        let cases = [
+            FakeStep::Ready(Err("basic_publish failed".into())),
+            FakeStep::Pending,
+        ];
+
+        for step in cases {
+            let session =
+                FakeSession::direct(vec![step], FakeStep::Ready(Ok(PublishConfirmation::Ack)));
+            let (result, spans) = capture_spans(publish_direct_session(
+                &session,
+                1,
+                "direct",
+                Duration::from_millis(1),
+            ))
+            .await;
+            assert!(result.is_err());
+            assert_error_spans(&spans, 1);
+            assert_eq!(session.calls().last().map(String::as_str), Some("close"));
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn slow_confirmation_failures_mark_the_span_and_close() {
+        let cases = [
+            FakeStep::Ready(Err("confirm failed".into())),
+            FakeStep::Ready(Ok(PublishConfirmation::Returned)),
+            FakeStep::Ready(Ok(PublishConfirmation::Nack)),
+            FakeStep::Ready(Ok(PublishConfirmation::NotRequested)),
+        ];
+
+        for step in cases {
+            let session = FakeSession::slow(vec![step]);
+            let (result, spans) = capture_spans(publish_slow_session(
+                &session,
+                1,
+                "slow",
+                Duration::from_secs(1),
+            ))
+            .await;
+            assert!(result.is_err());
+            assert_error_spans(&spans, 1);
+            assert_eq!(session.calls().last().map(String::as_str), Some("close"));
         }
     }
 
