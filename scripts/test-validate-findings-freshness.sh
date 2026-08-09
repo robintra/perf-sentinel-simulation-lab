@@ -45,11 +45,23 @@ cat > "${TEST_TMP}/bin/kubectl" <<'SH'
 #!/usr/bin/env bash
 if [[ " $* " == *" create configmap "* ]]; then
     printf 'apiVersion: v1\n'
+elif [[ " $* " == *" wait job/"* ]]; then
+    if [[ "${GATE_JOB_STATE:-complete}" == failed ]]; then
+        if [[ " $* " == *"condition=Failed"* ]]; then exit 0; fi
+        /bin/sleep 3
+        exit 1
+    fi
+    if [[ " $* " == *"condition=Complete"* ]]; then exit 0; fi
+    /bin/sleep 3
+    exit 1
+elif [[ " $* " == *" logs job/"* ]]; then
+    echo 'simulated Spring k6 threshold failure' | tee -a "${GATE_JOB_LOG}"
 fi
 SH
 
 cat > "${TEST_TMP}/bin/sleep" <<'SH'
 #!/usr/bin/env bash
+printf '%s\n' "${1:-}" >> "${GATE_SLEEP_LOG}"
 if [[ "${1:-}" == 1 ]]; then
     /bin/sleep 0.05
 fi
@@ -83,7 +95,15 @@ count="$(cat "${CURL_COUNT_FILE}")"
 printf '%s\n' "$((count + 1))" > "${CURL_COUNT_FILE}"
 if [[ "${count}" -eq 0 ]]; then
     cat "${OLD_FINDINGS_FILE}"
+elif [[ "${FINDINGS_MODE}" == "delayed" && "${count}" -le 2 ]]; then
+    cat "${STALE_FINDINGS_FILE}"
+elif [[ "${FINDINGS_MODE}" == "malformed" ]]; then
+    printf '{}\n'
+elif [[ "${FINDINGS_MODE}" == "unreachable" ]]; then
+    exit 22
 elif [[ "${FINDINGS_MODE}" == "fresh" ]]; then
+    cat "${FRESH_FINDINGS_FILE}"
+elif [[ "${FINDINGS_MODE}" == "delayed" ]]; then
     cat "${FRESH_FINDINGS_FILE}"
 else
     cat "${STALE_FINDINGS_FILE}"
@@ -96,17 +116,24 @@ export CURL_COUNT_FILE="${TEST_TMP}/curl-count"
 export OLD_FINDINGS_FILE="${TEST_TMP}/old.json"
 export STALE_FINDINGS_FILE="${TEST_TMP}/stale.json"
 export FRESH_FINDINGS_FILE="${TEST_TMP}/fresh.json"
+export GATE_SLEEP_LOG="${TEST_TMP}/gate-sleep.log"
+export GATE_JOB_LOG="${TEST_TMP}/gate-job.log"
+export GATE_JOB_STATE=complete
 
 source "${REPO_ROOT}/scripts/validate-findings.sh"
 TMP_DIR="${TEST_TMP}/gate"
 REPORT="${TMP_DIR}/validation-report.md"
 
 printf '0\n' > "${CURL_COUNT_FILE}"
+: > "${GATE_SLEEP_LOG}"
 export FINDINGS_MODE=stale
 RESULTS=()
 run_scenario slow-messaging slow_messaging order-service \
     scenarios/slow-messaging.js /api/fault/slow-messaging
-if [[ "${RESULTS[0]}" != FAIL\|slow-messaging\|* ]]; then
+if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|no fresh endpoint-matched finding within 40s of job completion' \
+        || "$(cat "${CURL_COUNT_FILE}")" -ne 7 \
+        || "$(grep -c '^15$' "${GATE_SLEEP_LOG}")" -ne 1 \
+        || "$(grep -c '^5$' "${GATE_SLEEP_LOG}")" -ne 5 ]]; then
     echo "FAIL: stale finding was accepted: ${RESULTS[0]}"
     exit 1
 fi
@@ -122,6 +149,61 @@ if [[ "${RESULTS[0]}" != PASS\|slow-messaging\|* ]]; then
 fi
 
 echo "PASS: stale findings fail and a fresh endpoint-matched trace passes"
+
+printf '0\n' > "${CURL_COUNT_FILE}"
+: > "${GATE_SLEEP_LOG}"
+export FINDINGS_MODE=delayed
+RESULTS=()
+run_scenario slow-messaging slow_messaging order-service \
+    scenarios/slow-messaging.js /api/fault/slow-messaging
+if [[ "${RESULTS[0]}" != PASS\|slow-messaging\|* ]]; then
+    echo "FAIL: delayed fresh finding was rejected: ${RESULTS[0]}"
+    exit 1
+fi
+if [[ "$(cat "${CURL_COUNT_FILE}")" -ne 4 \
+        || "$(grep -c '^15$' "${GATE_SLEEP_LOG}")" -ne 1 \
+        || "$(grep -c '^5$' "${GATE_SLEEP_LOG}")" -ne 2 ]]; then
+    echo "FAIL: delayed finding did not use initial 15s plus bounded 5s probes"
+    cat "${GATE_SLEEP_LOG}"
+    exit 1
+fi
+
+echo "PASS: foundation runner polls until a delayed fresh finding appears"
+
+for failure_mode in malformed unreachable; do
+    printf '0\n' > "${CURL_COUNT_FILE}"
+    : > "${GATE_SLEEP_LOG}"
+    export FINDINGS_MODE="${failure_mode}"
+    RESULTS=()
+    run_scenario slow-messaging slow_messaging order-service \
+        scenarios/slow-messaging.js /api/fault/slow-messaging
+    if [[ "${RESULTS[0]}" != FAIL\|slow-messaging\|* \
+            || "$(cat "${CURL_COUNT_FILE}")" -ne 2 \
+            || "$(grep -c '^5$' "${GATE_SLEEP_LOG}" || true)" -ne 0 ]]; then
+        echo "FAIL: ${failure_mode} daemon response did not fail on the first probe: ${RESULTS[0]}"
+        exit 1
+    fi
+done
+
+echo "PASS: malformed and unreachable findings fail on the first probe"
+
+printf '0\n' > "${CURL_COUNT_FILE}"
+: > "${GATE_JOB_LOG}"
+export FINDINGS_MODE=fresh
+export GATE_JOB_STATE=failed
+RESULTS=()
+SECONDS=0
+run_scenario slow-messaging slow_messaging order-service \
+    scenarios/slow-messaging.js /api/fault/slow-messaging
+if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|k6 Job Failed condition' \
+        || "${SECONDS}" -ge 2 \
+        || ! -s "${GATE_JOB_LOG}" ]]; then
+    echo "FAIL: foundation runner did not diagnose the failed Job promptly: ${RESULTS[0]}"
+    exit 1
+fi
+export GATE_JOB_STATE=complete
+
+echo "PASS: foundation runner diagnoses a failed k6 Job promptly"
 
 # Exercise the Task 1 sequential runner itself. A trace observed before the Job
 # stays stale even if a later finding reports it under the expected endpoint.

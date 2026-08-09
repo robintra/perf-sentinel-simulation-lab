@@ -38,6 +38,40 @@ SCENARIOS=(
 
 declare -a RESULTS
 
+wait_for_job() {
+    local job_name="$1" complete_flag failed_flag complete_pid failed_pid
+    complete_flag="${TMP_DIR}/${job_name}-complete"
+    failed_flag="${TMP_DIR}/${job_name}-failed"
+    rm -f "${complete_flag}" "${failed_flag}"
+    (kubectl -n "${NAMESPACE}" wait "job/${job_name}" --for=condition=Complete --timeout=120s >/dev/null 2>&1 \
+        && : > "${complete_flag}") &
+    complete_pid=$!
+    (kubectl -n "${NAMESPACE}" wait "job/${job_name}" --for=condition=Failed --timeout=120s >/dev/null 2>&1 \
+        && : > "${failed_flag}") &
+    failed_pid=$!
+
+    while true; do
+        if [ -f "${complete_flag}" ]; then
+            JOB_STATE=Complete
+            break
+        fi
+        if [ -f "${failed_flag}" ]; then
+            JOB_STATE=Failed
+            break
+        fi
+        if ! kill -0 "${complete_pid}" 2>/dev/null && ! kill -0 "${failed_pid}" 2>/dev/null; then
+            JOB_STATE=Timeout
+            break
+        fi
+        sleep 1
+    done
+
+    kill "${complete_pid}" "${failed_pid}" 2>/dev/null || true
+    wait "${complete_pid}" "${failed_pid}" 2>/dev/null || true
+    rm -f "${complete_flag}" "${failed_flag}"
+    [ "${JOB_STATE}" = Complete ]
+}
+
 run_scenario() {
     local name="$1" finding_type="$2" service="$3" file="$4" endpoint="$5"
     local baseline_file="${TMP_DIR}/k6-${name}-baseline-trace-ids.json"
@@ -45,12 +79,19 @@ run_scenario() {
 
     color_blue "==> ${name} (expects type=${finding_type} service=${service} endpoint=${endpoint})"
 
-    if ! curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" \
+    if ! curl --connect-timeout 3 --max-time 10 -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" \
             | python3 -c '
 import json, sys
 items = json.load(sys.stdin)
 def unwrap(item):
-    return item.get("finding", item) if isinstance(item, dict) else {}
+    if not isinstance(item, dict):
+        raise TypeError
+    finding = item.get("finding", item)
+    if not isinstance(finding, dict):
+        raise TypeError
+    return finding
+if not isinstance(items, list):
+    raise TypeError
 print(json.dumps(sorted({f["trace_id"] for item in items if (f := unwrap(item)).get("trace_id")})))
 ' > "${baseline_file}"; then
         color_red "    FAIL (could not snapshot existing daemon trace IDs)"
@@ -105,32 +146,36 @@ spec:
             name: k6-scenario-${name}
 EOF
 
-    if kubectl -n "${NAMESPACE}" wait "job/k6-${name}" \
-            --for=condition=Complete --timeout=120s >/dev/null 2>&1; then
+    JOB_STATE=""
+    if wait_for_job "k6-${name}"; then
         color_green "    k6 job completed"
     else
-        color_red "    k6 job did not complete in 120s"
-        RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|k6 job timeout")
+        if [ "${JOB_STATE}" = Failed ]; then
+            color_red "    k6 Job Failed; logs follow"
+            kubectl -n "${NAMESPACE}" logs "job/k6-${name}" --all-containers=true --tail=100 >&2 || true
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|k6 Job Failed condition")
+        else
+            color_red "    k6 job did not complete in 120s"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|k6 job timeout")
+        fi
         kubectl -n "${NAMESPACE}" delete "job/k6-${name}" --ignore-not-found >/dev/null
         kubectl -n "${NAMESPACE}" delete "configmap/k6-scenario-${name}" --ignore-not-found >/dev/null
         rm -f "${baseline_file}"
         return
     fi
 
-    color_blue "    waiting 15s for daemon to flush traces"
+    color_blue "    waiting 15s, then polling findings up to 6 times every 5s (40s deadline)"
     sleep 15
 
-    local findings_json count note=""
-    if ! findings_json="$(curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" 2>&1)"; then
-        color_red "    FAIL (daemon /api/findings unreachable)"
-        RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon /api/findings unreachable")
-        kubectl -n "${NAMESPACE}" delete "job/k6-${name}" --ignore-not-found >/dev/null
-        kubectl -n "${NAMESPACE}" delete "configmap/k6-scenario-${name}" --ignore-not-found >/dev/null
-        rm -f "${baseline_file}"
-        return
-    fi
+    local findings_json count note="" attempt
+    for attempt in 1 2 3 4 5 6; do
+        if ! findings_json="$(curl --connect-timeout 3 --max-time 10 -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true" 2>&1)"; then
+            color_red "    FAIL (daemon /api/findings unreachable)"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon /api/findings unreachable")
+            break
+        fi
 
-    count="$(printf "%s" "${findings_json}" | EXPECTED_TYPE="${finding_type}" \
+        count="$(printf "%s" "${findings_json}" | EXPECTED_TYPE="${finding_type}" \
             EXPECTED_SERVICE="${service}" EXPECTED_ENDPOINT="${endpoint}" \
             BASELINE_FILE="${baseline_file}" STARTED_AT_MS="${started_at_ms}" python3 -c "
 import json, os, sys
@@ -138,6 +183,8 @@ try:
     items = json.load(sys.stdin)
     with open(os.environ['BASELINE_FILE']) as stream:
         baseline_trace_ids = set(json.load(stream))
+    if not isinstance(items, list):
+        raise TypeError
 except (json.JSONDecodeError, OSError, TypeError, ValueError):
     print(-1)
     sys.exit(0)
@@ -146,26 +193,41 @@ expected_service = os.environ['EXPECTED_SERVICE']
 expected_endpoint = os.environ['EXPECTED_ENDPOINT']
 started_at_ms = int(os.environ['STARTED_AT_MS'])
 def unwrap(it):
-    return it.get('finding', it) if isinstance(it, dict) else {}
-matched = [f for it in items if (f := unwrap(it)).get('type') == expected_type
-           and f.get('service') == expected_service
-           and f.get('source_endpoint') == expected_endpoint
-           and f.get('trace_id') not in baseline_trace_ids
-           and isinstance(it.get('stored_at_ms'), (int, float))
-           and it['stored_at_ms'] > started_at_ms]
+    if not isinstance(it, dict):
+        raise TypeError
+    finding = it.get('finding', it)
+    if not isinstance(finding, dict):
+        raise TypeError
+    return finding
+try:
+    matched = [f for it in items if (f := unwrap(it)).get('type') == expected_type
+               and f.get('service') == expected_service
+               and f.get('source_endpoint') == expected_endpoint
+               and f.get('trace_id') not in baseline_trace_ids
+               and isinstance(it.get('stored_at_ms'), (int, float))
+               and it['stored_at_ms'] > started_at_ms]
+except TypeError:
+    print(-1)
+    sys.exit(0)
 print(len(matched))
 " 2>/dev/null || echo -1)"
 
-    if [ "${count}" = "-1" ]; then
-        color_red "    FAIL (daemon returned malformed JSON)"
-        RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon returned malformed JSON")
-    elif [ "${count:-0}" -ge 1 ]; then
-        color_green "    PASS (${count} matching findings)"
-        RESULTS+=("PASS|${name}|${finding_type}|${service}|${count}|")
-    else
-        color_red "    FAIL (0 matching findings)"
-        RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within 15s of job completion")
-    fi
+        if [ "${count}" = "-1" ]; then
+            color_red "    FAIL (daemon returned malformed JSON)"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|daemon returned malformed JSON")
+            break
+        elif [ "${count:-0}" -ge 1 ]; then
+            color_green "    PASS (${count} matching findings on probe ${attempt}/6)"
+            RESULTS+=("PASS|${name}|${finding_type}|${service}|${count}|")
+            break
+        elif [ "${attempt}" -eq 6 ]; then
+            color_red "    FAIL (0 matching findings by the 40s deadline)"
+            RESULTS+=("FAIL|${name}|${finding_type}|${service}|0|no fresh endpoint-matched finding within 40s of job completion")
+        else
+            color_yellow "    no match on probe ${attempt}/6; retrying in 5s"
+            sleep 5
+        fi
+    done
 
     kubectl -n "${NAMESPACE}" delete "job/k6-${name}" --ignore-not-found >/dev/null
     kubectl -n "${NAMESPACE}" delete "configmap/k6-scenario-${name}" --ignore-not-found >/dev/null
@@ -220,7 +282,7 @@ print_summary() {
 main() {
     local max_probe_attempts=5 probe_sleep_s=2 attempt=1
     while [ "${attempt}" -le "${max_probe_attempts}" ]; do
-        if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
+        if curl --connect-timeout 3 --max-time 10 -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
             break
         fi
         if [ "${attempt}" -eq "${max_probe_attempts}" ]; then
