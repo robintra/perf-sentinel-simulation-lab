@@ -99,9 +99,13 @@ export class MessagingService {
             session.channel,
             `slow-nest-message-${index}`,
             timeoutMs,
+          ).then(
+            () => undefined,
+            (error: unknown) => asError(error),
           );
           await bounded(session.channel.waitForConfirms(), timeoutMs, 'RabbitMQ confirmation');
-          await confirmation;
+          const confirmationError = await confirmation;
+          if (confirmationError) throw confirmationError;
           if (!returnedBefore && session.returned()) {
             throw new Error('RabbitMQ returned a mandatory message');
           }

@@ -9,6 +9,8 @@ import { MessagingService } from './messaging.service';
 import { PgPoolService } from '../prisma/pg-pool.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+const amqplib = require('amqplib') as typeof import('amqplib');
+
 describe('messaging invalid contract', () => {
   let app: INestApplication;
   const publishSequentially = jest.fn(async (messages: number) => ({
@@ -134,6 +136,77 @@ describe('messaging invalid contract', () => {
       );
     } finally {
       activeSpanSpy.mockRestore();
+    }
+  });
+
+  it('returns HTTP 200 for the historical fault handlers too', async () => {
+    await request(app.getHttpServer()).post('/api/fault/n-plus-one-sql?items=1').expect(200);
+  });
+
+  it('observes a slow publisher nack before waiting and still closes the session', async () => {
+    const channelClose = jest.fn(async () => undefined);
+    const connectionClose = jest.fn(async () => undefined);
+    const channel = {
+      assertExchange: jest.fn(async () => undefined),
+      assertQueue: jest.fn(async () => undefined),
+      bindQueue: jest.fn(async () => undefined),
+      on: jest.fn().mockReturnThis(),
+      publish: jest.fn((...args: unknown[]) => {
+        const callback = args[4] as (error: Error) => void;
+        queueMicrotask(() => callback(new Error('publisher nack')));
+        return true;
+      }),
+      waitForConfirms: jest.fn(
+        () =>
+          new Promise<void>((_, reject) =>
+            queueMicrotask(() => reject(new Error('group nack'))),
+          ),
+      ),
+      close: channelClose,
+    };
+    const connection = {
+      createConfirmChannel: jest.fn(async () => channel),
+      close: connectionClose,
+    };
+    const connectSpy = jest.spyOn(amqplib, 'connect').mockResolvedValue(connection as never);
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({ status: 200, ok: true } as Response);
+    const previousUsername = process.env.RABBITMQ_USERNAME;
+    const previousPassword = process.env.RABBITMQ_PASSWORD;
+    process.env.RABBITMQ_USERNAME = 'test-user';
+    process.env.RABBITMQ_PASSWORD = 'test-password';
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    let realServiceApp: INestApplication | undefined;
+    try {
+      const module = await Test.createTestingModule({
+        controllers: [FaultController],
+        providers: [
+          MessagingService,
+          { provide: PrismaService, useValue: {} },
+          { provide: PgPoolService, useValue: {} },
+          { provide: HttpService, useValue: {} },
+        ],
+      }).compile();
+      realServiceApp = module.createNestApplication();
+      await realServiceApp.listen(0, '127.0.0.1');
+      await request(realServiceApp.getHttpServer())
+        .post('/api/fault/slow-messaging?delayMs=600&repeats=3&broker=rabbitmq')
+        .expect(500)
+        .expect(({ body }) => expect(body.message).toBe('RabbitMQ operation failed'));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+      expect(channelClose).toHaveBeenCalledTimes(1);
+      expect(connectionClose).toHaveBeenCalledTimes(1);
+    } finally {
+      await realServiceApp?.close();
+      process.off('unhandledRejection', onUnhandled);
+      connectSpy.mockRestore();
+      fetchSpy.mockRestore();
+      if (previousUsername === undefined) delete process.env.RABBITMQ_USERNAME;
+      else process.env.RABBITMQ_USERNAME = previousUsername;
+      if (previousPassword === undefined) delete process.env.RABBITMQ_PASSWORD;
+      else process.env.RABBITMQ_PASSWORD = previousPassword;
     }
   });
 });

@@ -3,7 +3,6 @@ import {
   CallHandler,
   Controller,
   ExecutionContext,
-  HttpCode,
   Injectable,
   InternalServerErrorException,
   NestInterceptor,
@@ -48,10 +47,12 @@ function rabbitMqBroker(value: unknown): void {
 @Injectable()
 export class FaultRouteInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler) {
-    const request = context.switchToHttp().getRequest<{
+    const http = context.switchToHttp();
+    const request = http.getRequest<{
       baseUrl?: unknown;
       route?: { path?: unknown };
     }>();
+    http.getResponse<{ status(code: number): unknown }>().status(200);
     const baseUrl = request.baseUrl;
     const routePath = request.route?.path;
     if (typeof baseUrl === 'string' && typeof routePath === 'string') {
@@ -273,7 +274,6 @@ export class FaultController {
   // === Messaging anti-patterns =============================================
 
   @Post('n-plus-one-messaging')
-  @HttpCode(200)
   async nPlusOneMessaging(
     @Query('messages') messages: unknown,
     @Query('broker') broker: unknown,
@@ -290,7 +290,6 @@ export class FaultController {
   }
 
   @Post('slow-messaging')
-  @HttpCode(200)
   async slowMessaging(
     @Query('delayMs') delayMs: unknown,
     @Query('repeats') repeats: unknown,

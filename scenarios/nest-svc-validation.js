@@ -20,9 +20,7 @@ function postChecked(path, requested = null) {
     let body = null;
     try { body = r.json(); } catch (_) { /* checked below */ }
     const valid = check(r, {
-        'HTTP success': (response) => requested === null
-            ? response.status >= 200 && response.status < 300
-            : response.status === 200,
+        'HTTP 200': (response) => response.status === 200,
         'JSON object': () => body !== null && typeof body === 'object',
         'messaging confirms requested count': () => requested === null || (
             body.details && body.details.published === requested &&
