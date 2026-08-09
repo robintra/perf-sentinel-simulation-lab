@@ -3,30 +3,39 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "nest build",
+    "build": "node -e \"require('node:fs').rmSync('tsconfig.tsbuildinfo',{force:true})\" && nest build",
     "start": "node dist/main.js",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test": "jest --config jest.config.cjs --runInBand",
+    "test:messaging-negative": "npm run build && npm test"
   },
   "dependencies": {
     "@nestjs/axios": "4.0.1",
-    "@nestjs/common": "11.1.23",
-    "@nestjs/core": "11.1.23",
-    "@nestjs/platform-express": "11.1.23",
-    "@opentelemetry/exporter-trace-otlp-http": "0.218.0",
-    "@opentelemetry/instrumentation-http": "0.218.0",
-    "@opentelemetry/instrumentation-pg": "0.70.0",
-    "@opentelemetry/sdk-node": "0.218.0",
-    "@opentelemetry/sdk-trace-node": "2.7.1",
+    "@nestjs/common": "11.1.28",
+    "@nestjs/core": "11.1.28",
+    "@nestjs/platform-express": "11.1.28",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.221.0",
+    "@opentelemetry/instrumentation-http": "0.221.0",
+    "@opentelemetry/instrumentation-pg": "0.73.0",
+    "@opentelemetry/sdk-node": "0.221.0",
+    "@opentelemetry/sdk-trace-node": "2.10.0",
     "@prisma/client": "6.19.3",
     "@prisma/instrumentation": "6.19.3",
-    "axios": "1.16.1",
+    "amqplib": "2.0.1",
+    "axios": "1.19.0",
     "pg": "8.21.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"
   },
   "devDependencies": {
-    "@nestjs/cli": "11.0.21",
+    "@nestjs/cli": "11.0.24",
+    "@nestjs/testing": "11.1.28",
+    "@types/jest": "30.0.0",
+    "@types/supertest": "7.2.1",
+    "jest": "30.4.2",
     "prisma": "6.19.3",
+    "supertest": "7.2.2",
     "typescript": "6.0.3"
   }
 }

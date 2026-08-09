@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { FaultController } from './fault.controller';
+import { FaultController, FaultRouteInterceptor } from './fault.controller';
+import { MessagingService } from './messaging.service';
 
 @Module({
   imports: [
@@ -10,5 +11,6 @@ import { FaultController } from './fault.controller';
     }),
   ],
   controllers: [FaultController],
+  providers: [MessagingService, FaultRouteInterceptor],
 })
 export class FaultModule {}

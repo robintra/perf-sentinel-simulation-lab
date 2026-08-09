@@ -1,7 +1,21 @@
-import { Controller, Post, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  CallHandler,
+  Controller,
+  ExecutionContext,
+  HttpCode,
+  Injectable,
+  InternalServerErrorException,
+  NestInterceptor,
+  Post,
+  Query,
+  UseInterceptors,
+} from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import { PrismaService } from '../prisma/prisma.service';
 import { PgPoolService } from '../prisma/pg-pool.service';
+import { MessagingService } from './messaging.service';
 import { firstValueFrom } from 'rxjs';
 
 const SERVICE = 'nest-svc';
@@ -17,12 +31,44 @@ function envelope(antiPattern: string, start: number, details: Record<string, un
   };
 }
 
+function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) throw new BadRequestException();
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new BadRequestException();
+  }
+  return parsed;
+}
+
+function rabbitMqBroker(value: unknown): void {
+  if (value !== 'rabbitmq') throw new BadRequestException();
+}
+
+@Injectable()
+export class FaultRouteInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler) {
+    const request = context.switchToHttp().getRequest<{
+      baseUrl?: unknown;
+      route?: { path?: unknown };
+    }>();
+    const baseUrl = request.baseUrl;
+    const routePath = request.route?.path;
+    if (typeof baseUrl === 'string' && typeof routePath === 'string') {
+      trace.getActiveSpan()?.setAttribute('http.route', `${baseUrl}${routePath}`);
+    }
+    return next.handle();
+  }
+}
+
 @Controller('api/fault')
+@UseInterceptors(FaultRouteInterceptor)
 export class FaultController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pgPool: PgPoolService,
     private readonly http: HttpService,
+    private readonly messaging: MessagingService,
   ) {}
 
   // === SQL anti-patterns =====================================================
@@ -49,9 +95,29 @@ export class FaultController {
     const start = Date.now();
     let total = 0;
     for (let i = 0; i < n; i++) {
-      const count = await this.prisma.payment.count({
-        where: { customerId: 1n },
-      });
+      const count = await trace.getTracer(FaultController.name).startActiveSpan(
+        'SELECT nest.payments',
+        {
+          kind: SpanKind.CLIENT,
+          attributes: {
+            'db.system': 'postgresql',
+            'db.statement': 'SELECT count(*) FROM nest.payments WHERE customer_id = 1',
+            'db.operation': 'SELECT',
+          },
+        },
+        async (span) => {
+          try {
+            return await this.prisma.payment.count({ where: { customerId: 1n } });
+          } catch (error) {
+            const exception = error instanceof Error ? error : new Error(String(error));
+            span.recordException(exception);
+            span.setStatus({ code: SpanStatusCode.ERROR, message: exception.message });
+            throw exception;
+          } finally {
+            span.end();
+          }
+        },
+      );
       total += count;
     }
     return envelope('redundant_sql', start, {
@@ -202,5 +268,43 @@ export class FaultController {
     return envelope('serialized_calls', start, {
       steps: n, steps_ok: ok, wall_clock_ms: wallClockMs,
     });
+  }
+
+  // === Messaging anti-patterns =============================================
+
+  @Post('n-plus-one-messaging')
+  @HttpCode(200)
+  async nPlusOneMessaging(
+    @Query('messages') messages: unknown,
+    @Query('broker') broker: unknown,
+  ) {
+    const count = boundedInteger(messages, 8, 5, 100);
+    rabbitMqBroker(broker);
+    const start = Date.now();
+    try {
+      const details = await this.messaging.publishSequentially(count);
+      return envelope('n_plus_one_messaging', start, details);
+    } catch {
+      throw new InternalServerErrorException('RabbitMQ operation failed');
+    }
+  }
+
+  @Post('slow-messaging')
+  @HttpCode(200)
+  async slowMessaging(
+    @Query('delayMs') delayMs: unknown,
+    @Query('repeats') repeats: unknown,
+    @Query('broker') broker: unknown,
+  ) {
+    const delay = boundedInteger(delayMs, 600, 501, 5_000);
+    const count = boundedInteger(repeats, 3, 3, 20);
+    rabbitMqBroker(broker);
+    const start = Date.now();
+    try {
+      const details = await this.messaging.publishSlowly(delay, count);
+      return envelope('slow_messaging', start, details);
+    } catch {
+      throw new InternalServerErrorException('RabbitMQ operation failed');
+    }
   }
 }
