@@ -56,11 +56,11 @@ func NewFromEnv() (*Client, error) {
 	if username == "" || password == "" {
 		return nil, errors.New("RABBITMQ_USERNAME and RABBITMQ_PASSWORD are required")
 	}
-	direct, err := addressFromEnv("RABBITMQ_HOST", "rabbitmq.rabbitmq.svc.cluster.local", "RABBITMQ_PORT", 5672)
+	direct, err := addressFromEnv("RABBITMQ_HOST", "rabbitmq.messaging.svc.cluster.local", "RABBITMQ_PORT", 5672)
 	if err != nil {
 		return nil, err
 	}
-	slow, err := addressFromEnv("RABBITMQ_SLOW_HOST", "toxiproxy.rabbitmq.svc.cluster.local", "RABBITMQ_SLOW_PORT", 5673)
+	slow, err := addressFromEnv("RABBITMQ_SLOW_HOST", "toxiproxy.messaging.svc.cluster.local", "RABBITMQ_SLOW_PORT", 25672)
 	if err != nil {
 		return nil, err
 	}
