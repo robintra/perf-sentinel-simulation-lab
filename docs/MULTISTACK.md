@@ -7,11 +7,14 @@ distinct stacks (Quarkus,
 Quarkus+Mutiny, Helidon SE, Helidon MP, .NET 10, Rust+Diesel, Rust+SeaORM,
 NestJS, Django, FastAPI, Go, Rails, Laravel, Symfony, Kotlin+Ktor).
 
-Every stack reproduces the same **12 perf-sentinel finding types** in its own
-native runtime/ORM/HTTP/messaging clients: the 10 HTTP-triggered anti-patterns
-below plus `n_plus_one_messaging` and `slow_messaging`. This validates the
-detectors against the wire-format diversity an operator hits in production,
-not just against one canonical implementation.
+The target contract contains **12 perf-sentinel finding types**: the 10
+HTTP-triggered anti-patterns below plus `n_plus_one_messaging` and
+`slow_messaging`. The full 12-type contract is currently implemented by the
+Spring baseline, Quarkus, Mutiny, Helidon SE, Helidon MP, Ktor, Django,
+FastAPI, Laravel, and Symfony. Diesel, SeaORM, Rails, NestJS, .NET, and Go
+retain their historical 10-type HTTP coverage until their messaging adapters
+land in Tasks 10–15. This staged coverage validates the detectors against the
+wire-format diversity an operator hits in production.
 
 ## HTTP contract: 10 fault endpoints + 3 business endpoints
 
@@ -292,13 +295,18 @@ Per-stack validation flow (run in sequence by the multistack harness):
    `/api/findings` and asserts at least one finding per anti-pattern type
    with `service = <stack>-svc`.
 
-Success criterion per stack: the default 10/10 gate and the messaging 2/2
-gate both pass. The Java baseline must keep returning 12/12 (regression
-guard).
+Current success criteria follow the rollout state:
 
-End-to-end target after the 15 additional stacks are landed: all **18
-services** satisfy the current finding contract exposed by the daemon
-`/api/findings`, with non-regression on the Java baseline.
+- Spring, Quarkus, Mutiny, Helidon SE, Helidon MP, Ktor, Django, FastAPI,
+  Laravel, and Symfony must pass the default 10/10 gate and the messaging 2/2
+  gate. The Spring baseline's combined regression gate remains 12/12.
+- Diesel, SeaORM, Rails, NestJS, .NET, and Go must retain their historical
+  default 10/10 gate. Their messaging 2/2 gates become mandatory with Tasks
+  10–15.
+
+The end-to-end target after Tasks 10–15 is for all **18 services** to satisfy
+the 12-type contract exposed by the daemon `/api/findings`, with
+non-regression on the Java baseline.
 
 ## Stack-specific release notes
 
