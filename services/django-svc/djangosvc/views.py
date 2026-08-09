@@ -221,6 +221,49 @@ def slow_http(request):
     })
 
 
+# === Messaging faults =====================================================
+
+def _bounded_int(request, name, default, minimum, maximum):
+    try:
+        value = int(request.GET.get(name, str(default)) or str(default))
+    except ValueError:
+        return None
+    return value if minimum <= value <= maximum else None
+
+
+@csrf_exempt
+@require_POST
+def n_plus_one_messaging(request):
+    messages = _bounded_int(request, "messages", 8, 5, 100)
+    if request.GET.get("broker", "rabbitmq") != "rabbitmq" or messages is None:
+        return JsonResponse({"error": "invalid messaging parameters"}, status=400)
+
+    from djangosvc import messaging
+
+    start = time.monotonic()
+    details = messaging.publish_sequentially(messages)
+    return _envelope("n_plus_one_messaging", start, details)
+
+
+@csrf_exempt
+@require_POST
+def slow_messaging(request):
+    delay_ms = _bounded_int(request, "delayMs", 600, 501, 5000)
+    repeats = _bounded_int(request, "repeats", 3, 3, 20)
+    if (
+        request.GET.get("broker", "rabbitmq") != "rabbitmq"
+        or delay_ms is None
+        or repeats is None
+    ):
+        return JsonResponse({"error": "invalid messaging parameters"}, status=400)
+
+    from djangosvc import messaging
+
+    start = time.monotonic()
+    details = messaging.publish_slowly(delay_ms, repeats)
+    return _envelope("slow_messaging", start, details)
+
+
 @csrf_exempt
 @require_POST
 def fanout(request):
