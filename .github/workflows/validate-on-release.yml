@@ -509,7 +509,7 @@ jobs:
     needs: validate
     if: success()
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 360
     permissions:
       contents: read
 
@@ -567,12 +567,12 @@ jobs:
           printf '%s' "${EM_TOKEN}" > .electricity-maps-token
           chmod 600 .electricity-maps-token
 
-      - name: Free up runner disk space (multistack builds 14 images)
+      - name: Free up runner disk space (multistack builds 15 images)
         run: |
           echo "disk before:"; df -h / | tail -1
           # Service images build inside Docker, so the runner's preinstalled
           # language SDKs are dead weight. Reclaiming them before the cluster
-          # and the 12 image builds avoids the node disk-pressure eviction storm
+          # and the 15 image builds avoids the node disk-pressure eviction storm
           # that aborted seeding (postgres + grafana evicted, go-svc left Pending).
           # Keep /opt/hostedtoolcache (helm + kubectl live there); only drop CodeQL.
           sudo rm -rf /usr/share/dotnet /usr/share/swift /usr/local/lib/android \
@@ -591,11 +591,15 @@ jobs:
           kubectl apply -f manifests/postgres-multistack-schemas.yaml
           kubectl -n db wait --for=condition=Complete job/postgres-multistack-schemas --timeout=120s
 
-      - name: Seed multistack services (build + import + deploy all 14)
+      - name: Seed multistack services (build + import all 15, leave scaled down)
         run: |
-          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm rails laravel symfony; do
+          set -euo pipefail
+          for stack in quarkus mutiny helidon-se helidon-mp ktor django fastapi laravel symfony diesel seaorm rails nest dotnet go; do
             echo "::group::seed-${stack}-svc"
             make "seed-${stack}-svc"
+            kubectl -n shop scale "deployment/${stack}-svc" --replicas=0
+            kubectl -n shop wait --for=delete pod \
+              -l "app.kubernetes.io/name=${stack}-svc" --timeout=120s
             echo "::endgroup::"
           done
           kubectl get pods -n shop
@@ -614,23 +618,32 @@ jobs:
             sleep 1
           done
 
-      - name: Validate multistack (14 stacks x 10 anti-patterns)
+      - name: Validate multistack (15 stacks x 12 anti-patterns)
         run: |
+          set -euo pipefail
           PASS=0; FAIL=0; RESULTS=""
-          for stack in quarkus mutiny helidon-mp helidon-se dotnet go nest django fastapi diesel seaorm rails laravel symfony; do
+          for stack in quarkus mutiny helidon-se helidon-mp ktor django fastapi laravel symfony diesel seaorm rails nest dotnet go; do
             echo "::group::${stack}-svc"
+            kubectl -n shop scale "deployment/${stack}-svc" --replicas=1
+            kubectl -n shop rollout status "deployment/${stack}-svc" --timeout=300s
+            rm -f "tmp/validation-report-${stack}-svc.md"
             if ./scripts/run-multistack-scenario.sh "${stack}"; then
-              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ PASS' | grep -oE '^[0-9]+' || echo "0")
-              PASS=$((PASS + ${score:-0}))
-              RESULTS="${RESULTS}${stack}-svc: ${score:-?}/10 PASS\n"
+              scenario_status=PASS
             else
-              score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ PASS' | grep -oE '^[0-9]+' || echo "0")
-              total=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ anti-patterns' | grep -oE '^[0-9]+' || echo "10")
-              fails=$((${total:-10} - ${score:-0}))
-              FAIL=$((FAIL + fails))
-              PASS=$((PASS + ${score:-0}))
-              RESULTS="${RESULTS}${stack}-svc: ${score:-?}/10 (${fails} FAIL)\n"
+              scenario_status=FAIL
             fi
+            score=$(tail -1 "tmp/validation-report-${stack}-svc.md" 2>/dev/null | grep -oE '[0-9]+ PASS' | grep -oE '^[0-9]+' || true)
+            score=${score:-0}
+            if ! [[ "${score}" =~ ^[0-9]+$ ]] || [ "${score}" -gt 12 ]; then
+              score=0
+            fi
+            fails=$((12 - score))
+            PASS=$((PASS + score))
+            FAIL=$((FAIL + fails))
+            RESULTS="${RESULTS}${stack}-svc: ${score}/12 (${fails} FAIL, runner ${scenario_status})\n"
+            kubectl -n shop scale "deployment/${stack}-svc" --replicas=0
+            kubectl -n shop wait --for=delete pod \
+              -l "app.kubernetes.io/name=${stack}-svc" --timeout=120s
             echo "::endgroup::"
           done
           echo "========================================="
@@ -638,19 +651,26 @@ jobs:
           echo "========================================="
           printf '%b' "${RESULTS}"
           TOTAL=$((PASS + FAIL))
-          # 128/140 preserves the original 110/120 (91.7%) proportional pass rate:
-          # the 14 stacks keep the same per-stack flakiness budget. Known deterministic
-          # misses inside that budget (issue #69): symfony slow_sql (the doctrine/pdo
-          # instrumentation puts db.statement and the query duration on different
-          # spans, so the daemon only ever sees 0ms SQL events for it), dotnet
-          # n_plus_one_http (upstream gap #23), nest redundant_sql. Requires the
-          # pinned daemon to carry the PHP framework tagging (0.9.4+); the
-          # run-multistack matcher asserts it.
-          echo "Total: ${PASS}/${TOTAL} (threshold: 128/140)"
-          if [ "${PASS}" -lt 128 ]; then
-            echo "::error::multistack validation below threshold: ${PASS}/${TOTAL} < 128/140"
+          echo "Total: ${PASS}/${TOTAL} (required: 180/180)"
+          if [ "${PASS}" -ne 180 ] || [ "${FAIL}" -ne 0 ]; then
+            echo "::error::multistack validation failed: ${PASS}/${TOTAL}, ${FAIL} failed"
             exit 1
           fi
+
+      - name: Scale multistack services down and remove validation workloads
+        if: always()
+        run: |
+          for stack in quarkus mutiny helidon-se helidon-mp ktor django fastapi laravel symfony diesel seaorm rails nest dotnet go; do
+            kubectl -n shop scale "deployment/${stack}-svc" --replicas=0 2>/dev/null || true
+          done
+          kubectl -n shop get jobs -o name 2>/dev/null \
+            | grep '^job.batch/k6-' \
+            | xargs -r kubectl -n shop delete || true
+          kubectl -n shop get configmaps -o name 2>/dev/null \
+            | grep '^configmap/k6-' \
+            | xargs -r kubectl -n shop delete || true
+          pkill -f "kubectl.*port-forward" 2>/dev/null || true
+          rm -f tmp/pf-*.pid
 
       - name: Show daemon logs (debug)
         if: always()

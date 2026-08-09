@@ -279,16 +279,16 @@ seed-seaorm-svc: ## Build + import + helm install the Rust + SeaORM 1.1 async mu
 seed-rails-svc: ## Build + import + helm install the Rails 8 + Active Record (Ruby 4.0) multistack member
 	./scripts/seed-rails-svc.sh
 
-seed-laravel-svc: ## Build + import + helm install the Laravel 11 + Eloquent (PHP 8.3, native OTel) multistack member
+seed-laravel-svc: ## Build + import + helm install the Laravel 11 + Eloquent (PHP 8.5, native OTel) multistack member
 	./scripts/seed-laravel-svc.sh
 
-seed-symfony-svc: ## Build + import + helm install the Symfony 7 + Doctrine (PHP 8.3, native OTel) multistack member
+seed-symfony-svc: ## Build + import + helm install the Symfony 7 + Doctrine (PHP 8.5, native OTel) multistack member
 	./scripts/seed-symfony-svc.sh
 
-inject-all: ## Run all 12 k6 scenarios and assert findings (alias of validate-findings)
+inject-all: ## Run the Spring baseline's 12 k6 scenarios and assert findings (alias of validate-findings)
 	./scripts/inject-all.sh
 
-validate-findings: ## Run all 12 k6 scenarios and write tmp/validation-report.md
+validate-findings: ## Run the Spring baseline's 12 k6 scenarios and write tmp/validation-report.md
 	./scripts/validate-findings.sh
 
 status: ## Curl-only status of cluster + perf-sentinel daemon endpoints

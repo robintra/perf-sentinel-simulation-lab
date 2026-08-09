@@ -7,20 +7,16 @@ distinct stacks (Quarkus,
 Quarkus+Mutiny, Helidon SE, Helidon MP, .NET 10, Rust+Diesel, Rust+SeaORM,
 NestJS, Django, FastAPI, Go, Rails, Laravel, Symfony, Kotlin+Ktor).
 
-The target contract contains **12 perf-sentinel finding types**: the 10
-HTTP-triggered anti-patterns below plus `n_plus_one_messaging` and
-`slow_messaging`. The full 12-type contract is currently implemented by the
-Spring baseline, Quarkus, Mutiny, Helidon SE, Helidon MP, Ktor, Django,
-FastAPI, Laravel, and Symfony. Diesel, SeaORM, Rails, NestJS, .NET, and Go
-retain their historical 10-type HTTP coverage until their messaging adapters
-land in Tasks 10–15. This staged coverage validates the detectors against the
-wire-format diversity an operator hits in production.
+Together these are **18 deployable services across 16 stacks**: one Spring
+Boot/JPA baseline implemented by three cooperating services and 15 independent
+multistack services. Every stack satisfies the same 12-type perf-sentinel
+contract across SQL, HTTP and RabbitMQ.
 
-## HTTP contract: 10 fault endpoints + 3 business endpoints
+## HTTP contract: 12 fault endpoints + 3 business endpoints
 
-### Fault endpoints (the 10 anti-patterns)
+### Fault endpoints (the 12 anti-patterns)
 
-Each service MUST expose all 10 endpoints below, with the exact path, method,
+Each multistack service MUST expose all 12 endpoints below, with the exact path, method,
 query parameter, and JSON response shape. Behaviour is stack-specific but
 must produce the corresponding finding type when scraped by perf-sentinel
 through the cluster OTel Collector.
@@ -29,16 +25,20 @@ through the cluster OTel Collector.
 |--------|------------------------------|-------------------------|-----------------------|
 | POST   | `/api/fault/n-plus-one-sql`  | `items=15`              | `n_plus_one_sql`      |
 | POST   | `/api/fault/n-plus-one-http` | `recipients=10`         | `n_plus_one_http`     |
+| POST   | `/api/fault/n-plus-one-messaging` | `messages=8&broker=rabbitmq` | `n_plus_one_messaging` |
 | POST   | `/api/fault/redundant-sql`   | `repeats=10`            | `redundant_sql`       |
 | POST   | `/api/fault/redundant-http`  | `repeats=10`            | `redundant_http`      |
 | POST   | `/api/fault/slow-sql`        | `delayMs=600&repeats=6` | `slow_sql`            |
 | POST   | `/api/fault/slow-http`       | `delayMs=600&repeats=6` | `slow_http`           |
+| POST   | `/api/fault/slow-messaging`  | `delayMs=600&repeats=3&broker=rabbitmq` | `slow_messaging` |
 | POST   | `/api/fault/fanout`          | `width=40`              | `excessive_fanout`    |
 | POST   | `/api/fault/chatty`          | `calls=30`              | `chatty_service`      |
 | POST   | `/api/fault/serialized`      | `steps=6`               | `serialized_calls`    |
 | POST   | `/api/fault/pool-saturation` | `concurrency=20`        | `pool_saturation`     |
 
-All endpoints return HTTP 200 with the JSON shape below.
+Valid, successful fault requests return HTTP 200 with the JSON shape below.
+Validation and dependency failures follow the 400/non-200 contract documented
+below.
 
 ### Response shape
 
@@ -59,6 +59,8 @@ Required fields:
 - `durationMs` (integer) — wall-clock duration of the fault.
 - `details` (object) — stack-specific. At minimum the input parameter and a
   count of operations performed (e.g. `{"items": 15, "rows_seen": 75}`).
+  Messaging responses additionally require `published == confirmed ==` the
+  requested message count.
 - `timestamp` (ISO-8601, UTC) — instant the response is built.
 
 ### Behaviour notes per anti-pattern
@@ -93,6 +95,29 @@ similar".
 - `serialized` — 6 sequential calls to `/api/dispatch/email`, `…/sms`,
   `…/push`, `…/webhook`, `…/slack`, `…/teams`, each `delayMs=80`, so the
   total wall-clock crosses ~480ms.
+- `n-plus-one-messaging` — accepts only RabbitMQ with `5 <= messages <= 100`,
+  publishes distinct persistent messages to the stack's durable direct
+  `perfsim.<service>` destination, then waits once for all broker confirms.
+- `slow-messaging` — accepts only RabbitMQ with `501 <= delayMs <= 5000` and
+  `3 <= repeats <= 20`, applies the existing Toxiproxy downstream latency,
+  then alternates each real publication with its broker confirm.
+
+Invalid messaging input returns HTTP 400 before any RabbitMQ or Toxiproxy
+call. A partial publication, nack, returned message, absent confirmation,
+unavailable dependency or Toxiproxy failure returns non-200.
+
+### RabbitMQ and telemetry contract
+
+RabbitMQ and Toxiproxy run in the `messaging` namespace. Every service uses
+the shared ports 5672, 25672 and 8474, queue TTL 60000 ms and the local
+`rabbitmq-credentials` Secret. Usernames and passwords are injected only
+through `secretKeyRef`; they never appear in values files or source code.
+
+Native client instrumentation is retained when it covers the real publish and
+confirmation boundary. Otherwise a manual `PRODUCER` span named
+`perfsim.<service> send` surrounds the real operation and carries only
+`messaging.system`, `messaging.destination.name` and
+`messaging.operation.type`. No service emits `code.*` attributes.
 
 ### Business endpoints (cross-service reach)
 
@@ -139,13 +164,13 @@ Postgres schema in the shared `lab` database.
 | mutiny-svc           | 8084 | mutiny        | Quarkus 3.33.1.1 LTS + Mutiny                       |
 | helidon-se-svc       | 8085 | helidon_se    | Helidon SE 4.4.0                                    |
 | helidon-mp-svc       | 8086 | helidon_mp    | Helidon MP 4.4.0 + JPA                              |
-| dotnet-svc           | 8087 | dotnet        | .NET 10 + EF Core 10.0.8                            |
-| diesel-svc           | 8088 | diesel        | Rust 1.97 + Diesel 2.3.9                            |
+| dotnet-svc           | 8087 | dotnet        | .NET 10 + EF Core 10.0.10                           |
+| diesel-svc           | 8088 | diesel        | Rust 1.97 + Diesel 2.3.12                           |
 | seaorm-svc           | 8089 | seaorm        | Rust 1.97 + SeaORM 1.1.20                           |
-| nest-svc             | 8090 | nest          | NestJS 11.1.23 + Prisma 6.19.3                      |
+| nest-svc             | 8090 | nest          | NestJS 11.1.28 + Prisma 6.19.3                      |
 | django-svc           | 8091 | django        | Django 5.2.17 LTS + psycopg 3.3.4                   |
 | fastapi-svc          | 8092 | fastapi       | FastAPI 0.141.1 + SQLAlchemy 2.0.51 async           |
-| go-svc               | 8093 | go            | Go 1.26 + pgx 5.9.2                                 |
+| go-svc               | 8093 | go            | Go 1.26 + pgx 5.10.0                                |
 | rails-svc            | 8094 | rails         | Rails 8.1.3.1 + Active Record (Ruby 4.0)            |
 | laravel-svc          | 8095 | laravel       | Laravel 11.55.0 + Eloquent (PHP 8.5, native OTel)   |
 | symfony-svc          | 8096 | symfony       | Symfony 7.4.16 LTS + Doctrine 3.6.8 (PHP 8.5)       |
@@ -155,7 +180,7 @@ The two PHP members exercise perf-sentinel's framework-aware `suggested_fix`:
 Laravel's app-wide `io.opentelemetry.contrib.php.laravel` scope tags every finding
 `php_laravel_eloquent`, while Symfony's DB-specific `io.opentelemetry.contrib.php.doctrine`
 scope tags only SQL findings `php_doctrine` (non-SQL Symfony findings fall through to
-`php_generic`). Both use the same 10-endpoint contract below.
+`php_generic`). Both use the same 12-endpoint contract.
 
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
@@ -175,14 +200,14 @@ patch line are shown at the precision committed in the repository.
 | Helidon SE (`helidon-se-svc`) | Helidon SE 4.4.0; Java 25 / Temurin 25.0.3_9 | HikariCP 6.0.0; Flyway 11.7.2; PostgreSQL JDBC 42.7.2; RabbitMQ Java 5.27.1; OTel Java agent 2.30.0 |
 | Helidon MP (`helidon-mp-svc`) | Helidon MP 4.4.0 / MicroProfile 6.1; Java 25 / Temurin 25.0.3_9 | Hibernate 6.3.1.Final; HikariCP 5.0.1; Flyway 11.7.2; PostgreSQL JDBC 42.7.2; RabbitMQ Java 5.27.1; OTel Java agent 2.30.0 |
 | Kotlin / Ktor (`ktor-svc`) | Kotlin 2.4.10; Ktor 3.5.1; Java 25 / Temurin 25.0.3_9 | Exposed 2.0.18; HikariCP 6.0.0; PostgreSQL JDBC 42.7.4; Flyway 11.7.2; RabbitMQ Java 5.27.1; OTel API 1.51.0 + Java agent 2.30.0 |
-| .NET / EF Core (`dotnet-svc`) | .NET 10 (`net10.0`); EF Core 10.0.8 | Npgsql EF 10.0.1; OTel Hosting/OTLP 1.15.3, ASP.NET Core 1.15.2, HTTP 1.15.0, EF 1.15.1-beta.1 |
-| Rust / Diesel (`diesel-svc`) | Rust 1.97; axum 0.8.9; Diesel 2.3.9 | OTel Rust 0.32.0; tracing-opentelemetry 0.33.0; axum-tracing-opentelemetry 0.38.0 |
-| Rust / SeaORM (`seaorm-svc`) | Rust 1.97; axum 0.8.9; SeaORM 1.1.20 | OTel Rust 0.32.0; tracing-opentelemetry 0.33.0; axum-tracing-opentelemetry 0.38.0 |
-| NestJS / Node (`nest-svc`) | Node.js 24; NestJS 11.1.23; Prisma/client 6.19.3 | pg 8.21.0; OTel sdk-node/HTTP/OTLP 0.218.0, trace-node 2.7.1, pg instrumentation 0.70.0 |
+| .NET / EF Core (`dotnet-svc`) | .NET 10 (`net10.0`); EF Core 10.0.10 | Npgsql EF 10.0.3; RabbitMQ.Client 7.2.2; OTel stable packages 1.17.0, EF instrumentation 1.15.1-beta.1 |
+| Rust / Diesel (`diesel-svc`) | Rust 1.97; axum 0.8.9; Diesel 2.3.12 | Lapin 4.10.0; OTel Rust 0.32.0; tracing-opentelemetry 0.33.0; axum-tracing-opentelemetry 0.38.0 |
+| Rust / SeaORM (`seaorm-svc`) | Rust 1.97; axum 0.8.9; SeaORM 1.1.20 | Lapin 4.10.0; OTel Rust 0.32.0; tracing-opentelemetry 0.33.0; axum-tracing-opentelemetry 0.38.0 |
+| NestJS / Node (`nest-svc`) | Node.js 24; NestJS 11.1.28; Prisma/client 6.19.3 | amqplib 2.0.1; pg 8.21.0; OTel sdk-node/HTTP/OTLP 0.221.0, trace-node 2.10.0, pg instrumentation 0.73.0 |
 | Django (`django-svc`) | Python 3.14; Django 5.2.17 LTS | psycopg 3.3.4; Pika 1.3.2; OTel SDK/exporter 1.44.0, instrumentations 0.65b0 |
 | FastAPI (`fastapi-svc`) | Python 3.14; FastAPI 0.141.1; Pydantic 2.13.4 | SQLAlchemy 2.0.51; asyncpg 0.31.0; aio-pika 9.6.2; OTel SDK/exporter 1.44.0, instrumentations 0.65b0 |
-| Go / pgx (`go-svc`) | Go 1.26; chi 5.3.0; pgx 5.9.2 | OTel Go 1.43.0; otelhttp 0.68.0; otelpgx 0.11.1 |
-| Rails (`rails-svc`) | Ruby 4.0; Rails/Active Record 8.1.3.1 | pg 1.6.3; Puma 8.0.2; OTel SDK 1.13.0, OTLP 0.34.1, Rails 0.42.0, Active Record 0.13.0 |
+| Go / pgx (`go-svc`) | Go 1.26; chi 5.3.1; pgx 5.10.0 | amqp091-go 1.13.0; OTel Go 1.45.0; otelhttp 0.70.0; otelpgx 0.11.1 |
+| Rails (`rails-svc`) | Ruby 4.0; Rails/Active Record 8.1.3.1 | Bunny 3.1.0; pg 1.6.3; Puma 8.0.2; OTel SDK 1.13.0, OTLP 0.34.1, Rails 0.42.0, Active Record 0.13.0 |
 | Laravel (`laravel-svc`) | PHP 8.5; Laravel 11.55.0 | php-amqplib 3.7.4; OTel SDK 1.15.0, Laravel 1.8.0, PDO 0.5.0, PECL extension 1.2.1 |
 | Symfony (`symfony-svc`) | PHP 8.5; Symfony 7.4.16 LTS; Doctrine ORM 3.6.8 | php-amqplib 3.7.4; OTel SDK 1.15.0, Symfony 1.4.0, Doctrine/PDO 0.5.0, PECL extension 1.2.1 |
 
@@ -243,7 +268,7 @@ Stack-specific instrumentation choice:
 - **Rust** (Diesel / SeaORM): `opentelemetry` 0.32 +
   `tracing-opentelemetry` 0.33 + `opentelemetry-otlp`, initialised at startup;
   the HTTP layer uses `axum-tracing-opentelemetry` 0.38.
-- **NestJS**: `@opentelemetry/sdk-node` 0.218 configured at `main.ts` boot.
+- **NestJS**: `@opentelemetry/sdk-node` 0.221 configured at `main.ts` boot.
 - **Django / FastAPI**: `opentelemetry-instrumentation-django` /
   `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-psycopg`
   / `opentelemetry-instrumentation-sqlalchemy`.
@@ -288,25 +313,20 @@ Per-stack validation flow (run in sequence by the multistack harness):
 
 1. `make seed-<stack>-svc` — builds the image, applies the Helm chart,
    waits for `Ready=True`.
-2. `kubectl apply -f scenarios/<stack>-svc-validation-job.yaml` (or
-   `bash scenarios/<stack>-svc-validation.js` driven by k6) — fires the 10
-   fault endpoints under load.
-3. `scripts/validate-findings-multistack.sh <stack>-svc` — polls
-   `/api/findings` and asserts at least one finding per anti-pattern type
-   with `service = <stack>-svc`.
+2. `scripts/run-multistack-scenario.sh <stack>` creates one guarded k6 Job per
+   fault and drives all 12 endpoints in the fixed global order.
+3. Before every Job the runner snapshots existing `(trace_id,
+   source_endpoint)` pairs. A PASS requires a new trace, the exact service and
+   source endpoint, and the framework expectation where one is defined.
+4. Messaging findings additionally require the exact `rabbitmq
+   perfsim.<service>` destination, at least 8 direct occurrences, or at least
+   3 slow occurrences with p50 above 500000 microseconds.
 
-Current success criteria follow the rollout state:
-
-- Spring, Quarkus, Mutiny, Helidon SE, Helidon MP, Ktor, Django, FastAPI,
-  Laravel, and Symfony must pass the default 10/10 gate and the messaging 2/2
-  gate. The Spring baseline's combined regression gate remains 12/12.
-- Diesel, SeaORM, Rails, NestJS, .NET, and Go must retain their historical
-  default 10/10 gate. Their messaging 2/2 gates become mandatory with Tasks
-  10–15.
-
-The end-to-end target after Tasks 10–15 is for all **18 services** to satisfy
-the 12-type contract exposed by the daemon `/api/findings`, with
-non-regression on the Java baseline.
+Every one of the 15 multistack services must pass 12/12, for a blocking
+aggregate of 180/180. The three Spring services form a separate baseline
+validation unit that must also pass its distributed 12/12 suite. Thus all 18
+deployable services are covered without pretending the Spring services each
+expose all 12 routes independently.
 
 ## Stack-specific release notes
 
@@ -365,7 +385,7 @@ ships:
   ServiceMonitor) mirroring the pattern in `services/order-service/helm/`
 - its own `README.md` with quickstart + endpoint map
 - a `scenarios/<stack>-svc-validation.js` k6 composite scenario (one per
-  stack, hitting the 10 fault endpoints)
+  stack, hitting the 12 fault endpoints)
 - an entry in `manifests/perf-sentinel-daemon.yaml` and
   `manifests/scaphandre-mock.yaml`
 - an entry in `manifests/postgres-multistack-schemas.yaml`'s schema list

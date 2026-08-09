@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run either the ten original multistack faults or the focused RabbitMQ pair.
+# Run the strict twelve-finding multistack contract or the focused RabbitMQ pair.
 set -euo pipefail
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
@@ -10,7 +10,7 @@ fi
 STACK="$1"
 MODE="${2:-default}"
 if [ "${MODE}" != "default" ] && [ "${MODE}" != "messaging" ]; then
-    echo "unknown mode: ${MODE} (expected messaging)" >&2
+    echo "unknown mode: ${MODE} (expected default or messaging)" >&2
     exit 2
 fi
 
@@ -42,10 +42,12 @@ daemon_curl() {
 ANTI_PATTERNS=(
     "n_plus_one_sql:5:30s"
     "n_plus_one_http:5:30s"
+    "n_plus_one_messaging:5:30s"
     "redundant_sql:5:30s"
     "redundant_http:5:30s"
     "slow_sql:3:30s"
     "slow_http:3:30s"
+    "slow_messaging:1:15s"
     "excessive_fanout:3:30s"
     "chatty_service:3:30s"
     "serialized_calls:3:30s"
