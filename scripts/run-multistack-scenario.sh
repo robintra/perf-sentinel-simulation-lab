@@ -137,9 +137,11 @@ kind, service, endpoint = (os.environ[k] for k in ("EXPECTED_TYPE", "EXPECTED_SE
 framework, recommendation = (os.environ[k] for k in ("EXPECTED_FRAMEWORK", "EXPECTED_RECOMMENDATION"))
 expected_destination = "rabbitmq perfsim." + service
 started = int(os.environ["STARTED_AT_MS"])
-def match(item, finding):
+def fresh(item, finding):
     trace = finding.get("trace_id")
-    if not (finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint and trace and trace not in baseline_trace_ids and isinstance(item.get("stored_at_ms"), (int, float)) and item["stored_at_ms"] > started):
+    return bool(finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint and trace and trace not in baseline_trace_ids and isinstance(item.get("stored_at_ms"), (int, float)) and item["stored_at_ms"] > started)
+def match(item, finding):
+    if not fresh(item, finding):
         return False
     if framework:
         suggestion = finding.get("suggested_fix") or {}
@@ -155,7 +157,18 @@ def match(item, finding):
     return True
 matched = [finding for item, finding in records if match(item, finding)]
 if not matched:
-    print("0|no fresh type/service/source finding")
+    # A fresh finding that failed only the framework/pattern assertions used to report the
+    # same "nothing arrived" message, which is indistinguishable in CI logs (issue #101).
+    rejected = [finding for item, finding in records if fresh(item, finding)]
+    if rejected:
+        suggestion = rejected[0].get("suggested_fix") or {}
+        # `|` is both the field separator here and the markdown column separator downstream.
+        print("0|" + ("fresh finding rejected: framework=%s (want %s) recommendation=%s pattern=%s" % (
+            suggestion.get("framework"), framework or "-",
+            json.dumps(suggestion.get("recommendation") or "")[:80],
+            json.dumps(rejected[0].get("pattern") or {})[:120])).replace("|", "/"))
+    else:
+        print("0|no fresh type/service/source finding")
 else:
     finding = matched[0]
     pattern = finding.get("pattern") or {}
@@ -205,7 +218,7 @@ wait_for_job() {
 }
 
 run_one() {
-    local pattern="$1" vus="$2" duration="$3" endpoint job_name cm_name baseline_file started_at_ms findings_json evaluation count note expectation expected_framework expected_recommendation attempt
+    local pattern="$1" vus="$2" duration="$3" endpoint job_name cm_name baseline_file started_at_ms findings_json evaluation count note expectation expected_framework expected_recommendation attempt attempts
     endpoint="$(endpoint_for "${pattern}")"
     expectation="$(framework_expectation "${STACK}" "${pattern}")"
     expected_framework="${expectation%%|*}"
@@ -264,8 +277,11 @@ EOF
         return
     fi
 
+    # PHP stacks flush self-call child spans late: symfony redundant_sql regularly burns 4 of
+    # the old 6 attempts, laravel redundant_http exhausted them in run 31368007598 (issue #101).
     sleep 15
-    for attempt in 1 2 3 4 5 6; do
+    attempts=10
+    for attempt in $(seq "${attempts}"); do
         if ! findings_json="$(daemon_curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true")"; then
             RESULTS+=("FAIL|${pattern}|0|daemon findings unavailable")
             break
@@ -279,7 +295,7 @@ EOF
         elif [ "${count}" -ge 1 ]; then
             RESULTS+=("PASS|${pattern}|${count}|${note}")
             break
-        elif [ "${attempt}" -eq 6 ]; then
+        elif [ "${attempt}" -eq "${attempts}" ]; then
             RESULTS+=("FAIL|${pattern}|0|${note}")
         else
             sleep 5
