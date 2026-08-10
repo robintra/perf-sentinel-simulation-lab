@@ -321,7 +321,12 @@ Per-stack validation flow (run in sequence by the multistack harness):
 4. Messaging findings additionally require the exact `rabbitmq
    perfsim.<service>` destination, at least 8 direct occurrences, or at least
    3 slow occurrences with p50 above 500000 microseconds.
-5. After a CI failure, replay only the phases that failed instead of the full
+5. The k6 contract also asserts `details.calls_ok == details.calls_made` on every
+   response that reports them. A fault endpoint whose self-calls time out still
+   answers 200, so without this the load passes and only the missing finding
+   surfaces, 40s later and unexplained. Stacks that expose neither field are
+   unaffected.
+6. After a CI failure, replay only the phases that failed instead of the full
    twelve: `ONLY_PATTERNS="redundant_http:5:30s" scripts/run-multistack-scenario.sh
    laravel` (space-separated `pattern:vus:duration` entries, same order semantics).
 

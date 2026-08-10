@@ -22,6 +22,12 @@ function postChecked(path, requested = null) {
     const valid = check(r, {
         'HTTP 200': (response) => response.status === 200,
         'JSON object': () => body !== null && typeof body === 'object',
+        // A fault endpoint that swallows its own failed self-calls still answers 200 with
+        // calls_ok < calls_made; without this the load looks fine and only the missing
+        // finding shows up, 40s later and unexplained (issue #102).
+        'self-calls all succeeded': () => body === null || !body.details ||
+            body.details.calls_made === undefined ||
+            body.details.calls_ok === body.details.calls_made,
         'messaging confirms requested count': () => requested === null || (
             body.details && body.details.published === requested &&
             body.details.confirmed === requested),
