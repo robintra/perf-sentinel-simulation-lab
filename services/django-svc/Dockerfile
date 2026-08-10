@@ -32,7 +32,12 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Shell form so ${HTTP_PORT} is expanded at runtime (exec form does
 # not do shell variable expansion). Matches the HTTP_PORT env var
 # injected by the helm deployment template.
+# 20 slots (2x10), matching PHP_CLI_SERVER_WORKERS=20 on the PHP stacks: the HTTP
+# faults self-call this same server, so a parent request holds one slot while
+# waiting on its own child. At 2x4 the k6 load (5 VUs -> 10 concurrent) starved
+# those children into the 15s client timeout, which the daemon then classified as
+# slow_http instead of n_plus_one_http (issue #102).
 CMD gunicorn djangosvc.wsgi:application \
     --bind "0.0.0.0:${HTTP_PORT:-8091}" \
-    --workers 2 --threads 4 --timeout 120 \
+    --workers 2 --threads 10 --timeout 120 \
     --worker-tmp-dir /tmp
