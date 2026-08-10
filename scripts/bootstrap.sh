@@ -35,7 +35,7 @@ fi
 }
 KPS_CHART_VERSION="88.2.0"
 TEMPO_IMAGE_VERSION="3.0.0"
-OTEL_CHART_VERSION="0.168.0"
+OTEL_CHART_VERSION="0.169.0"
 
 # shellcheck source=./wait-for-ready.sh
 . "${REPO_ROOT}/scripts/wait-for-ready.sh"
