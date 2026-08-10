@@ -56,6 +56,11 @@ ANTI_PATTERNS=(
 if [ "${MODE}" = messaging ]; then
     ANTI_PATTERNS=("n_plus_one_messaging:5:30s" "slow_messaging:1:15s")
 fi
+# ONLY_PATTERNS="redundant_http:5:30s" replays a subset after a CI failure instead of
+# paying for the full twelve (issue #101). Space-separated, same pattern:vus:duration form.
+if [ -n "${ONLY_PATTERNS:-}" ]; then
+    read -ra ANTI_PATTERNS <<<"${ONLY_PATTERNS}"
+fi
 declare -a RESULTS
 
 . "${REPO_ROOT}/scripts/framework-expectation.sh"

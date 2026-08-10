@@ -321,6 +321,9 @@ Per-stack validation flow (run in sequence by the multistack harness):
 4. Messaging findings additionally require the exact `rabbitmq
    perfsim.<service>` destination, at least 8 direct occurrences, or at least
    3 slow occurrences with p50 above 500000 microseconds.
+5. After a CI failure, replay only the phases that failed instead of the full
+   twelve: `ONLY_PATTERNS="redundant_http:5:30s" scripts/run-multistack-scenario.sh
+   laravel` (space-separated `pattern:vus:duration` entries, same order semantics).
 
 Every one of the 15 multistack services must pass 12/12, for a blocking
 aggregate of 180/180. The three Spring services form a separate baseline
