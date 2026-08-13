@@ -13,6 +13,13 @@ NS="b2-3-direct-otlp"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 MANIFESTS="$(cd "$(dirname "$0")" && pwd)/manifests.yaml"
+# The dedicated daemon runs the image under validation, resolved by
+# scripts/resolve-image.sh: PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then
+# the daemon manifest pin. The manifest used to carry its own frozen digest, so
+# the gate reported a PASS for a version this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 mkdir -p "${TMP_DIR}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
@@ -37,17 +44,22 @@ trap cleanup EXIT
 verdict="UNKNOWN"
 EVENTS=0; TRACES=0; FINDINGS=0
 
-step "Mirror order-service-db secret to ${NS}"
+step "Mirror the order-service secrets to ${NS}"
 kubectl create namespace "${NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-kubectl -n shop get secret order-service-db -o yaml \
-  | sed -e "s/namespace: shop/namespace: ${NS}/" \
-        -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
-  | kubectl apply -f - >/dev/null
-ok "secret order-service-db mirrored from shop"
+# rabbitmq-credentials too: the cloned order-service resolves the broker
+# properties at startup even though this scenario only drives SQL.
+for secret in order-service-db rabbitmq-credentials; do
+  kubectl -n shop get secret "${secret}" -o yaml \
+    | sed -e "s/namespace: shop/namespace: ${NS}/" \
+          -e '/resourceVersion:/d' -e '/uid:/d' -e '/creationTimestamp:/d' \
+    | kubectl apply -f - >/dev/null
+done
+ok "secrets order-service-db and rabbitmq-credentials mirrored from shop"
 
 step "Apply manifests"
-kubectl apply -f "${MANIFESTS}" > "${TMP_DIR}/apply.log" 2>&1
-ok "manifests applied"
+sed -e "s#image: ghcr.io/robintra/perf-sentinel@sha256:[0-9a-f]*.*#image: ${IMAGE}#" "${MANIFESTS}" \
+  | kubectl apply -f - > "${TMP_DIR}/apply.log" 2>&1
+ok "manifests applied (daemon image ${IMAGE})"
 
 step "Wait for the dedicated daemon to become Ready"
 kubectl -n "${NS}" rollout status deploy/perf-sentinel-daemon-direct --timeout=120s
