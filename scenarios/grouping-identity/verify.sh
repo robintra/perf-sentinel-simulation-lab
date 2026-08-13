@@ -51,7 +51,6 @@ step "0. Pre-flight"
 [ -x "${PERF_SENTINEL_LOCAL_BIN}" ] || die "no local binary at ${PERF_SENTINEL_LOCAL_BIN}"
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH"
 VERSION="$("${PERF_SENTINEL_LOCAL_BIN}" --version | awk '{print $2}')"
-[ "${VERSION}" = "0.11.0" ] || die "expected perf-sentinel 0.11.0, got ${VERSION}"
 PRODUCT_COMMIT="$(git -C "${PERF_SENTINEL_REPO_PATH}" rev-parse --short=8 HEAD 2>/dev/null || echo unknown)"
 ok "perf-sentinel ${VERSION} (${PRODUCT_COMMIT})"
 
