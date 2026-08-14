@@ -421,10 +421,12 @@ FLAGS_OK=1
   --mysql-stat-top 10001 --output "${TMP_DIR}/x.html" >/dev/null 2>&1 && FLAGS_OK=0
 "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TRACES}" \
   --mysql-stat-top 5 --output "${TMP_DIR}/x.html" >/dev/null 2>"${TMP_DIR}/orphan.err" && FLAGS_OK=0
-# `--mysql-stat <` (companion flag, with the space+angle) is distinct from the
-# offending `--mysql-stat-top`, so this proves clap named the required companion
-# flag — not just that "mysql-stat" (a substring of --mysql-stat-top) appears.
-if [ "${FLAGS_OK}" = "1" ] && grep -q -- "--mysql-stat <" "${TMP_DIR}/orphan.err"; then
+# What matters is that the message names the required COMPANION flag, not just
+# the offending `--mysql-stat-top` whose own name contains "mysql-stat". The
+# space after `--mysql-stat` is what separates the two. Both spellings count:
+# clap's own `--mysql-stat <FILE>`, and the custom message the CLI emits since
+# `--mysql-stat-prometheus` gave the flag a second companion.
+if [ "${FLAGS_OK}" = "1" ] && grep -qE -- "--mysql-stat (<|or)" "${TMP_DIR}/orphan.err"; then
   assert_pass "B6-flags" "--mysql-stat-top 0 / 10001 / orphan all rejected with a pointer to the companion flag"
 else
   assert_fail "B6-flags" "flag validation gap (ok=${FLAGS_OK}, orphan msg: $(tail -1 "${TMP_DIR}/orphan.err" 2>/dev/null))"
