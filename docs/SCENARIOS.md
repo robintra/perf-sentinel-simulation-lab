@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 69 scenarios live under `scenarios/<name>/` and each one ships a
+The 70 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -188,7 +188,7 @@ Findings produced by the standard rule omit the field.
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 | [`grouping-identity`](#grouping-identity)                  | 0.11 grouping identity across ingest, detection and outputs    | local binary + Docker + Chrome                    | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate; `grouping-identity` is the 0.11 contract gate. The lab now ships 69 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `endpoint-resolution` gate (the 0.9.22 `source.endpoint` ancestor walk: the inbound route resolved through ancestors rather than the direct parent, the CLIENT skip that stops an outbound URL naming a finding, the outermost-not-nearest code frame, and the per-language spelling parity that keeps one origin on one acknowledgment signature), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory), plus the `broker-messaging-waste` gate (OTel messaging ingestion and the broker energy attribution: the two-source arbitration between a measured cgroup and a declared cluster, driven against a real scraper that is cut, restored with a retroactive catch-up, answers without the expected label, and is unreachable from boot; plus disclosure v1.5, the configuration refusals, the destination spellings across broker families, and the producer link on the real astronomy capture), plus the `java-ci-capture` gate (the upstream Java CI recipe run verbatim from the published POM — Maven Failsafe with the OTel agent attached to the fork, `perf-sentinel capture` receiving OTLP over the network, `analyze --ci` on the result — together with the capture exit-code contract: size cap, unusable versus backpressure rejections, refusal to start on an unwritable output, whole-process-group stop on SIGTERM, and cross-container listening), plus the `otlp-compression-matrix` gate (the 0.9.28 OTLP transport × encoding matrix: gzipped gRPC ingested and refused on the pre-fix image, the HTTP and uncompressed paths kept green, deflate over both transports, zstd/snappy still refused, and a cluster leg that temporarily switches the real collector onto the daemon's gRPC port), plus the `ack-lifecycle-warning` gate (the 0.9.28 acknowledgment life cycle: the unmatched warning, the fixed-versus-not-run split driven by per-endpoint I/O counts, and the guard that keeps a pre-computed report from advising the removal of a still-useful entry). The release gate runs all 69. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate; `grouping-identity` is the 0.11 contract gate. The lab now ships 70 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `endpoint-resolution` gate (the 0.9.22 `source.endpoint` ancestor walk: the inbound route resolved through ancestors rather than the direct parent, the CLIENT skip that stops an outbound URL naming a finding, the outermost-not-nearest code frame, and the per-language spelling parity that keeps one origin on one acknowledgment signature), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory), plus the `broker-messaging-waste` gate (OTel messaging ingestion and the broker energy attribution: the two-source arbitration between a measured cgroup and a declared cluster, driven against a real scraper that is cut, restored with a retroactive catch-up, answers without the expected label, and is unreachable from boot; plus disclosure v1.5, the configuration refusals, the destination spellings across broker families, and the producer link on the real astronomy capture), plus the `java-ci-capture` gate (the upstream Java CI recipe run verbatim from the published POM — Maven Failsafe with the OTel agent attached to the fork, `perf-sentinel capture` receiving OTLP over the network, `analyze --ci` on the result — together with the capture exit-code contract: size cap, unusable versus backpressure rejections, refusal to start on an unwritable output, whole-process-group stop on SIGTERM, and cross-container listening), plus the `otlp-compression-matrix` gate (the 0.9.28 OTLP transport × encoding matrix: gzipped gRPC ingested and refused on the pre-fix image, the HTTP and uncompressed paths kept green, deflate over both transports, zstd/snappy still refused, and a cluster leg that temporarily switches the real collector onto the daemon's gRPC port), plus the `ack-lifecycle-warning` gate (the 0.9.28 acknowledgment life cycle: the unmatched warning, the fixed-versus-not-run split driven by per-endpoint I/O counts, and the guard that keeps a pre-computed report from advising the removal of a still-useful entry). plus the `export-snapshot-scope` gate (the 0.13.1 export slice: the configurable `max_export_findings` cap where it is published, acts and discloses, the `snapshot_scope` entries and their absence on a cold start, an oversized snapshot named rather than flattened into an unreachable daemon, and the startup advisory that fires on the two knobs together but never on retained traces alone). The release gate runs all 70. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -252,7 +252,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 69 (sequential, long-running-drift is the long pole)
+# All 70 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1171,7 +1171,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 69 scenarios, in an order
+`make verify-all-scenarios` includes all 70 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is produced by a
@@ -2372,6 +2372,54 @@ that control is the one that says why the silence is not evidence.
 The A2.3 leg reads a committed daemon snapshot fixture so it runs without a
 cluster, and additionally queries a live daemon at `DAEMON_URL` when one
 answers.
+
+## export-snapshot-scope (0.13.1 export slice and its disclosure)
+
+`make verify-export-snapshot-scope` — self-contained: the local release binary,
+python3 and jq. No cluster, no Docker. Under a minute.
+
+The daemon Report an operator pulls from `/api/export/report` is a **slice**,
+not the store. 0.13.1 made the slice's size configurable (`[daemon]
+max_export_findings`, `watch --max-export-findings`, range 0 to 100 000,
+default 1000), and the payload now says what it covers under the
+`snapshot_scope` warning kind: one entry always (the green figures describe the
+latest analyzed batch, not the findings listed beside them), a second one only
+when the store holds more than the export ships.
+
+Thirteen legs across four surfaces. The cap is checked where it is *published*
+(`/api/config` reports the CLI override, not the file), where it *acts* (a cap
+of 2 over a store of 3 exports 2), and where it *discloses* (the truncation
+entry names both counts and warns that the quality gate counts only the
+exported slice). The cold-start envelope carries no `snapshot_scope` at all —
+deliberate upstream, and pinned here because no product test pins it.
+
+The cap-0 leg is the one worth reading. It is an A/B over identical traces
+through the same daemon: at the default cap `n_plus_one_sql_critical_max` reads
+`actual=3` and fails, at cap 0 it reads `actual=0` and passes, so a CI probe
+polling those rules sees a clean daemon over a store of three critical
+findings. What does **not** follow is the whole verdict flipping: CHANGELOG and
+`docs/CONFIGURATION.md` claim the gate's verdict "then passes whatever the
+daemon detected", but `io_waste_ratio_max` is read from the green summary,
+which no cap empties, and it still failed the gate on those same traces
+(`docs/QUERY-API.md` describes this split correctly). The scenario pins the
+split rather than the claim.
+
+The last two surfaces are client-side. A `/api/export/report` body past the
+8 MiB the query clients read is no longer flattened into an indistinguishable
+"daemon unreachable": `query monitor` prints `over the 8 MB read limit: lower
+max_export_findings or max_retained_traces` beside its `[STALE]` marker, and
+the leg asserts the reason survives the 96-character header budget *with* the
+knob still named — a reason cut before it names a fix is no better than the
+bare marker. `query inspect` was not fixed and still flattens the same overrun;
+that gap is recorded as `KNOWN` and flips to `CHANGED` if a later release
+closes it. Driving a TUI needs a terminal, and `script(1)` needs a tty on its
+own stdin that CI does not have, so the scenario opens one with
+`pty.openpty()` at 200 columns.
+
+Finally, the startup advisory fires on the **pair**: 2000 findings with 400
+retained traces project ~10 MB and are named together, while
+`max_retained_traces = 100000` alone stays silent, because the span-tree term
+is clamped to the byte budget `traces_store::snapshot_for` already enforces.
 
 ## Which binary a scenario runs against
 
