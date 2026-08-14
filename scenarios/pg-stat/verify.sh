@@ -231,7 +231,10 @@ step "Write report"
   echo
   echo "- pg_stat_statements rows exported: ${ROW_COUNT}"
   echo "- Dashboard HTML (Path 1, CSV): \`${TMP_DIR}/dashboard.html\` ($(wc -c < "${TMP_DIR}/dashboard.html" 2>/dev/null || echo 0) bytes)"
-  echo "- Dashboard HTML (Path 2, Prometheus): \`${TMP_DIR}/dashboard-prometheus.html\` ($(wc -c < "${TMP_DIR}/dashboard-prometheus.html" 2>/dev/null || echo 0) bytes)"
+  # `2>/dev/null` cannot silence this one: the shell reports the failed input
+  # redirection itself, before wc runs. Path 2 SKIPs whenever postgres-exporter
+  # is absent, which is the common case, so guard the file instead.
+  echo "- Dashboard HTML (Path 2, Prometheus): \`${TMP_DIR}/dashboard-prometheus.html\` ($([ -f "${TMP_DIR}/dashboard-prometheus.html" ] && wc -c < "${TMP_DIR}/dashboard-prometheus.html" || echo 0) bytes)"
   echo
   echo "## Top SQL templates by total exec time"
   echo
