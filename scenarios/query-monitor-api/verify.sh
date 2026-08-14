@@ -65,6 +65,11 @@ required = [
     "listen_port", "max_active_traces", "trace_ttl_ms", "sampling_rate",
     "max_events_per_trace", "max_payload_size", "environment",
     "max_retained_findings", "ingest_queue_capacity", "analysis_queue_capacity",
+    # The two export knobs. `max_export_findings` is the 0.13.1 addition;
+    # `max_retained_traces` was exposed without ever being listed. An
+    # inclusion list only reports what is MISSING, so a key absent from it
+    # is a key nothing checks: both were shipping unverified.
+    "max_export_findings", "max_retained_traces",
     "api_enabled", "tls_configured", "ack_enabled", "ack_api_key_set",
     "correlation_enabled", "correlation_window_ms", "correlation_min_confidence",
     "correlation_max_tracked_pairs",
