@@ -1,6 +1,6 @@
 # laravel-svc
 
-Laravel 11 + Eloquent multistack member (PHP 8.3, native OpenTelemetry). Port **8095**,
+Laravel 13 + Eloquent multistack member (PHP 8.5, native OpenTelemetry). Port **8095**,
 Postgres schema/role `laravel`/`laravel_user`. Exercises perf-sentinel's PHP framework-aware
 `suggested_fix`: the app-wide `io.opentelemetry.contrib.php.laravel` scope rides every finding,
 so all anti-patterns map to `suggested_fix.framework = php_laravel_eloquent`.

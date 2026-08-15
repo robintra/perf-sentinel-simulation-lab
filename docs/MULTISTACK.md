@@ -181,7 +181,7 @@ Postgres schema in the shared `lab` database.
 | fastapi-svc          | 8092 | fastapi       | FastAPI 0.141.1 + SQLAlchemy 2.0.51 async           |
 | go-svc               | 8093 | go            | Go 1.26 + pgx 5.10.0                                |
 | rails-svc            | 8094 | rails         | Rails 8.1.3.1 + Active Record (Ruby 4.0)            |
-| laravel-svc          | 8095 | laravel       | Laravel 11.55.0 + Eloquent (PHP 8.5, native OTel)   |
+| laravel-svc          | 8095 | laravel       | Laravel 13.25.0 + Eloquent (PHP 8.5, native OTel)   |
 | symfony-svc          | 8096 | symfony       | Symfony 7.4.16 LTS + Doctrine 3.6.8 (PHP 8.5)       |
 | ktor-svc             | 8097 | ktor          | Ktor 3.5.1 + Kotlin 2.4.10                          |
 
@@ -219,7 +219,7 @@ patch line are shown at the precision committed in the repository.
 | FastAPI (`fastapi-svc`) | Python 3.14; FastAPI 0.141.1; Pydantic 2.13.4 | SQLAlchemy 2.0.51; asyncpg 0.31.0; aio-pika 9.6.2; OTel SDK/exporter 1.44.0, instrumentations 0.65b0 |
 | Go / pgx (`go-svc`) | Go 1.26; chi 5.3.1; pgx 5.10.0 | amqp091-go 1.13.0; OTel Go 1.45.0; otelhttp 0.70.0; otelpgx 0.11.1 |
 | Rails (`rails-svc`) | Ruby 4.0; Rails/Active Record 8.1.3.1 | Bunny 3.1.0; pg 1.6.3; Puma 8.0.2; OTel SDK 1.13.0, OTLP 0.34.1, Rails 0.42.0, Active Record 0.13.0 |
-| Laravel (`laravel-svc`) | PHP 8.5; Laravel 11.55.0 | php-amqplib 3.7.4; OTel SDK 1.15.0, Laravel 1.8.0, PDO 0.5.0, PECL extension 1.2.1 |
+| Laravel (`laravel-svc`) | PHP 8.5; Laravel 13.25.0 | php-amqplib 3.7.4; OTel SDK 1.15.0, Laravel 1.8.0, PDO 0.5.0, PECL extension 1.2.1 |
 | Symfony (`symfony-svc`) | PHP 8.5; Symfony 7.4.16 LTS; Doctrine ORM 3.6.8 | php-amqplib 3.7.4; OTel SDK 1.15.0, Symfony 1.4.0, Doctrine/PDO 0.5.0, PECL extension 1.2.1 |
 
 ## Postgres conventions

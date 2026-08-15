@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build, import, and helm-install the laravel-svc multistack member.
-# Laravel 11 + Eloquent + native OpenTelemetry PHP (PHP 8.3).
+# Laravel 13 + Eloquent + native OpenTelemetry PHP (PHP 8.5).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
