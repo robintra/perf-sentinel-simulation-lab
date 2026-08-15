@@ -9,7 +9,7 @@
         "php": "^8.2",
         "guzzlehttp/psr7": "^2.13",
         "laravel/framework": "^11.31",
-        "laravel/tinker": "^2.9",
+        "laravel/tinker": "^3.0",
         "open-telemetry/exporter-otlp": "^1.4",
         "open-telemetry/opentelemetry-auto-laravel": "^1.8",
         "open-telemetry/opentelemetry-auto-pdo": "^0.5.0",
