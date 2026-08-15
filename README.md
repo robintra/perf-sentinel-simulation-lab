@@ -1,4 +1,4 @@
-# perf-sentinel simulation lab
+# Perf Sentinel simulation lab
 
 Local Kubernetes cluster preconfigured to validate perf-sentinel
 against instrumented services across many language stacks. The lab
