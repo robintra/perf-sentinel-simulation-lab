@@ -19,8 +19,9 @@ make verify-grouping-identity
 
 Prerequisites: the local `perf-sentinel` 0.11.0 release binary, Docker and
 Chrome/Chromium. Override the product checkout with
-`PERF_SENTINEL_REPO_PATH`; override the binary with
+`PERF_SENTINEL_REPO_PATH`. Override the binary with
 `PERF_SENTINEL_LOCAL_BIN`.
 
 The report is written to `/tmp/scenario-grouping-identity-report.md`. Any
-failed assertion exits non-zero; the scenario never writes the release ledger.
+failed assertion exits non-zero. The scenario never writes the release
+ledger.

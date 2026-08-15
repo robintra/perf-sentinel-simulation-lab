@@ -1,23 +1,25 @@
 # daemon-sigterm-drain
 
 Prove the **v0.8.5 graceful-drain-on-SIGTERM** contract: the daemon now flushes
-its in-flight streaming window through detection on `SIGTERM` (Unix), not only on
-`SIGINT`. A normal Kubernetes pod termination (rolling update, scale-down, node
-drain — all deliver `SIGTERM`) therefore **keeps** the current window instead of
-dropping it. Only an ungraceful kill (`SIGKILL` after the grace period, OOM) still
-loses it.
+its in-flight streaming window through detection on `SIGTERM` (Unix), not only
+on `SIGINT`. A normal Kubernetes pod termination (rolling update, scale-down,
+node drain, all of which deliver `SIGTERM`) therefore **keeps** the current
+window instead of dropping it. Only an ungraceful kill (`SIGKILL` after the
+grace period, OOM) still loses it.
 
 ## Use case
 
-Before 0.8.5 only `SIGINT` (Ctrl+C) triggered the drain, so `kubectl rollout
-restart` / `kubectl delete pod` / a scale-down — all `SIGTERM` — lost the in-flight
-window. v0.8.5 routes the event loop through `crate::shutdown::shutdown_signal()`,
-which resolves on `SIGINT` **and** `SIGTERM`, and runs the same `drain_all()` +
-detection cleanup for either. This scenario is the lab's proof of that behavior.
+Before 0.8.5 only `SIGINT` (Ctrl+C) triggered the drain, so
+`kubectl rollout restart` / `kubectl delete pod` / a scale-down, all `SIGTERM`,
+lost the in-flight window. v0.8.5 routes the event loop through
+`crate::shutdown::shutdown_signal()`. That function resolves on `SIGINT`
+**and** `SIGTERM`, and runs the same `drain_all()` + detection cleanup for
+either. This scenario is the lab's proof of that behavior.
 
-It complements [`failure-mode-daemon-restart`](../failure-mode-daemon-restart/),
-whose "in-flight spans may be lost (graceful drop)" wording encodes the **old**
-contract; under 0.8.5 that wording now applies specifically to `SIGKILL` /
+It complements
+[`failure-mode-daemon-restart`](../failure-mode-daemon-restart/), whose
+"in-flight spans may be lost (graceful drop)" wording encodes the **old**
+contract. Under 0.8.5 that wording now applies specifically to `SIGKILL` /
 over-grace-period kills, not to a graceful `SIGTERM`.
 
 ## Why a before/after test with two controls
@@ -26,12 +28,13 @@ A finding appearing after a graceful shutdown is only meaningful if we also show
 does **not** appear without the drain. So the scenario runs a positive and a
 negative control reading the **same** surface (apples-to-apples):
 
-- **Positive control** — graceful `SIGTERM` (`kubectl scale --replicas=0`, the
-  scale-down path): the in-flight N+1 is flushed to the per-window NDJSON archive.
-- **Negative control** — ungraceful `SIGKILL` of the daemon process (`kill -9` on
-  its k3d node, modelling OOM / over-grace kill): the in-flight N+1 is lost, never
-  archived. This is what makes the positive result attributable to the drain and
-  not to a TTL finalization that would have happened anyway.
+- **Positive control**: graceful `SIGTERM` (`kubectl scale --replicas=0`, the
+  scale-down path): the in-flight N+1 is flushed to the per-window NDJSON
+  archive.
+- **Negative control**: ungraceful `SIGKILL` of the daemon process (`kill -9`
+  on its k3d node, modelling OOM / over-grace kill): the in-flight N+1 is lost,
+  never archived. This is what makes the positive result attributable to the
+  drain and not to a TTL finalization that would have happened anyway.
 
 ### Capture surface
 
@@ -43,12 +46,13 @@ pod mounts the same PVC and counts the lines carrying the control's marker.
 
 ### Timing subtlety
 
-With the committed `trace_ttl_ms = 5000`, a trace finalizes through detection ~5 s
-after its last span by TTL eviction alone — so a `SIGTERM` landing after that would
-archive the finding even without the drain. The scenario therefore raises
-`trace_ttl_ms` to **30000** in a scenario-scoped ConfigMap and triggers the signal
-seconds after injection, so the trace is genuinely **in-flight** (no TTL eviction)
-when the signal lands. The committed config is restored at cleanup.
+With the committed `trace_ttl_ms = 5000`, a trace finalizes through detection
+~5 s after its last span by TTL eviction alone, so a `SIGTERM` landing after
+that would archive the finding even without the drain. The scenario therefore
+raises `trace_ttl_ms` to **30000** in a scenario-scoped ConfigMap and triggers
+the signal seconds after injection, so the trace is genuinely **in-flight** (no
+TTL eviction) when the signal lands. The committed config is restored at
+cleanup.
 
 ### Why a real N+1, not telemetrygen
 

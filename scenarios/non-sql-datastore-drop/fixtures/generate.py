@@ -7,7 +7,7 @@
 #   - 6 PostgreSQL SQL children: SELECT * FROM orders WHERE id = 1..6 -> a
 #     real N+1 (the ONLY thing that must survive and produce a finding).
 #   - 6 Redis children: db.system=redis, db.statement="GET user:1..6". With
-#     distinct keys these would otherwise group into a finding; the 0.9.2
+#     distinct keys these would otherwise group into a finding. The 0.9.2
 #     drop on db.system must remove them at ingestion, before any tokenizer.
 #   - 1 Elasticsearch child carrying BOTH db.statement AND url.full: must be
 #     dropped on db.system (not reclassified as an HTTP finding).
@@ -17,7 +17,7 @@
 #   mixed-zipkin.json  (Zipkin v2: flat span array, tags = {k:v} map)
 # The OTLP/protobuf encoding for the daemon leg lives in generate-otlp.py.
 #
-# stdlib-only. verify.sh consumes the committed JSON; it never runs this.
+# stdlib-only. verify.sh consumes the committed JSON. It never runs this.
 import json
 import os
 

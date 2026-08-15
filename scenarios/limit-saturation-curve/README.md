@@ -12,7 +12,7 @@ channel_full deltas, max RSS, and the derived "max clean throughput at
 make verify-limit-saturation-curve
 ```
 
-Raw samples land in `/tmp/limit-saturation-curve/saturation.tsv`; the
+Raw samples land in `/tmp/limit-saturation-curve/saturation.tsv`. The
 derived table is embedded in the scenario report.
 
 ## Asserts

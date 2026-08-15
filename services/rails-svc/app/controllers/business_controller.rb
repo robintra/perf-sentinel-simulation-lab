@@ -1,12 +1,12 @@
 class BusinessController < ApplicationController
-  # GET /api/external/mock — the inert target the HTTP faults call back into.
+  # GET /api/external/mock: the inert target the HTTP faults call back into.
   def mock
     delay = int_param(:delayMs, 0)
     sleep(delay / 1000.0) if delay.positive?
     render json: { ok: true, seq: int_param(:seq, 0), op: int_param(:op, 0), delayMs: delay }
   end
 
-  # GET /api/dispatch/:channel — routed from "business#dispatch_channel"
+  # GET /api/dispatch/:channel, routed from "business#dispatch_channel"
   # (the action is NOT named `dispatch`: that collides with
   # ActionController::Metal#dispatch and would break request routing).
   def dispatch_channel
@@ -18,7 +18,7 @@ class BusinessController < ApplicationController
     render json: { channel: channel, dispatched: true, delayMs: delay }
   end
 
-  # GET /api/payments/history — a real ActiveRecord read (ORM scope).
+  # GET /api/payments/history: a real ActiveRecord read (ORM scope).
   def payments_history
     customer_id = int_param(:customerId, 1)
     limit = [[int_param(:limit, 10), 1].max, 100].min

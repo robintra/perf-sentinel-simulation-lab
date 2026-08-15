@@ -5,11 +5,12 @@ that is genuinely failing**: the OpenTelemetry Astronomy Shop demo driven
 through a scripted chaos window - flagd failure flags plus container-level
 kill/pause - captured once, then replayed forever from a committed slice.
 
-This is the last of the four "break the assumptions" axes (clean / complete /
-mono-convention / **coherent** telemetry). The first three are covered by the
-upstream fuzzing suite, `sampling-degradation` and `semconv-drift`; those are
-offline transforms of healthy captures. This corpus is different in kind - it
-is what real instrumentation actually emits while the system breaks:
+This is the last of the four "break the assumptions" axes (clean /
+complete / mono-convention / **coherent** telemetry). The first three are
+covered by the upstream fuzzing suite, `sampling-degradation` and
+`semconv-drift`. Those are offline transforms of healthy captures. This
+corpus is different in kind - it is what real instrumentation actually
+emits while the system breaks:
 
 - **real ERROR spans** - payment unreachable, Kafka queue problems;
 - **structural half-traces** - `checkout` (a mid-tier orchestrator) is
@@ -51,14 +52,14 @@ never deployed into the lab k3d cluster:
      unpause `pause_s` later;
   4. at `chaos.window_minutes`, stop the collector and take the dump.
 - The dump is curated with `../astronomy-shop/curate.py` (the eligibility
-  filter is purely **temporal** - trace extents inside the window minus an
-  edge guard - so the structural half-traces survive curation; that is the
-  point of the corpus).
+  filter is purely **temporal** - trace extents inside the window minus
+  an edge guard - so the structural half-traces survive curation. That is
+  the point of the corpus).
 - capture.sh refuses to stamp a tame corpus: zero ERROR spans or zero
   broken-parent traces in the curated slice is a hard error with a tuning
   hint, not a stampable outcome.
 - `fixtures/fixture-manifest.json` is the contract: the `chaos` block and
-  `traces` drive the capture; `demo_version`, `otel_demo_commit`,
+  `traces` drive the capture. `demo_version`, `otel_demo_commit`,
   `traces_analyzed`, `finding_census`, `error_spans` and
   `broken_parent_traces` are stamped back as **exact observed values**
   (deterministic committed input + deterministic binary, no slack), and

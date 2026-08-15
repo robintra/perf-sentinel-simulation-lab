@@ -6,7 +6,7 @@
 #   OTLP/protobuf (*.pb)  -> daemon /v1/traces leg (scopes + dd.span.Resource +
 #                            db.system.name are captured ONLY at OTLP ingestion).
 #   Jaeger / Zipkin JSON  -> batch `analyze` / `explain` leg (cross-format
-#                            canonicalization; these formats carry db.system in
+#                            canonicalization. These formats carry db.system in
 #                            their tags, OTLP does not round-trip through analyze).
 #
 # Every dd-trace-bridged fixture mimics the REAL OTel Collector datadogreceiver
@@ -15,7 +15,7 @@
 # OTel 1.27+ key db.system.name (NOT db.system / db.type), unless a fixture
 # deliberately exercises the dd-trace db.type meta key.
 #
-# OTLP needs `pip install opentelemetry-proto`; the JSON paths are stdlib only.
+# OTLP needs `pip install opentelemetry-proto`. The JSON paths are stdlib only.
 # verify.sh replays the committed fixtures and never runs this generator.
 import json
 import os
@@ -46,7 +46,7 @@ def _root(trace_id):
     return trace.Span(
         trace_id=trace_id, span_id=(1).to_bytes(8, "big"),
         name="GET /api/orders", kind=trace.Span.SPAN_KIND_SERVER,
-        # 120ms: a normal web root. NOT seconds — a slow root would raise an
+        # 120ms: a normal web root. NOT seconds, a slow root would raise an
         # orthogonal slow_http finding and muddy the per-service type asserts.
         start_time_unix_nano=BASE_NS, end_time_unix_nano=BASE_NS + 120_000_000,
         attributes=[kv("http.route", "/api/orders"), kv("url.full", "http://gw/api/orders")],

@@ -13,7 +13,7 @@ containers, no cluster.
 | B1 | text output: 4 rankings in stable order (`top by total_exec_time`, `top by calls`, `top by mean_exec_time`, `top by rows_examined`), plausible millisecond timers (picoseconds / 1e9), `schema:` column |
 | B2 | `--format json`: `rankings[3].label == "top by rows_examined"` (all 4 labels exact) |
 | B3 | CSV and JSON exports of the same digest table yield identical entries |
-| B4 | `--traces` sets `[seen in traces]` on a **genuine MySQL digest** (backticked, spaced) matching a dd-trace obfuscated template (no backticks) — the backtick/spacing/case canonicalization on real data |
+| B4 | `--traces` sets `[seen in traces]` on a **genuine MySQL digest** (backticked, spaced) matching a dd-trace obfuscated template (no backticks). This is the backtick/spacing/case canonicalization on real data |
 | B5 | robustness: the `DIGEST_TEXT = NULL` catch-all row (forced with `--performance-schema-digests-size=10`) is ignored; an all-null export fails with a clear error; `NULL`/`\N` schema renders as absent; ANSI escapes in a trapped export never reach the terminal (normal and error paths) |
 | B6 | `report --input <traces> --mysql-stat <csv>`: `mysql_stat` tab, 4 ranking chips, real digest data; `--mysql-stat-top 0`, `10001`, and orphan `--mysql-stat-top` rejected |
 | B7 | `demo --html`: the demo dashboard ships a populated `mysql_stat` tab |
@@ -36,7 +36,7 @@ containers, no cluster.
   canonicalize onto the backticked MySQL digests.
 
 Interactive dashboard behaviors (filter ↔ CSV export coherence, Copy link)
-are exercised in a browser during release gates; the script asserts the
+are exercised in a browser during release gates. The script asserts the
 static HTML surface.
 
 ## Run

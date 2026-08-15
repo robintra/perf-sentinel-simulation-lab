@@ -26,7 +26,7 @@ data:
     # Tempo 3.0 removed the classic `ingester` and `compactor` modules
     # (replaced by the block-builder / live-store write path). Monolithic
     # `-target=all` runs them with built-in defaults, so no explicit config
-    # is needed here; verified with `tempo -config.verify` + a local boot.
+    # is needed here. Verified with `tempo -config.verify` + a local boot.
     storage:
       trace:
         backend: local

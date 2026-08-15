@@ -15,11 +15,11 @@ magnitude and the verdict wrong outright.
 
 Before this scenario, nothing in the lab checked any of it.
 `hybrid-daemon-batch` fetches `/api/export/report`, counts the findings and
-renders the HTML — it would stay green if `snapshot_scope` disappeared or the
-cap were ignored. `query-monitor-api` checks `/api/config` with an inclusion
-list, which by construction only reports keys that are *missing*, so
-`max_export_findings` and `max_retained_traces` were both exposed and unchecked
-until the same round added them.
+renders the HTML. It would stay green if `snapshot_scope` disappeared or
+the cap were ignored. `query-monitor-api` checks `/api/config` with an
+inclusion list, which by construction only reports keys that are *missing*,
+so `max_export_findings` and `max_retained_traces` were both exposed and
+unchecked until the same round added them.
 
 ## Legs
 
@@ -32,7 +32,7 @@ until the same round added them.
 | `A2-truncates` | cap 2 over a store of 3 → exactly 2 findings exported |
 | `B2-truncation-entry` | the truncation entry appears, names **both** counts (`capped at 2 of 3 retained`) and warns that the gate counts only these |
 | `A3-zero-cap-counts` | cap 0 → 0 findings, and `n_plus_one_sql_critical_max` goes from `actual=3, passed=false` to `actual=0, passed=true` over an unchanged store |
-| `A3-ratio-survives` | `io_waste_ratio_max` still reads the batch value at cap 0 — the whole verdict does **not** unconditionally flip (see Notes) |
+| `A3-ratio-survives` | `io_waste_ratio_max` still reads the batch value at cap 0, so the whole verdict does **not** unconditionally flip (see Notes) |
 | `C1-oversize-named` | a 9 MiB body → `query monitor` shows `[STALE]` **and** `over the 8 MB read limit: lower max_export_findings ...` |
 | `C1-control` | the live daemon's normal-sized body is not reported as oversized |
 | `C2-inspect-gap` | `query inspect` still flattens the same overrun into an empty view. Recorded `KNOWN`, and flips to `CHANGED` if a later release fixes it |
@@ -47,8 +47,8 @@ Self-contained. No cluster, no Docker.
   checkout), `PERF_SENTINEL_LOCAL_BIN` to override
 - `jq`, `python3`
 
-Ports 14626 (HTTP), 14627 (gRPC) and 14628 (oversize stub) must be free;
-override with `DAEMON_HTTP_PORT`, `DAEMON_GRPC_PORT`, `STUB_PORT`.
+Ports 14626 (HTTP), 14627 (gRPC) and 14628 (oversize stub) must be free.
+Override with `DAEMON_HTTP_PORT`, `DAEMON_GRPC_PORT`, `STUB_PORT`.
 
 ## Run
 
@@ -60,20 +60,22 @@ PERF_SENTINEL_LOCAL_BIN=/path/to/perf-sentinel ./scenarios/export-snapshot-scope
 
 ## Notes
 
-**The cap-0 trap is real, but narrower than the product says.** CHANGELOG and
-`docs/CONFIGURATION.md` state that at `0` the gate's "verdict then passes
-whatever the daemon detected", and conclude `0` suits a liveness probe.
-Measured here, the three **count** rules do read `actual=0` and pass, which is
-the dangerous half — but `io_waste_ratio_max` comes from the green summary,
-which no cap empties, and still failed the gate on the same traces
-(`actual=0.917` against a `0.3` threshold). `docs/QUERY-API.md` describes this
-split correctly. The legs pin the split rather than the claim, so a reader of
-this scenario is not taught something the code contradicts.
+**The cap-0 trap is real, but narrower than the product says.** CHANGELOG
+and `docs/CONFIGURATION.md` state that at `0` the gate's "verdict then
+passes whatever the daemon detected", and conclude `0` suits a liveness
+probe. Measured here, the three **count** rules do read `actual=0` and
+pass, which is the dangerous half. However, `io_waste_ratio_max` comes from
+the green summary, which no cap empties, and still failed the gate on the
+same traces (`actual=0.917` against a `0.3` threshold). `docs/QUERY-API.md`
+describes this split correctly. The legs pin the split rather than the
+claim, so a reader of this scenario is not taught something the code
+contradicts.
 
-**Why a pty.** `query monitor` is a TUI; without a terminal it draws nothing at
-all. `script(1)` needs a tty on its own stdin, which a CI runner does not have,
-so the scenario opens one with `pty.openpty()` and forces a 200-column window —
-the reason is budgeted to 96 characters and a narrow terminal would cut it.
+**Why a pty.** `query monitor` is a TUI, without a terminal it draws
+nothing at all. `script(1)` needs a tty on its own stdin, which a CI runner
+does not have, so the scenario opens one with `pty.openpty()` and forces a
+200-column window. The reason is budgeted to 96 characters and a narrow
+terminal would cut it.
 
 **Why the stub body need not be a valid Report.** The client refuses the read
 past its cap before parsing, so only the size matters. The well-formed-body

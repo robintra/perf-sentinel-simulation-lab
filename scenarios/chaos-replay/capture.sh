@@ -69,7 +69,6 @@ dc() {
     -f "${DEMO_DIR}/docker-compose.yml" -f "${OVERRIDE}" "$@"
 }
 
-# ── preflight ────────────────────────────────────────────────────────────────
 step "Preflight"
 [ -x "${PERF_SENTINEL_LOCAL_BIN}" ] || die "no local binary at ${PERF_SENTINEL_LOCAL_BIN} (cargo build --release first)"
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || die "Docker unavailable"
@@ -83,7 +82,7 @@ done
 docker ps --format '{{.Names}}' | grep -q '^k3d-' \
   && warn "k3d lab cluster is running; the demo adds ~15-20 containers - stop it (make down) if Docker memory gets tight"
 
-# The manifest drives the choreography; validate it before touching Docker.
+# The manifest drives the choreography. Validate it before touching Docker.
 # Raw jq output is validated BEFORE any arithmetic touches it - $((null*60))
 # under set -u aborts with a cryptic bash error instead of this die().
 jq -e '.chaos.flags_enabled | length > 0' "${MANIFEST}" >/dev/null || die "chaos.flags_enabled empty in ${MANIFEST}"
@@ -134,7 +133,6 @@ for f in $(jq -r '.chaos.flags_enabled[]' "${MANIFEST}"); do
 done
 ok "flag names exist in the ${DEMO_TAG} flagd catalog"
 
-# ── inject the file exporter ─────────────────────────────────────────────────
 step "Inject file exporter (extras config + compose volume override)"
 # Same injection as astronomy-shop/capture.sh: otelcol-config-extras.yml is
 # the demo's designed extension hook, and the collector config merge REPLACES
@@ -160,13 +158,12 @@ ok "extras config + ${OVERRIDE}"
 
 trap 'dc down -v >/dev/null 2>&1 || true' EXIT
 
-# ── up + warmup ──────────────────────────────────────────────────────────────
 step "Demo up (pulls ghcr.io images on first run) + warmup ${WARMUP_SECONDS}s"
 # Pull the released per-service images explicitly first: `up` BUILDS any
 # service whose image is missing locally when a build: section exists (the
 # pruned-image trap - local demo builds are not expected to work here).
 # Only opensearch (a local config-wrapper image by design at this tag) has
-# nothing to pull; --ignore-pull-failures lets it fall through to its build.
+# nothing to pull, --ignore-pull-failures lets it fall through to its build.
 dc pull --ignore-pull-failures > "${ART}/pull.log" 2>&1 \
   || warn "some images did not pull (see ${ART}/pull.log) - compose may try to build them"
 dc up -d || die "docker compose up failed"
@@ -197,7 +194,6 @@ dc start otel-collector >/dev/null 2>&1 || die "collector start failed"
 sleep 10
 ok "flags on, dump rotated - chaos window starts now"
 
-# ── the chaos window: kill leg, pause leg, quiet tail ────────────────────────
 step "Chaos window (${WINDOW_S}s): kill ${KILL_SVC}@${KILL_AT}s for ${KILL_DOWN}s, pause ${PAUSE_SVC}@${PAUSE_AT}s for ${PAUSE_S}s"
 sleep "${KILL_AT}"
 color_yellow "    $(date +%T) SIGKILL ${KILL_SVC}"
@@ -221,7 +217,6 @@ ok "chaos-full.ndjson: $(wc -l < "${ART}/chaos-full.ndjson" | tr -d ' ') lines"
 step "Demo down"
 dc down -v >/dev/null 2>&1 || true
 
-# ── curate the committed slice ───────────────────────────────────────────────
 step "Curate a ${SLICE_TRACES}-trace slice (edge guard ${EDGE_GUARD_SECONDS}s)"
 python3 "${CURATE}" "${ART}/chaos-full.ndjson" "${SLICE}" \
   --traces "${SLICE_TRACES}" --edge-guard "${EDGE_GUARD_SECONDS}" || die "curation failed"
@@ -237,7 +232,6 @@ BROKEN="$(jq -r '.broken_parent_traces' <<< "${SLICE_STATS}")"
   || die "zero broken-parent traces in the slice - the ${KILL_SVC} kill did not bite (lengthen down_s or kill during heavier load)"
 ok "error_spans=${ERR_SPANS} broken_parent_traces=${BROKEN}"
 
-# ── stamp the manifest with the exact observed census ────────────────────────
 step "Stamp manifest: analyze census with the local binary"
 "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${SLICE}" --format json \
   > "${ART}/chaos-out.json" 2> "${ART}/chaos-err.txt" \

@@ -49,7 +49,7 @@ import sys
 BASE_EPOCH_MS = 1_640_995_200_000
 
 
-# Columns read in pass 2; validated once so a schema variant fails with an
+# Columns read in pass 2. Validated once so a schema variant fails with an
 # actionable message instead of a KeyError traceback mid-conversion.
 REQUIRED_COLUMNS = (
     "timestamp", "traceid", "service", "rpc_id", "rpctype", "um", "interface", "dm", "rt",
@@ -102,7 +102,7 @@ def to_span(tid, rpc, row, rpc_ids):
         "startTimeUnixNano": str(start_ns),
         "endTimeUnixNano": str(start_ns + int(rt_ms * 1_000_000)),
         "attributes": [
-            # Synthetic carrier so ingest keeps the span; dm+interface are real.
+            # Synthetic carrier so ingest keeps the span. Dm+interface are real.
             {"key": "http.url",
              "value": {"stringValue": f"http://{row['dm']}/{interface}"}},
             {"key": "http.method", "value": {"stringValue": "POST"}},

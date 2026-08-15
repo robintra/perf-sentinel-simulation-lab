@@ -209,7 +209,7 @@ spec:
 # psql container in the same namespace. Default-deny-all in `db`
 # would otherwise block the Job from reaching postgres-0 on 5432.
 # Colocated with the Job so applying this manifest creates both at
-# once; manifests/network-policies.yaml stays focused on the shop
+# once. manifests/network-policies.yaml stays focused on the shop
 # ingress contract. Mirrors the pattern of
 # `manifests/kepler-exporter.yaml`'s `kepler-exporter-allow-daemon`.
 apiVersion: networking.k8s.io/v1
@@ -235,7 +235,7 @@ spec:
           port: 5432
 ---
 # Egress from the Job pod back to the Postgres service. The `db`
-# default-deny-all blocks all egress by default; allow only 5432 to
+# default-deny-all blocks all egress by default. Allow only 5432 to
 # the postgres pod and DNS for the cluster.local lookup.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

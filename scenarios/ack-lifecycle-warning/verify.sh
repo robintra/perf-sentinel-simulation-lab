@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ack-lifecycle-warning: the full life of a CI acknowledgment on real
-# artefacts — acked, fixed, not-run, and replayed.
+# artefacts, acked, fixed, not-run, and replayed.
 #
 # 0.9.28 reports an active TOML ack that suppressed nothing under the
 # `unmatched_acknowledgment` warning, and the optional `service` /
@@ -9,7 +9,7 @@
 # is the guard: the warning must be derived ONLY from a fresh analysis of
 # traces. A pre-computed report (a daemon `/api/export/report` snapshot, or a
 # report JSON replayed through `report --input`) is already ack-filtered, so
-# every still-useful entry would look unmatched there — and the tool would
+# every still-useful entry would look unmatched there, and the tool would
 # advise removing acks that are doing their job.
 #
 #   A1  the life cycle: finding -> acked (suppressed, no warning) -> fixed

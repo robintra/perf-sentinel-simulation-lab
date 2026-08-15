@@ -20,11 +20,11 @@ perf-sentinel will actually be deployed under.
 ## CNI choice
 
 Cilium 1.19.3 is the default. It runs in eBPF mode with
-`kubeProxyReplacement=false` (kept this way because Docker Desktop's
-host networking does not handle Cilium's full kube-proxy
-replacement reliably on arm64). Hubble is enabled with the relay
-running and the UI off; turn the UI on with `make hubble-ui` when
-debugging a denial.
+`kubeProxyReplacement=false` (kept this way because Docker
+Desktop's host networking does not handle Cilium's full
+kube-proxy replacement reliably on arm64). Hubble is enabled
+with the relay running and the UI off. Turn the UI on with
+`make hubble-ui` when debugging a denial.
 
 Calico is the documented manual fallback. To use it, edit
 `scripts/install-cni.sh` and rerun `make up-cni calico`. The CNI
@@ -98,11 +98,12 @@ instead of CIDR. The lab uses this for:
 - `github.com`, `*.github.com`, `objects.githubusercontent.com`,
   `registry.gitlab.com` (GitLab runner build pods)
 
-Cilium's DNS proxy intercepts pod DNS queries to populate the FQDN
-allowlist. The proxy listens on the same path as kube-dns; if you
-see DNS resolutions failing in your application logs after applying
-the policies, run `cilium hubble observe --verdict DROPPED -t l7`
-to see whether the DNS proxy is bouncing queries.
+Cilium's DNS proxy intercepts pod DNS queries to populate the
+FQDN allowlist. The proxy listens on the same path as kube-dns.
+If you see DNS resolutions failing in your application logs
+after applying the policies, run
+`cilium hubble observe --verdict DROPPED -t l7` to see whether
+the DNS proxy is bouncing queries.
 
 When using Calico as a fallback CNI, replace the FQDN egress rules
 with `ipBlock: 0.0.0.0/0` on port 443 (less precise but portable).

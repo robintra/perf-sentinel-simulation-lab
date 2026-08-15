@@ -14,14 +14,14 @@
 # merges the RPC target "<dm>/<interface>" correctly keeps apart. On
 # this slice: 10 of the baseline's redundant_http findings are such
 # false merges. redundant_http is therefore floored + recorded, not
-# equality-asserted; the four topology classes and the admission counts
+# equality-asserted. The four topology classes and the admission counts
 # must match exactly.
 #
 # Assertions (see README.md):
 #   B0     die-guard: the committed carrier slice analyzes with findings
 #          (prod-topology-replay already stamps this corpus)
 #   G1-G3  die-guards: each variant carries the intended shape (client:
-#          no carrier keys, rpc.service on every span; fallback: neither
+#          no carrier keys, rpc.service on every span. Fallback: neither
 #          carrier nor rpc.service, span-name is the only target;
 #          server: every span kind CLIENT->SERVER)
 #   P1     client == fallback exactly (attribute target and span-name
@@ -99,7 +99,6 @@ count_of() {  # $1 = "class=count ..." string, $2 = class ; 0 when absent
 # holds many spans, so `grep -c` (lines) would mask a partial transform.
 keycount() { grep -o "$2" "$1" 2>/dev/null | wc -l | tr -d ' '; }
 
-# ── B0: carrier baseline (die-guard) ────────────────────────────────────────
 step "B0: analyze the committed carrier slice (in-run baseline)"
 run_analyze "${SLICE}" base || die "analyze failed on the carrier slice: $(tail -2 "${TMP_DIR}/err-base.txt")"
 BASE_TA="$(traces_analyzed base)"
@@ -149,7 +148,6 @@ else
   assert_fail "P1" "client (traces=${C_TA}, events=${C_EV}, [${C_COUNTS}]) != fallback (traces=${F_TA}, events=${F_EV}, [${F_COUNTS}])"
 fi
 
-# ── P2: admission parity + topology-class parity vs the carrier ─────────────
 step "P2: rpc.* admission and topology classes match the carrier baseline"
 DIFFS=""
 [ "${C_TA}" = "${BASE_TA}" ] || DIFFS="${DIFFS} traces:${C_TA}!=${BASE_TA}"
@@ -165,7 +163,6 @@ else
   assert_fail "P2" "rpc.* variant diverges from carrier:${DIFFS}"
 fi
 
-# ── P3: redundant_http floored, host-strip delta recorded ───────────────────
 step "P3: redundant_http present; carrier host-strip delta recorded"
 BASE_RED="$(count_of "${BASE_COUNTS}" redundant_http)"
 C_RED="$(count_of "${C_COUNTS}" redundant_http)"

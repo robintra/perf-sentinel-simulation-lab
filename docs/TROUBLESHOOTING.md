@@ -219,15 +219,17 @@ If that works but `make psql` does not, check `.postgres-password`
 
 ## perf-sentinel reports `suggested_fix: null` and `source_endpoint: unknown`
 
-**Resolved in perf-sentinel 0.5.6.** Framework detection now uses two
-complementary signals: the OpenTelemetry instrumentation scope chain
-collected from each span's parent path (catches `spring-data`,
-`hibernate`, `quarkus`, `spring-webflux`, `r2dbc`, `helidon`, `jdbc`),
-plus user-code naming conventions on the JPA rule (`*Repository`,
-`*Repo`, `*Dao` suffixes). The lab pins 0.5.6 by default and JPA
-findings now carry `suggested_fix.framework = "java_jpa"` with a
-populated `recommendation`. Section kept below for users still on 0.5.5
-or earlier.
+**Resolved in perf-sentinel 0.5.6.** Framework detection now uses
+two complementary signals. The first is the OpenTelemetry
+instrumentation scope chain collected from each span's parent
+path, which catches `spring-data`, `hibernate`, `quarkus`,
+`spring-webflux`, `r2dbc`, `helidon` and `jdbc`. The second is
+user-code naming conventions on the JPA rule, namely the
+`*Repository`, `*Repo` and `*Dao` suffixes. The lab pins 0.5.6 by
+default and JPA findings now carry
+`suggested_fix.framework = "java_jpa"` with a populated
+`recommendation`. Section kept below for users still on 0.5.5 or
+earlier.
 
 ### Pre-0.5.6 behavior
 
@@ -242,7 +244,12 @@ HTTP span             (http.route present)
           └─ JDBC span           (no code.* attributes; perf-sentinel reads here)
 ```
 
-perf-sentinel 0.5.4 does not walk up the parent chain, so it sees no namespace and emits no `suggested_fix`. perf-sentinel 0.5.5 added the parent walker but the table `JAVA_RULES` only matched framework packages, so the user-code namespace surfaced by the walker (e.g. `com.example.OrderRepository`) still failed to match. perf-sentinel 0.5.6 closes both gaps.
+perf-sentinel 0.5.4 does not walk up the parent chain, so it sees
+no namespace and emits no `suggested_fix`. perf-sentinel 0.5.5
+added the parent walker, but the table `JAVA_RULES` only matched
+framework packages. The user-code namespace surfaced by the
+walker, `com.example.OrderRepository` for instance, therefore
+still failed to match. perf-sentinel 0.5.6 closes both gaps.
 
 `source_endpoint` is similarly read from the immediate parent (Hibernate Query span) rather than from the HTTP server span, hence the `unknown` value.
 
@@ -284,60 +291,66 @@ Up to and including 0.9.26 the OTLP **gRPC** listener never called
 `Unimplemented` is a permanent error, so the Collector drops each batch
 without retrying: a total, silent telemetry loss.
 
-Workaround on 0.9.26 and earlier: set `compression: none` on the gRPC
-exporter, or point it at the HTTP endpoint (`:14318`), which has
-decompressed gzip since 0.5.5. On 0.9.28+, gzip and deflate are accepted
-on both endpoints; `zstd` and `snappy` remain refused with the same
-`Unimplemented` and must be changed back to `gzip` or `none`.
+Workaround on 0.9.26 and earlier: set `compression: none` on the
+gRPC exporter, or point it at the HTTP endpoint (`:14318`), which
+has decompressed gzip since 0.5.5. On 0.9.28+, gzip and deflate
+are accepted on both endpoints. `zstd` and `snappy` remain
+refused with the same `Unimplemented` and must be changed back to
+`gzip` or `none`.
 
-This lab exported over `otlphttp` only, so it never exercised the broken
-path — see the `otlp-compression-matrix` scenario, which now covers the
-full transport × encoding matrix and A/Bs it against a pre-fix image.
+This lab exported over `otlphttp` only, so it never exercised the
+broken path. See the `otlp-compression-matrix` scenario, which
+now covers the full transport × encoding matrix and A/Bs it
+against a pre-fix image.
 
 ## OTel JDBC sanitizer disabled to expose N+1 SQL distinct params
 
-**Resolved in perf-sentinel 0.5.7+.** The daemon now recognizes when
-the OpenTelemetry SQL statement sanitizer has collapsed N+1 query
-parameters to `?` placeholders and reclassifies the affected groups
-from `redundant_sql` to `n_plus_one_sql` via a sanitizer-aware
-heuristic (instrumentation scope ORM marker plus per-span timing
-variance). Reclassified findings carry a new
+**Resolved in perf-sentinel 0.5.7+.** The daemon now recognizes
+when the OpenTelemetry SQL statement sanitizer has collapsed N+1
+query parameters to `?` placeholders. It reclassifies the
+affected groups from `redundant_sql` to `n_plus_one_sql` through
+a sanitizer-aware heuristic: the instrumentation scope ORM marker
+plus per-span timing variance. Reclassified findings carry a new
 `classification_method: "sanitizer_heuristic"` field. The lab no
 longer disables the sanitizer in the Java charts and runs in a
-production-realistic configuration. The historical workaround stays
-documented below for users on 0.5.4 to 0.5.6.
+production-realistic configuration. The historical workaround
+stays documented below for users on 0.5.4 to 0.5.6.
 
 **Note on `strict` mode (introduced in perf-sentinel 0.5.8).** By
-default, the daemon runs `sanitizer_aware_classification = "auto"`
-which fires the heuristic on either signal (ORM scope marker OR high
-timing variance). That default matches typical production N+1
-patterns. However, applications with cache-warming patterns or
-polling repositories that issue many identical SQL queries through
-an ORM produce a false positive under `auto`: the ORM scope marker
-alone fires the reclassification even when the timing is flat
-(cached plan, no real N+1 fan-out across rows).
+default, the daemon runs
+`sanitizer_aware_classification = "auto"` which fires the
+heuristic on either signal (ORM scope marker OR high timing
+variance). That default matches typical production N+1 patterns.
+However, applications with cache-warming patterns or polling
+repositories that issue many identical SQL queries through an ORM
+produce a false positive under `auto`. The ORM scope marker alone
+fires the reclassification even when the timing is flat, on a
+cached plan with no real N+1 fan-out across rows.
 
-The simulation lab opts in to `sanitizer_aware_classification = "strict"`
-in its daemon ConfigMap (`manifests/perf-sentinel-daemon.yaml`,
-section `[detection]`) which requires both signals together. The
-lab's `redundant-sql` scenario (15 cache-warmed `SELECT count(*)
-WHERE customer_id = 1` via JPA) consequently stays classified as
-`redundant_sql`, while the `n-plus-one-sql` scenario (15 hits on
-distinct `order_id`s) still triggers the heuristic because its
-timing variance crosses the CV > 0.5 threshold. Production stacks
-that observe similar false positives can adopt the same opt-in.
+The simulation lab opts in to
+`sanitizer_aware_classification = "strict"` in its daemon
+ConfigMap (`manifests/perf-sentinel-daemon.yaml`, section
+`[detection]`) which requires both signals together. The lab's
+`redundant-sql` scenario, 15 cache-warmed
+`SELECT count(*) WHERE customer_id = 1` via JPA, consequently
+stays classified as `redundant_sql`. The `n-plus-one-sql`
+scenario, 15 hits on distinct `order_id`s, still triggers the
+heuristic, because its timing variance crosses the CV > 0.5
+threshold. Production stacks that observe similar false positives
+can adopt the same opt-in.
 
 ### Pre-0.5.7 behavior
 
-The OpenTelemetry Java agent sanitizes `db.statement` by default and
-replaces literal values with `?` placeholders to avoid leaking
-parameter values (potential PII) into trace storage. perf-sentinel
-discriminates `n_plus_one_sql` from `redundant_sql` by counting
-`distinct_params` across spans in the same template group: distinct
-values mean a real N+1 (different rows fetched), identical values
-mean a redundant call. With the sanitizer active, every span exposes
-`params = ["?"]`, so `distinct_params = 1`, and any N+1 burst gets
-classified as `redundant_sql`.
+The OpenTelemetry Java agent sanitizes `db.statement` by default
+and replaces literal values with `?` placeholders to avoid
+leaking parameter values (potential PII) into trace storage.
+perf-sentinel discriminates `n_plus_one_sql` from `redundant_sql`
+by counting `distinct_params` across spans in the same template
+group. Distinct values mean a real N+1 that fetched different
+rows, identical values mean a redundant call. With the sanitizer
+active, every span exposes `params = ["?"]`, so
+`distinct_params = 1`, and any N+1 burst gets classified as
+`redundant_sql`.
 
 To demonstrate the N+1 SQL classification path, the lab used to set
 `OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED=false`
@@ -346,10 +359,10 @@ in production (it leaks SQL literals to traces) but was the only way
 to expose the parameter values that the detector needed.
 
 If you operate a stack still on 0.5.4 to 0.5.6 and the
-classification looks wrong (real N+1 reported as `redundant_sql`),
-either upgrade to 0.5.7 or accept that the sanitizer is masking the
-discriminator and read the daemon's `suggestion` field for an
-architectural hint.
+classification looks wrong, with a real N+1 reported as
+`redundant_sql`, upgrade to 0.5.7. Otherwise accept that the
+sanitizer is masking the discriminator, and read the daemon's
+`suggestion` field for an architectural hint.
 
 ## NetworkPolicy denials (Cilium path only)
 
@@ -417,14 +430,15 @@ make verify-network-policies
 
 ### Symptom: pods crashloop on database/DNS errors after a docker restart
 
-When Docker Desktop sleeps or the host hits memory pressure, the k3d
-control plane container can restart. On wake, Cilium agents re-init
-but their endpoint cache can drift, leaving pod-to-pod policy
-enforcement out of sync. Typical signature: shop pods CrashLoopBackOff
-with Postgres connection refused, an `nslookup postgres.db.svc.cluster.local`
-from inside the shop namespace times out, and `cilium hubble observe
---verdict DROPPED` shows shop → kube-system DNS getting denied even
-though the `allow-dns-egress` policy is in place.
+When Docker Desktop sleeps or the host hits memory pressure, the
+k3d control plane container can restart. On wake, Cilium agents
+re-init but their endpoint cache can drift, leaving pod-to-pod
+policy enforcement out of sync. Typical signature: shop pods
+CrashLoopBackOff with Postgres connection refused, and an
+`nslookup postgres.db.svc.cluster.local` from inside the shop
+namespace times out. `cilium hubble observe --verdict DROPPED`
+then shows shop → kube-system DNS getting denied, even though the
+`allow-dns-egress` policy is in place.
 
 Recovery without recreating the cluster:
 

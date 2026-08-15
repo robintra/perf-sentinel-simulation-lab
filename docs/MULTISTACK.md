@@ -1,11 +1,12 @@
 # Multistack service contract
 
-This document is the canonical contract every multistack service in this lab
-must respect. The lab runs 3 Java/Spring Boot services (`order-service`,
-`payment-service`, `notification-service`) and 15 additional services across
-distinct stacks (Quarkus,
-Quarkus+Mutiny, Helidon SE, Helidon MP, .NET 10, Rust+Diesel, Rust+SeaORM,
-NestJS, Django, FastAPI, Go, Rails, Laravel, Symfony, Kotlin+Ktor).
+This document is the canonical contract every multistack service in this
+lab must respect. The lab runs 3 Java/Spring Boot services:
+`order-service`, `payment-service` and `notification-service`. It also
+runs 15 additional services across distinct stacks: Quarkus,
+Quarkus+Mutiny, Helidon SE, Helidon MP, .NET 10, Rust+Diesel,
+Rust+SeaORM, NestJS, Django, FastAPI, Go, Rails, Laravel, Symfony and
+Kotlin+Ktor.
 
 Together these are **18 deployable services across 16 stacks**: one Spring
 Boot/JPA baseline implemented by three cooperating services and 15 independent
@@ -54,14 +55,15 @@ below.
 
 Required fields:
 
-- `antiPattern` (string) — exact snake_case name matching the finding type.
-- `service` (string) — must equal `OTEL_SERVICE_NAME`.
-- `durationMs` (integer) — wall-clock duration of the fault.
-- `details` (object) — stack-specific. At minimum the input parameter and a
-  count of operations performed (e.g. `{"items": 15, "rows_seen": 75}`).
-  Messaging responses additionally require `published == confirmed ==` the
-  requested message count.
-- `timestamp` (ISO-8601, UTC) — instant the response is built.
+- `antiPattern` (string): exact snake_case name matching the finding
+  type.
+- `service` (string): must equal `OTEL_SERVICE_NAME`.
+- `durationMs` (integer): wall-clock duration of the fault.
+- `details` (object): stack-specific. At minimum the input parameter and
+  a count of operations performed (e.g.
+  `{"items": 15, "rows_seen": 75}`). Messaging responses additionally
+  require `published == confirmed ==` the requested message count.
+- `timestamp` (ISO-8601, UTC): instant the response is built.
 
 ### Behaviour notes per anti-pattern
 
@@ -69,38 +71,44 @@ These are the invariants the perf-sentinel detectors rely on. Reproduce them
 faithfully in the stack-specific ORM/HTTP client, not "something that looks
 similar".
 
-- `n-plus-one-sql` — loop of N distinct SQL statements (interpolated literals,
-  not prepared parameters), e.g. `SELECT count(*) FROM <schema>.order_items
-  WHERE order_id = 1`, `WHERE order_id = 2`, …. Each statement must reach
-  the JDBC/driver layer as a separate template so the OTel instrumentation
-  emits N distinct spans.
-- `redundant-sql` — loop of N identical SQL statements with identical literal
-  parameters, e.g. `SELECT count(*) FROM <schema>.payments WHERE customer_id
-  = 1` repeated 10 times. The sanitizer must see one template repeated.
-- `slow-sql` — N statements each delayed server-side via `SELECT pg_sleep(0.6)`
-  (or driver-equivalent), interpolated literals so each is distinct.
-- `pool-saturation` — pool size must be capped at 10 in the stack's connection
-  pool config (Hikari for Spring, Agroal for Quarkus, EFCore pool, etc.).
-  Then launch `concurrency=20` parallel tasks each holding a connection
-  ~400ms, so 10 tasks queue behind 10 in-flight ones.
-- `n-plus-one-http` — N outbound HTTP calls to a local endpoint, each with a
-  distinct query template (e.g. `/api/external/mock?recipient=1, =2, …`).
-- `redundant-http` — N identical outbound HTTP calls, same URL same params.
-- `slow-http` — N outbound HTTP calls to `/api/external/mock?delayMs=600`.
-- `fanout` — N parallel outbound HTTP calls (executor / virtual threads /
+- `n-plus-one-sql`: loop of N distinct SQL statements (interpolated
+  literals, not prepared parameters), e.g.
+  `SELECT count(*) FROM <schema>.order_items WHERE order_id = 1`,
+  `WHERE order_id = 2`, …. Each statement must reach the JDBC/driver
+  layer as a separate template so the OTel instrumentation emits N
+  distinct spans.
+- `redundant-sql`: loop of N identical SQL statements with identical
+  literal parameters, e.g.
+  `SELECT count(*) FROM <schema>.payments WHERE customer_id = 1` repeated
+  10 times. The sanitizer must see one template repeated.
+- `slow-sql`: N statements each delayed server-side via
+  `SELECT pg_sleep(0.6)` (or driver-equivalent), interpolated literals so
+  each is distinct.
+- `pool-saturation`: pool size must be capped at 10 in the stack's
+  connection pool config (Hikari for Spring, Agroal for Quarkus, EFCore
+  pool, etc.). Then launch `concurrency=20` parallel tasks each holding a
+  connection ~400ms, so 10 tasks queue behind 10 in-flight ones.
+- `n-plus-one-http`: N outbound HTTP calls to a local endpoint, each with
+  a distinct query template (e.g.
+  `/api/external/mock?recipient=1, =2, …`).
+- `redundant-http`: N identical outbound HTTP calls, same URL same
+  params.
+- `slow-http`: N outbound HTTP calls to `/api/external/mock?delayMs=600`.
+- `fanout`: N parallel outbound HTTP calls (executor / virtual threads /
   Promise.all / tokio::join_all / goroutines), each to
   `/api/external/mock?delayMs=10`.
-- `chatty` — N sequential outbound calls with varying templates
+- `chatty`: N sequential outbound calls with varying templates
   (`?seq={i}&op={i%7}`). Distinct templates avoid the n+1 classification.
-- `serialized` — 6 sequential calls to `/api/dispatch/email`, `…/sms`,
+- `serialized`: 6 sequential calls to `/api/dispatch/email`, `…/sms`,
   `…/push`, `…/webhook`, `…/slack`, `…/teams`, each `delayMs=80`, so the
   total wall-clock crosses ~480ms.
-- `n-plus-one-messaging` — accepts only RabbitMQ with `5 <= messages <= 100`,
-  publishes distinct persistent messages to the stack's durable direct
-  `perfsim.<service>` destination, then waits once for all broker confirms.
-- `slow-messaging` — accepts only RabbitMQ with `501 <= delayMs <= 5000` and
-  `3 <= repeats <= 20`, applies the existing Toxiproxy downstream latency,
-  then alternates each real publication with its broker confirm.
+- `n-plus-one-messaging`: accepts only RabbitMQ with
+  `5 <= messages <= 100`, publishes distinct persistent messages to the
+  stack's durable direct `perfsim.<service>` destination, then waits once
+  for all broker confirms.
+- `slow-messaging`: accepts only RabbitMQ with `501 <= delayMs <= 5000`
+  and `3 <= repeats <= 20`. It applies the existing Toxiproxy downstream
+  latency, then alternates each real publication with its broker confirm.
 
 Invalid messaging input returns HTTP 400 before any RabbitMQ or Toxiproxy
 call. A partial publication, nack, returned message, absent confirmation,
@@ -108,10 +116,11 @@ unavailable dependency or Toxiproxy failure returns non-200.
 
 ### RabbitMQ and telemetry contract
 
-RabbitMQ and Toxiproxy run in the `messaging` namespace. Every service uses
-the shared ports 5672, 25672 and 8474, queue TTL 60000 ms and the local
-`rabbitmq-credentials` Secret. Usernames and passwords are injected only
-through `secretKeyRef`; they never appear in values files or source code.
+RabbitMQ and Toxiproxy run in the `messaging` namespace. Every service
+uses the shared ports 5672, 25672 and 8474, queue TTL 60000 ms and the
+local `rabbitmq-credentials` Secret. Usernames and passwords are injected
+only through `secretKeyRef`. They never appear in values files or source
+code.
 
 Native client instrumentation is retained when it covers the real publish and
 confirmation boundary. Otherwise a manual `PRODUCER` span named
@@ -141,9 +150,9 @@ multistack service is deployed.
 Every service MUST expose:
 
 - `GET /q/health/live` (or stack-equivalent: `/actuator/health/liveness`,
-  `/health`, `/healthz`, etc.) — HTTP 200 when the process is up.
-- `GET /q/health/ready` (or equivalent) — HTTP 200 when the connection pool
-  is initialised and the schema migrations have run.
+  `/health`, `/healthz`, etc.): HTTP 200 when the process is up.
+- `GET /q/health/ready` (or equivalent): HTTP 200 when the connection
+  pool is initialised and the schema migrations have run.
 
 The Kubernetes deployment manifest wires these into `livenessProbe` /
 `readinessProbe` with a 5s initial delay and a 10s period. Stack-specific
@@ -176,11 +185,13 @@ Postgres schema in the shared `lab` database.
 | symfony-svc          | 8096 | symfony       | Symfony 7.4.16 LTS + Doctrine 3.6.8 (PHP 8.5)       |
 | ktor-svc             | 8097 | ktor          | Ktor 3.5.1 + Kotlin 2.4.10                          |
 
-The two PHP members exercise perf-sentinel's framework-aware `suggested_fix`:
-Laravel's app-wide `io.opentelemetry.contrib.php.laravel` scope tags every finding
-`php_laravel_eloquent`, while Symfony's DB-specific `io.opentelemetry.contrib.php.doctrine`
-scope tags only SQL findings `php_doctrine` (non-SQL Symfony findings fall through to
-`php_generic`). Both use the same 12-endpoint contract.
+The two PHP members exercise perf-sentinel's framework-aware
+`suggested_fix`. Laravel's app-wide
+`io.opentelemetry.contrib.php.laravel` scope tags every finding
+`php_laravel_eloquent`. Symfony's DB-specific
+`io.opentelemetry.contrib.php.doctrine` scope tags only SQL findings
+`php_doctrine`, and non-SQL Symfony findings fall through to
+`php_generic`. Both use the same 12-endpoint contract.
 
 Cluster-internal DNS:
 `http://<svc-name>.shop.svc.cluster.local:<port>`.
@@ -221,11 +232,12 @@ without quoting.
 Each schema MUST contain at minimum three tables that match the Java
 baseline's shape, so the fault endpoints can target consistent queries:
 
-- `<schema>.orders` — at least 100 rows, columns `id` (PK), `customer_id`,
+- `<schema>.orders`: at least 100 rows, columns `id` (PK), `customer_id`,
   `total_cents`, `status`, `created_at`.
-- `<schema>.order_items` — at least 500 rows (5 per order on average),
-  columns `id` (PK), `order_id` (FK), `product_id`, `quantity`, `unit_cents`.
-- `<schema>.payments` — at least 200 rows, columns `id` (PK), `order_id`,
+- `<schema>.order_items`: at least 500 rows (5 per order on average),
+  columns `id` (PK), `order_id` (FK), `product_id`, `quantity`,
+  `unit_cents`.
+- `<schema>.payments`: at least 200 rows, columns `id` (PK), `order_id`,
   `customer_id`, `amount_cents`, `status`, `created_at`.
 
 Seed data is the responsibility of the service's own migration tool (Flyway,
@@ -266,8 +278,8 @@ Stack-specific instrumentation choice:
   + `OpenTelemetry.Exporter.OpenTelemetryProtocol`, configured in `Program.cs`
   via the `ResourceBuilder` and `TracerProviderBuilder` chain.
 - **Rust** (Diesel / SeaORM): `opentelemetry` 0.32 +
-  `tracing-opentelemetry` 0.33 + `opentelemetry-otlp`, initialised at startup;
-  the HTTP layer uses `axum-tracing-opentelemetry` 0.38.
+  `tracing-opentelemetry` 0.33 + `opentelemetry-otlp`, initialised at
+  startup. The HTTP layer uses `axum-tracing-opentelemetry` 0.38.
 - **NestJS**: `@opentelemetry/sdk-node` 0.221 configured at `main.ts` boot.
 - **Django / FastAPI**: `opentelemetry-instrumentation-django` /
   `opentelemetry-instrumentation-fastapi` + `opentelemetry-instrumentation-psycopg`
@@ -311,7 +323,7 @@ range and the label is set.
 
 Per-stack validation flow (run in sequence by the multistack harness):
 
-1. `make seed-<stack>-svc` — builds the image, applies the Helm chart,
+1. `make seed-<stack>-svc` builds the image, applies the Helm chart, and
    waits for `Ready=True`.
 2. `scripts/run-multistack-scenario.sh <stack>` creates one guarded k6 Job per
    fault and drives all 12 endpoints in the fixed global order.
@@ -361,14 +373,15 @@ Key points for the phase 3 (Helidon MP) and phase 4 (Helidon SE) deliveries:
 - **Metrics & logs over OTel**: Helidon 4.4 adds OTLP-exportable metrics
   and OTel-aligned logging. Lab only ships traces (`OTEL_METRICS_EXPORTER=none`,
   `OTEL_LOGS_EXPORTER=none`), so this is informational only.
-- **CORS config moved**: feature-level CORS config is deprecated; the new
+- **CORS config moved**: feature-level CORS config is deprecated. The new
   centralized top-level config is preferred. Lab does not expose CORS, so
   this is informational only.
-- **Helidon SE (phase 4)**: plain Java, no Jakarta APIs, minimal footprint.
-  Routing via `WebServer` builder, DB access via Helidon DB Client (Vert.x).
-  Style is imperative-by-default; the new declarative APIs in 4.4 are
-  opt-in via code-generation (annotations like `@RestServer.Endpoint`,
-  `@Http.Path`, `@Service.Singleton`, `@Metrics.Counted`).
+- **Helidon SE (phase 4)**: plain Java, no Jakarta APIs, minimal
+  footprint. Routing via `WebServer` builder, DB access via Helidon DB
+  Client (Vert.x). Style is imperative-by-default. The new declarative
+  APIs in 4.4 are opt-in via code-generation (annotations like
+  `@RestServer.Endpoint`, `@Http.Path`, `@Service.Singleton`,
+  `@Metrics.Counted`).
 - **Helidon MP (phase 3)**: MicroProfile 6.1 compliant. Jakarta JAX-RS +
   CDI + JPA stack, close to Quarkus in shape. Build with Maven, deploy
   the same distroless image, swap the Quarkus extensions for the
@@ -376,7 +389,7 @@ Key points for the phase 3 (Helidon MP) and phase 4 (Helidon SE) deliveries:
   set as SE.
 - **Helidon JSON**: new build-time JSON library (3x faster than Jackson
   in upstream benchmarks). Optional for the lab. Default to Jackson for
-  consistency with the Java baseline; switching to Helidon JSON is a
+  consistency with the Java baseline. Switching to Helidon JSON is a
   follow-up if performance becomes a concern.
 - **Database support**: Oracle Database 26ai added in 4.4. Lab uses
   Postgres exclusively, so no impact.

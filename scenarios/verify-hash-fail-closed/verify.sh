@@ -58,7 +58,6 @@ FAKE_SIG='{
   "signed_at": "2026-05-15T12:00:00Z"
 }'
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v docker >/dev/null || die "docker not on PATH"
 command -v jq >/dev/null || die "jq not on PATH"
@@ -100,7 +99,6 @@ echo "${out}" | grep -q 'Overall: UNTRUSTED'     || { fail "expected Overall: UN
 if [ "${r2_ok}" -eq 1 ]; then ok "fail-closed: exit1 UNTRUSTED, [FAIL] Signature, [OK] Content hash (no cosign needed)"; record "fail-closed" "PASS" "exit1 UNTRUSTED + [FAIL] Signature + [OK] Content hash"
 else record "fail-closed" "FAIL" "see log"; fi
 
-# === Summary ===
 step "Summary"
 pass=0; failc=0; skip=0
 { echo "# ${SCENARIO}"; echo; } > "${REPORT}"

@@ -1,5 +1,5 @@
 // mutiny-svc multistack runner. Same dispatcher pattern as
-// scenarios/quarkus-svc-validation.js — see that file's header for
+// scenarios/quarkus-svc-validation.js, see that file's header for
 // the rationale on the __ENV.ANTI_PATTERN trick (k6 1.x has no
 // --exec CLI flag).
 

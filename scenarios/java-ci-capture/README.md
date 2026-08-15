@@ -1,22 +1,23 @@
 # java-ci-capture
 
-Runs the upstream Java CI recipe end to end — `docs/INSTRUMENTATION.md`, section
-*CI integration tests (Maven Failsafe)*, Option 1, `perf-sentinel capture` — and
-holds the exit-code contract that command promises.
+Runs the upstream Java CI recipe end to end (`docs/INSTRUMENTATION.md`,
+section *CI integration tests (Maven Failsafe)*, Option 1,
+`perf-sentinel capture`) and holds the exit-code contract that command
+promises.
 
 ## Why it exists
 
-The recipe for producing a trace file from a Java CI job shipped broken, twice,
-and was still broken on its first rewrite. It first named
-`OTEL_TRACES_EXPORTER=otlp_file` with `OTEL_EXPORTER_OTLP_FILE_PATH`, two names
-that exist nowhere in OpenTelemetry; an external user followed it on a Jenkins +
-Maven pipeline and got no traces at all. The *History* table below traces what
-happened next.
+The recipe for producing a trace file from a Java CI job shipped broken,
+twice, and was still broken on its first rewrite. It first named
+`OTEL_TRACES_EXPORTER=otlp_file` with `OTEL_EXPORTER_OTLP_FILE_PATH`, two
+names that exist nowhere in OpenTelemetry. An external user followed it on a
+Jenkins + Maven pipeline and got no traces at all. The *History* table below
+traces what happened next.
 
-The reason none of it was caught is structural: every lab batch scenario before
-this one obtained its trace file from committed fixtures, a Collector `file`
-exporter, or a backend query API — never from a language agent. Every scenario
-started one step downstream of the thing the documentation described.
+The reason none of it was caught is structural: every lab batch scenario
+before this one obtained its trace file from committed fixtures, a Collector
+`file` exporter, or a backend query API, never from a language agent. Every
+scenario started one step downstream of the thing the documentation described.
 
 ## What it asserts
 
@@ -39,11 +40,11 @@ started one step downstream of the thing the documentation described.
 | F8 | the wrapped command deleting `target/` mid-capture **fails** the run instead of reporting a span count |
 
 D3's Collector run doubles as the control: if it finds nothing either, the
-fixture is at fault rather than the capture, and the scenario says so instead of
-blaming the recipe. F1 SKIPs rather than fails when the generator cannot push
-1 MiB within `F1_WAIT_S`, and F6 likewise when the generators never fill the
-256-slot channel within `F6_BLOCK_S` — a slow host must not read as a broken size
-guard or a broken backpressure counter.
+fixture is at fault rather than the capture, and the scenario says so instead
+of blaming the recipe. F1 SKIPs rather than fails when the generator cannot
+push 1 MiB within `F1_WAIT_S`, and F6 likewise when the generators never fill
+the 256-slot channel within `F6_BLOCK_S`. A slow host must not read as a
+broken size guard or a broken backpressure counter.
 
 ## History
 
@@ -52,7 +53,7 @@ running it rather than by reading it.
 
 | round | product | outcome |
 |---|---|---|
-| 1 | `8839da06` | `experimental-otlp/stdout` — a forked Failsafe cannot hand back its stdout; the agent captures the fork's command channel in `premain`, so every export was diverted into a `.dumpstream`. Measured identically on Failsafe 3.5.0, 3.2.5 and 2.22.2, and on the documented `tee` fallback. |
+| 1 | `8839da06` | `experimental-otlp/stdout`: a forked Failsafe cannot hand back its stdout; the agent captures the fork's command channel in `premain`, so every export was diverted into a `.dumpstream`. Measured identically on Failsafe 3.5.0, 3.2.5 and 2.22.2, and on the documented `tee` fallback. |
 | 2 | `9c186516` | `capture` introduced and sound, but three defects: the published POM pointed `:4317` while agent 2.x defaults to `http/protobuf` (0 spans captured); a request refused *before* the queue was reported as writer backpressure; SIGTERM killed only the direct child, orphaning the grandchild to PID 1. |
 | 3 | `57d2a2f9` | all three fixed. The POM states the protocol, the two rejection causes have separate counters and messages, and the wrapped command runs in its own process group. **13/13 PASS.** |
 | 4 | `0.9.25` | the defect `ci-e2e-jenkins` reported as J0 is fixed: `capture` creates the output directory instead of refusing to start. F3 moves to a refusal a `mkdir` cannot fix, F7 and F8 are new. **15/15 PASS.** |
@@ -83,28 +84,30 @@ the trace file outside the directory being cleaned.
   empty default: an empty `OTEL_EXPORTER_OTLP_PROTOCOL` aborts autoconfiguration
   outright, which is a third, differently-broken state.
 - `fixtures/.../OrderItemsIT.java` is the integration test a CI pipeline would
-  run: one request, 15 single-row `SELECT`s against a throwaway PostgreSQL. The
-  SERVER span is opened by hand because the project has no web framework for the
-  agent to instrument; the JDBC spans are the agent's own. `LAB_FAIL` makes it
-  fail on purpose for D4, after the spans have been exported.
-- The statement sanitizer is disabled — the one departure from the documented
-  environment that concerns the payload rather than the capture, and it is about
-  **determinism, not correctness**. Measured: with the sanitizer on, the default
-  `auto` mode still reports `n_plus_one_sql` through its recovery heuristic. But
-  this project is plain JDBC with no ORM scope marker, so that heuristic rests on
-  timing variance alone, and at 10 occurrences instead of 15 `strict` already
-  falls back to `redundant_sql`. A gate assertion must not depend on how loaded
-  the machine was. This is **not** advice to disable the sanitizer in a real
-  pipeline: doing so writes raw SQL literals into a trace file that CI commonly
-  publishes as a job artifact, and `auto` does not need it.
+  run: one request, 15 single-row `SELECT`s against a throwaway PostgreSQL.
+  The SERVER span is opened by hand because the project has no web framework
+  for the agent to instrument. The JDBC spans are the agent's own. `LAB_FAIL`
+  makes it fail on purpose for D4, after the spans have been exported.
+- The statement sanitizer is disabled: the one departure from the documented
+  environment that concerns the payload rather than the capture, and it is
+  about **determinism, not correctness**. Measured: with the sanitizer on, the
+  default `auto` mode still reports `n_plus_one_sql` through its recovery
+  heuristic. But this project is plain JDBC with no ORM scope marker, so that
+  heuristic rests on timing variance alone, and at 10 occurrences instead of
+  15 `strict` already falls back to `redundant_sql`. A gate assertion must not
+  depend on how loaded the machine was. This is **not** advice to disable the
+  sanitizer in a real pipeline: doing so writes raw SQL literals into a trace
+  file that CI commonly publishes as a job artifact, and `auto` does not need
+  it.
 - The F legs use `telemetrygen` from a neighbouring container, which is also what
   makes F5 a real cross-container test rather than a loopback one.
-- F6 cannot make the exporter fast enough — a container reaches roughly one
-  request per second through the host bridge — so it slows the writer instead:
-  the output is a FIFO whose reader holds it open and reads nothing, which stalls
-  the writer while the 256-slot channel fills, then drains so capture can exit.
-  The rejection counts are a summary printed at exit, not a stream, so the leg
-  waits out the block rather than polling for a message that cannot appear yet.
+- F6 cannot make the exporter fast enough, because a container reaches roughly
+  one request per second through the host bridge. It slows the writer instead.
+  The output is a FIFO whose reader holds it open and reads nothing, which
+  stalls the writer while the 256-slot channel fills, then drains so capture
+  can exit. The rejection counts are a summary printed at exit, not a stream,
+  so the leg waits out the block rather than polling for a message that cannot
+  appear yet.
 - The project is copied into `/tmp` before building, so no `target/` ever appears
   in the repository.
 
@@ -114,7 +117,7 @@ the trace file outside the directory being cleaned.
 make verify-java-ci-capture
 ```
 
-Self-contained, no cluster. Needs the local release binary (`cargo build
---release -p perf-sentinel`), a JDK, Maven, and Docker. Ports 4317/4318 must be
-free — the documented endpoint targets them. Report at
-`/tmp/scenario-java-ci-capture-report.md`.
+Self-contained, no cluster. Needs the local release binary
+(`cargo build --release -p perf-sentinel`), a JDK, Maven, and Docker. Ports
+4317/4318 must be free, because the documented endpoint targets them. Report
+at `/tmp/scenario-java-ci-capture-report.md`.

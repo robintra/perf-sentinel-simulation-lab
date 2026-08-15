@@ -17,7 +17,7 @@ class BusinessController extends AbstractController
     {
     }
 
-    // GET /api/external/mock — the inert target the HTTP faults call back into.
+    // GET /api/external/mock: the inert target the HTTP faults call back into.
     #[Route('/api/external/mock', methods: ['GET'])]
     public function mock(Request $r): JsonResponse
     {
@@ -47,7 +47,7 @@ class BusinessController extends AbstractController
         return new JsonResponse(['channel' => $channel, 'dispatched' => true, 'delayMs' => $delay]);
     }
 
-    // GET /api/payments/history — a real Doctrine read (php.doctrine + php.pdo).
+    // GET /api/payments/history: a real Doctrine read (php.doctrine + php.pdo).
     // ?hold=1 briefly holds the connection so the pool-saturation fan-out produces
     // genuinely overlapping DB spans across workers.
     #[Route('/api/payments/history', methods: ['GET'])]

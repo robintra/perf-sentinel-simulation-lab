@@ -1,6 +1,6 @@
 // Package db wires the pgx connection pool with the otelpgx tracer.
 // The tracer emits spans under the InstrumentationScope name
-// `github.com/exaring/otelpgx` — this is the marker perf-sentinel's
+// `github.com/exaring/otelpgx`: this is the marker perf-sentinel's
 // strict classifier needs to surface as the ORM-equivalent signal for
 // the pgx bare-driver path (Gap #20 candidate stack).
 package db

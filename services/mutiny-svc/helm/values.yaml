@@ -8,7 +8,7 @@ service:
 
 database:
   # Reactive PG client URL (no `jdbc:` prefix). The reactive datasource
-  # in application.properties reads from DB_REACTIVE_URL; the JDBC
+  # in application.properties reads from DB_REACTIVE_URL. The JDBC
   # Flyway datasource reads from DB_URL.
   reactiveUrl: postgresql://postgres.db.svc.cluster.local:5432/lab?search_path=mutiny
   url: jdbc:postgresql://postgres.db.svc.cluster.local:5432/lab?currentSchema=mutiny

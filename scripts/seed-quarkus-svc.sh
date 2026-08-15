@@ -32,7 +32,7 @@ die()  { color_red   "    error: $*"; exit 1; }
 # Database password for the multistack Postgres role `quarkus_user`.
 # The role itself is created by manifests/postgres-multistack-schemas.yaml
 # with password `lab_quarkus`. The Helm chart's values.yaml defaults to
-# that password; this script overrides via --set if the operator wants
+# that password. This script overrides via --set if the operator wants
 # to rotate the placeholder.
 PASSWORD_FILE="${REPO_ROOT}/.postgres-quarkus-svc-password"
 if [ ! -f "${PASSWORD_FILE}" ]; then

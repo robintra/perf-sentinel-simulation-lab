@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Enable the Hubble UI on a running Cilium installation, then expose it
 # on http://localhost:12000. The UI is off by default to keep the lab
-# footprint small; turn it on when debugging NetworkPolicy denials.
+# footprint small. Turn it on when debugging NetworkPolicy denials.
 # Usage: ./scripts/hubble-ui.sh
 set -euo pipefail
 

@@ -25,7 +25,7 @@
 #     (1..6) makes the group an N+1 so a finding is guaranteed to fire and
 #     carry the masked pattern.template.
 #
-# stdlib-only; regenerating needs no extra packages. verify.sh consumes the
+# stdlib-only. Regenerating needs no extra packages. verify.sh consumes the
 # committed *.native.json directly and never runs this generator.
 import json
 import os

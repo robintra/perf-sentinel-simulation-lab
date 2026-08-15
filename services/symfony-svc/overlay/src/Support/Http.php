@@ -8,8 +8,8 @@ use OpenTelemetry\Context\Context;
 
 // Outbound HTTP helper that emits its OWN CLIENT span carrying `url.full`. The
 // tracer scope (symfony-svc-http) is NOT a framework scope, and the enclosing
-// SERVER span carries only io.opentelemetry.contrib.php.symfony — which is not a
-// vendor rule — so HTTP findings fall through the leaf-to-root chain to php_generic
+// SERVER span carries only io.opentelemetry.contrib.php.symfony, which is not a
+// vendor rule, so HTTP findings fall through the leaf-to-root chain to php_generic
 // (there is no php.doctrine scope on a pure HTTP path). W3C traceparent is injected
 // so the self-call children stay in one trace.
 class Http

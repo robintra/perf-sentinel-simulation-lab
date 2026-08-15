@@ -4,7 +4,7 @@
 // n-plus-one-sql uses items=20 (>= 3 * n_plus_one_threshold) so the daemon's
 // strict sanitizer-aware classifier reclassifies the sanitized Eloquent group to
 // n_plus_one_sql (the PDO template is obfuscated, so under `auto` it would surface
-// as redundant_sql — see docs/MULTISTACK.md).
+// as redundant_sql, see docs/MULTISTACK.md).
 
 import http from 'k6/http';
 import { check, fail, sleep } from 'k6';

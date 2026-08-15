@@ -216,7 +216,7 @@ spec:
 ---
 # Symmetric ingress on the legacy mock pod, locked down to the
 # perf-sentinel daemon in the same namespace. Colocated with the
-# Deployment so applying the opt-in fixture creates both at once;
+# Deployment so applying the opt-in fixture creates both at once.
 # `manifests/network-policies.yaml` does not need to know about
 # this variant. Mirrors the pattern of
 # `manifests/kepler-exporter.yaml`'s `kepler-exporter-allow-daemon`

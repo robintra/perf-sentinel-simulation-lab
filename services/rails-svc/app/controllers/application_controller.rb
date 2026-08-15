@@ -9,8 +9,8 @@ class ApplicationController < ActionController::API
 
   # Coerce a query param to an integer, falling back to `default` for anything
   # that is not a plain scalar string. Rails parses bracketed params
-  # (`?items[]=5`, `?items[a]=5`) as Array/Parameters, which have no `to_i` —
-  # without this guard those requests would 500 instead of running the fault.
+  # (`?items[]=5`, `?items[a]=5`) as Array/Parameters, which have no `to_i`.
+  # Without this guard those requests would 500 instead of running the fault.
   def int_param(key, default)
     value = params[key]
     value.is_a?(String) && !value.empty? ? value.to_i : default

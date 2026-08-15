@@ -22,8 +22,8 @@ class FaultController extends Controller
 
     // N distinct Eloquent record loads, one per order id. The obfuscated PDO
     // template is identical across the loop (params are bound, not inlined), so
-    // under the daemon's `auto` classification this can surface as redundant_sql;
-    // under `strict` + >=15 occurrences it is reclassified to n_plus_one_sql.
+    // under the daemon's `auto` classification this can surface as redundant_sql.
+    // Under `strict` + >=15 occurrences it is reclassified to n_plus_one_sql.
     // Either way suggested_fix.framework == php_laravel_eloquent. Default 20
     // (>= 3 * n_plus_one_threshold) to pin the strict-mode reclassification.
     public function nPlusOneSql(Request $r)

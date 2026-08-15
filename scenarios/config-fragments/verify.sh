@@ -10,12 +10,12 @@
 # too, which used to warn and carry on.
 #
 # Assertions (see README.md):
-#   A  two fragments merge recursively; the higher priority wins per key, and a
+#   A  two fragments merge recursively. The higher priority wins per key, and a
 #      key only the lower one sets survives.
 #   B  the main `.perf-sentinel.toml` loads last and beats every fragment.
 #   C  a duplicate priority and a non-conforming name are both rejected.
 #   D  a non-TOML file in the directory is ignored, not an error.
-#   E  an invalid fragment exits 75 — no silent fallback to defaults.
+#   E  an invalid fragment exits 75: no silent fallback to defaults.
 #   F  an invalid IMPLICIT main file exits 75 too (this is the changed one).
 #   G  with `--config path/custom.toml`, fragments come from
 #      `path/.perf-sentinel.d/` and NOT from the working directory.
@@ -29,8 +29,8 @@
 #   K  an absent carbon figure names its OWN cause: green off with a live
 #      Electricity Maps scraper says so, zero traces says so, and the combined
 #      wording is gone.
-#   L  batch analysis warns once for all seven daemon-only GreenOps sections;
-#      daemon mode, green off, and no configured backend stay silent.
+#   L  batch analysis warns once for all seven daemon-only GreenOps sections.
+#      Daemon mode, green off, and no configured backend stay silent.
 #
 # I, J and K are not about fragments. They are here because they are the other
 # half of what a 0.9.25 config load does differently: which coefficients still
@@ -84,7 +84,7 @@ step "binary ${PERF_SENTINEL_LOCAL_BIN} (${BIN_VERSION})"
 
 # Run analyze from inside a case directory and record its exit code. The loaded
 # configuration comes back in `detection_config`, which 0.9.25 stamps onto every
-# report from the run that produced it — so the assertions read what the binary
+# report from the run that produced it, so the assertions read what the binary
 # actually applied, not what the files said.
 run_case() {  # $1 = case dir, rest = extra analyze flags
   local dir="$1"; shift
@@ -109,7 +109,6 @@ mkcase() {  # $1 = name -> prints the dir, with a fragment directory ready
   echo "${d}"
 }
 
-# --- A: recursive merge, higher priority wins -------------------------------
 step "A: fragments merge recursively, higher priority wins per key"
 A="$(mkcase a)"
 cat > "${A}/.perf-sentinel.d/10-base.toml" <<'EOF'
@@ -161,7 +160,6 @@ else
   assert_fail "C" "duplicate rc=${C1_RC}, uppercase rc=${C2_RC} (want ${EXIT_TOOLING_ERROR} both); msgs: [${C1_MSG}] [${C2_MSG}]"
 fi
 
-# --- D: a non-TOML file is ignored ------------------------------------------
 step "D: a non-TOML file in the fragment directory is ignored"
 D="$(mkcase d)"
 printf '[detection]\nn_plus_one_min_occurrences = 7\n' > "${D}/.perf-sentinel.d/10-ok.toml"
@@ -221,7 +219,6 @@ else
   assert_fail "G" "rc=${G_RC}, n+1=${G_N1} (want 6, 99 would mean the cwd was read), window=${G_WIN} (want 800)"
 fi
 
-# --- H: the reference fragments ---------------------------------------------
 step "H: the six reference GreenOps fragments load together"
 REF_FRAGMENTS="30-green-alumet 31-green-cloud 32-green-scaphandre 33-green-kepler 34-green-redfish 40-green-electricity-maps"
 if [ -d "${EXAMPLES}" ]; then
@@ -243,7 +240,6 @@ else
   assert_skip "H" "no product checkout at ${EXAMPLES}"
 fi
 
-# --- I: the three deprecated [green] keys -----------------------------------
 step "I: the deprecated [green] keys warn, and changing them changes nothing"
 I_OFF="${TMP_DIR}/i-off"; rm -rf "${I_OFF}"; mkdir -p "${I_OFF}"
 I_REF="${TMP_DIR}/i-ref"; rm -rf "${I_REF}"; mkdir -p "${I_REF}"
@@ -315,9 +311,9 @@ fi
 # notwithstanding. A daemon in that configuration having processed thousands of
 # traces therefore claimed "no traces analyzed" on a busy window.
 #
-# So the leg runs the combination that revealed it — green off WITH an
+# So the leg runs the combination that revealed it, green off WITH an
 # electricity_maps block, which is legitimate since the scraper runs
-# independently of the toggle — and the honest zero-trace case, and asserts each
+# independently of the toggle, and the honest zero-trace case, and asserts each
 # names its own cause. The combined "enabled = false, or no traces analyzed"
 # wording no longer exists.
 step "K: an absent carbon figure names its own cause, on both paths"

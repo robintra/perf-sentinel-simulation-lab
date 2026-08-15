@@ -119,7 +119,7 @@ if [ "${N_FINDINGS}" -lt 3 ]; then
 fi
 # Harvest 3 distinct signatures. sig_a/sig_b take long TTLs to keep them
 # active across the rollout restart and the duplicate-POST conflict
-# probe; sig_c uses the short TTL for the expiry test.
+# probe. sig_c uses the short TTL for the expiry test.
 read -r SIG_A SIG_B SIG_C < <(python3 -c "
 import json
 data = json.load(open('${REPORT_JSON}'))
@@ -143,7 +143,7 @@ ok "sig_a=${SIG_A:0:24}... sig_b=${SIG_B:0:24}... sig_c=${SIG_C:0:24}..."
 #######################################
 step "3. Idempotent cleanup + snapshot counters BEFORE"
 # The PVC persists acks across runs, so a re-run may find sig_{a,b,c}
-# already acked. Best-effort DELETE; 204 and 404 are both fine here.
+# already acked. Best-effort DELETE, 204 and 404 are both fine here.
 for sig in "${SIG_A}" "${SIG_B}" "${SIG_C}"; do
   enc=$(python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "${sig}")
   curl -o /dev/null -s -X DELETE "http://localhost:${DAEMON_LOCAL_PORT}/api/findings/${enc}/ack" 2>/dev/null || true
@@ -263,7 +263,7 @@ except Exception:
 " 2>/dev/null || echo "NO")
   # Persistence is the load-bearing assert: if sig_a still surfaces in
   # /api/acks after the rollout, the PVC mount + JSONL replay worked.
-  # Compaction is upstream-tested; the lab cannot easily measure file
+  # Compaction is upstream-tested. The lab cannot easily measure file
   # size from a distroless container without an ephemeral debug pod
   # that explicitly mounts the same PVC.
   if [ "${SIG_A_PERSISTED}" = "YES" ]; then

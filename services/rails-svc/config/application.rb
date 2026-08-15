@@ -22,7 +22,7 @@ module RailsSvc
     config.log_level = ENV.fetch("LOG_LEVEL", "info")
     config.cache_store = :null_store
 
-    # Lab-only fixed secret; no signed/encrypted payloads are exchanged.
+    # Lab-only fixed secret. No signed/encrypted payloads are exchanged.
     config.secret_key_base = ENV.fetch("SECRET_KEY_BASE", "rails-svc-lab-not-a-secret")
   end
 end

@@ -177,12 +177,13 @@ ingress are new.
 | `alertrules.yaml` | PrometheusRule with 5 alerts in namespace `observability` |
 
 The dashboard JSON itself lives at
-`manifests/grafana-dashboards/perf-sentinel-overview.json` (lab) and
-`examples/grafana-dashboard.json` (upstream perf-sentinel). The lab
-copy is byte-identical to upstream after `jq --sort-keys`. Bootstrap
-imports the lab copy into Grafana via the sidecar pattern, no second
-import needed. The runtime ConfigMap pattern is `kubectl create cm
---from-file=... | kubectl label grafana_dashboard=1 | kubectl apply`,
-the same pattern `scripts/bootstrap.sh` uses; no static
+`manifests/grafana-dashboards/perf-sentinel-overview.json` (lab)
+and `examples/grafana-dashboard.json` (upstream perf-sentinel).
+The lab copy is byte-identical to upstream after `jq --sort-keys`.
+Bootstrap imports the lab copy into Grafana via the sidecar
+pattern, no second import needed. The runtime ConfigMap pattern is
+`kubectl create cm --from-file=... | kubectl label grafana_dashboard=1 | kubectl apply`,
+the same pattern `scripts/bootstrap.sh` uses. No static
 `manifests.yaml` for the dashboards because the JSON files are the
-source of truth and the ConfigMap is built from them at apply time.
+source of truth and the ConfigMap is built from them at apply
+time.

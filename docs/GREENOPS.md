@@ -1,11 +1,12 @@
 # GreenOps integration
 
-The lab can enrich perf-sentinel findings with real-time grid carbon
-intensity from the [Electricity Maps](https://www.electricitymaps.com/)
-API. When the integration is active, findings produced by the daemon
-carry `intensity_source: "real_time"` instead of the bundled annual
-average, and the daemon report dashboard renders a "Carbon scoring:"
-banner above the green-regions table.
+The lab can enrich perf-sentinel findings with real-time grid
+carbon intensity from the [Electricity
+Maps](https://www.electricitymaps.com/) API. When the integration
+is active, findings produced by the daemon carry
+`intensity_source: "real_time"` instead of the bundled annual
+average. The daemon report dashboard then renders a "Carbon
+scoring:" banner above the green-regions table.
 
 This is the first external GreenOps source wired into the lab. The
 default zone is FR (mapped from the synthetic AWS region `eu-west-3`).
@@ -60,10 +61,11 @@ degradation path.
 | Temporal granularity  | Silently coarsened to hourly                      | Honors the configured granularity  |
 | `_disclaimer` field   | Present in JSON (the daemon ignores it silently)  | Absent                             |
 
-The sandbox key is sufficient to exercise every UI surface in the lab:
-the `Carbon scoring:` banner renders the configured values regardless of
-how the upstream API coarsens them, and the `Estimated` badge reliably
-appears on the green-regions table since `isEstimated: true` is forced.
+The sandbox key is sufficient to exercise every UI surface in the
+lab. The `Carbon scoring:` banner renders the configured values
+regardless of how the upstream API coarsens them. The `Estimated`
+badge reliably appears on the green-regions table because
+`isEstimated: true` is forced.
 
 ## Configuration knobs
 

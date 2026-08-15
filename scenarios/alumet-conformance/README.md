@@ -1,34 +1,36 @@
 # alumet-conformance
 
-Validates perf-sentinel 0.9.12's **Alumet** measured-energy backend — the 6th
-backend, leading the measured precedence chain as `alumet_rapl` — against the
-**real** upstream `alumet-agent` (v0.9.5 `.deb`) and a frozen capture of its
-Prometheus exposition. It pre-validates the product CI job
-`alumet-wire-conformance` by replaying its exact steps, then adds the legs
-only a deterministic wire file allows.
+Validates perf-sentinel 0.9.12's **Alumet** measured-energy backend, the
+6th backend and the one leading the measured precedence chain as
+`alumet_rapl`, against the **real** upstream `alumet-agent` (v0.9.5
+`.deb`) and a frozen capture of its Prometheus exposition. It
+pre-validates the product CI job `alumet-wire-conformance` by replaying
+its exact steps, then adds the legs only a deterministic wire file
+allows.
 
 Self-contained: needs the local release binary
-(`cargo build --release -p perf-sentinel`) and python3. **Docker is optional**:
-it powers the live legs (A/B/C) which SKIP cleanly without it — the frozen
-legs (D/E/F/G) always gate. No cluster.
+(`cargo build --release -p perf-sentinel`) and python3. **Docker is
+optional**: it powers the live legs (A/B/C) which SKIP cleanly without
+it. The frozen legs (D/E/F/G) always gate. No cluster.
 
 ## Why a real agent AND a frozen capture
 
 Alumet publishes the joules of one source `poll_interval` as a Prometheus
-**gauge** (not watts like Scaphandre, not a cumulative counter like Kepler).
-perf-sentinel divides by `energy_interval_secs` to recover watts, and sums
-every row sharing a `label_key` value. Live procfs values jitter between our
-curl and the daemon's scrape, so numeric equality is only assertable against
-the committed capture (`fixtures/alumet-wire-capture.prom`, provenance in
-`fixtures/fixture-manifest.json`). The live legs pin the *wire contract*; the
-frozen legs pin the *math*.
+**gauge** (not watts like Scaphandre, not a cumulative counter like
+Kepler). perf-sentinel divides by `energy_interval_secs` to recover
+watts, and sums every row sharing a `label_key` value. Live procfs values
+jitter between our curl and the daemon's scrape, so numeric equality is
+only assertable against the committed capture
+(`fixtures/alumet-wire-capture.prom`, provenance in
+`fixtures/fixture-manifest.json`). The live legs pin the *wire contract*,
+the frozen legs pin the *math*.
 
 The daemon coefficient is
-`(joules / energy_interval_secs) x scrape_interval_secs / (ops x 3.6e6)` per
-op, and the per-batch charge multiplies back by the same op count — so with
-one trace POST per scrape window, `per_service_energy_kwh` collapses to
-`sum(rows) x scrape_interval / (energy_interval x 3.6e6)`, exact against a
-frozen file (verified to machine epsilon during development).
+`(joules / energy_interval_secs) x scrape_interval_secs / (ops x 3.6e6)`
+per op, and the per-batch charge multiplies back by the same op count. So
+with one trace POST per scrape window, `per_service_energy_kwh` collapses
+to `sum(rows) x scrape_interval / (energy_interval x 3.6e6)`, exact
+against a frozen file (verified to machine epsilon during development).
 
 ## Assertions
 
@@ -53,7 +55,7 @@ frozen file (verified to machine epsilon during development).
   `ALUMET_CONFIG` at a fresh path only to capture against a clean, minimal
   config instead of the shipped one.
 - The packaged binary carries file capabilities
-  (`cap_sys_ptrace,cap_sys_nice,cap_perfmon=ep`); inside docker the exec
+  (`cap_sys_ptrace,cap_sys_nice,cap_perfmon=ep`). Inside docker the exec
   fails EPERM unless the container adds those caps.
 - Upstream's unit-suffix branch is inverted: unit-carrying metrics LOSE the
   unit (`kernel_cpu_time_alumet`, not the user-book's
@@ -67,10 +69,10 @@ frozen file (verified to machine epsilon during development).
 
 ## Out of lab scope
 
-RAPL on bare metal (powercap) and a dual-socket summed-domain read: no lab
-machine exposes RAPL. The summed-label math is covered by leg D on the real
-exposition shape (18 process rows sharing one label value); the RAPL chain
-itself is documented in the product's `docs/LIMITATIONS.md`.
+RAPL on bare metal (powercap) and a dual-socket summed-domain read: no
+lab machine exposes RAPL. The summed-label math is covered by leg D on
+the real exposition shape (18 process rows sharing one label value). The
+RAPL chain itself is documented in the product's `docs/LIMITATIONS.md`.
 
 ## Run
 

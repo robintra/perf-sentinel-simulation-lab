@@ -13,7 +13,7 @@ class HealthController extends AbstractController
     {
     }
 
-    // Liveness: cheap, no DB — the process is up.
+    // Liveness: cheap, no DB, the process is up.
     #[Route('/health/live', methods: ['GET'])]
     public function live(): JsonResponse
     {

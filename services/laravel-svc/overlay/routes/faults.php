@@ -5,16 +5,16 @@ use App\Http\Controllers\FaultController;
 use App\Http\Controllers\HealthController;
 use Illuminate\Support\Facades\Route;
 
-// Health (GET) — probed by the helm deployment.
+// Health (GET): probed by the helm deployment.
 Route::get('/health/live', [HealthController::class, 'live']);
 Route::get('/health/ready', [HealthController::class, 'ready']);
 
-// Business (GET) — the targets the HTTP faults call back into.
+// Business (GET): the targets the HTTP faults call back into.
 Route::get('/api/external/mock', [BusinessController::class, 'mock']);
 Route::get('/api/dispatch/{channel}', [BusinessController::class, 'dispatch']);
 Route::get('/api/payments/history', [BusinessController::class, 'paymentsHistory']);
 
-// Faults (POST) — the multistack 12-endpoint contract.
+// Faults (POST): the multistack 12-endpoint contract.
 Route::post('/api/fault/n-plus-one-sql', [FaultController::class, 'nPlusOneSql']);
 Route::post('/api/fault/n-plus-one-http', [FaultController::class, 'nPlusOneHttp']);
 Route::post('/api/fault/redundant-sql', [FaultController::class, 'redundantSql']);

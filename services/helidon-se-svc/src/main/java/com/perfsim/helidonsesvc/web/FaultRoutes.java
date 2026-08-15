@@ -132,7 +132,7 @@ public final class FaultRoutes implements HttpService {
     }
 
     // Per-request timeout cap. The HttpClient builder's connectTimeout
-    // only covers the TCP handshake; without an HttpRequest-level
+    // only covers the TCP handshake, without an HttpRequest-level
     // timeout, a self-loop call that hangs after connect (Hikari pool
     // starved upstream, k6 saturating Loom, …) blocks the WebServer
     // handler thread indefinitely. 15s is loose enough for slow-http

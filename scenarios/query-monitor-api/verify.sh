@@ -113,7 +113,6 @@ else
   fail "/api/config SECRET LEAK: ${SECRET_CHECK#LEAK:}"
 fi
 
-# --- 2. /api/status: new capacity fields -----------------------------------
 step "GET /api/status (Trends tab capacity source)"
 curl -fsS "${DAEMON_URL}/api/status" > "${TMP_DIR}/status.json" 2>/dev/null \
   || die "/api/status not reachable"
@@ -166,7 +165,6 @@ else
   fail "/api/energy issue: ${ENERGY_CHECK}"
 fi
 
-# --- 4. /metrics: the six 0.8.8 gauges -------------------------------------
 step "GET /metrics (Grafana Energy / Carbon / Headroom gauges)"
 curl -fsS -H "Accept: application/openmetrics-text" "${DAEMON_URL}/metrics" \
   > "${TMP_DIR}/metrics.txt" 2>/dev/null || die "/metrics not reachable"

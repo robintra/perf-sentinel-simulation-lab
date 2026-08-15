@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # limit-prod-window-soak: the production window config under sustained
 # mixed load. The committed lab config runs trace_ttl_ms=5000 for fast
-# eviction; production runs 30000. This scenario scopes the daemon to the
+# eviction. Production runs 30000. This scenario scopes the daemon to the
 # production values (ttl 30000, max_active_traces 10000), drives a steady
 # realistic mix, and asserts the window reaches a healthy plateau:
 #   - active_traces plateaus near tps x 30s and stays far from the cap;

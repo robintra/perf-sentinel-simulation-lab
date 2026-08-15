@@ -211,7 +211,7 @@ jobs:
         # release binary (inherits the job PERF_SENTINEL_VERSION) so it follows
         # the current two-tier waste + report-schema behavior, not a frozen
         # historical version. NOTE: the fixture org-config pins
-        # specpower_table_version to the binary's embedded CCF vintage; bump it
+        # specpower_table_version to the binary's embedded CCF vintage. Bump it
         # (scenarios/disclose/fixtures/org-config.toml) when the vintage changes.
         run: make verify-disclose
 
@@ -291,7 +291,7 @@ jobs:
     # +30 over the pre-dashboard 45: the added scenarios cost ~16 min
     # (correlation-finding self-seeds a full ~9-min validate-findings), and
     # make up-cni's Cilium image pull has no per-step cap, so keep slack for
-    # slow-runner variance — the job-level cap is a single wall-clock kill.
+    # slow-runner variance: the job-level cap is a single wall-clock kill.
     timeout-minutes: 75
     permissions:
       contents: read
@@ -394,7 +394,7 @@ jobs:
           done
 
       # Daemon dashboard non-regression (see also correlation-finding and
-      # hybrid-daemon-batch after the energy tail; daemon-ack-workflow covers
+      # hybrid-daemon-batch after the energy tail. daemon-ack-workflow covers
       # the ack tab). query-monitor-api is daemon-only and traffic-free, so it
       # runs first to fail fast on a /api/config, /api/status, /api/energy or
       # /metrics-gauge regression instead of after ~30 min of traffic steps.
@@ -449,7 +449,7 @@ jobs:
 
       # Traffic-dependent dashboard scenarios run last so their heavy seed
       # does not push the cheaper, previously-stable energy tail above past
-      # the job timeout. correlation-finding self-seeds chatty+fanout traffic;
+      # the job timeout. correlation-finding self-seeds chatty+fanout traffic.
       # hybrid-daemon-batch then renders the daemon's fully-accumulated Report
       # via `report --input` using the version under test.
       - name: correlation-finding

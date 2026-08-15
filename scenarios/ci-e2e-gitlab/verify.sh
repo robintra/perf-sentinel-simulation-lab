@@ -2,12 +2,6 @@
 # ci-e2e-gitlab: the documented Java CI recipe run by a REAL GitLab pipeline on
 # the lab's Kubernetes runner, through to the dashboard served by GitLab Pages.
 #
-# This is the only one of the ci-e2e-* family with a genuine CI engine already in
-# the lab: `make up-gitlab` deploys GitLab CE with a Kubernetes-executor runner
-# that runs real pipelines. It also closes a gap the lab documented against
-# itself — docs/GITLAB-CI.md:83-86 notes that the Pages job produces
-# public/index.html but that ${CI_PAGES_URL} is never fetched over HTTP.
-#
 # Assertions (see README.md):
 #   G1  the pipeline runs on the runner and capture writes a complete trace file
 #   G2  analyze finds the planted n_plus_one_sql with the expected occurrences
@@ -82,7 +76,6 @@ PROJECT_ID="$(api "${GITLAB_URL}/api/v4/projects?owned=true&search=${PROJECT_NAM
 [ -n "${PROJECT_ID}" ] || die "project ${PROJECT_NAME} not found — run make seed-gitlab-project"
 ok "project ${PROJECT_NAME} id=${PROJECT_ID}"
 
-# ── push the pipeline and the Maven project ─────────────────────────────────
 step "Push the e2e pipeline, the Maven project and the released binary"
 WORK="${TMP_DIR}/repo"
 cat > "${TMP_DIR}/askpass.sh" <<'ASKPASS'
@@ -98,9 +91,9 @@ export LAB_GIT_TOKEN="${TOKEN}" GIT_ASKPASS="${TMP_DIR}/askpass.sh"
 # consulted BEFORE GIT_ASKPASS, and it caches per host:port. Every `make
 # up-gitlab` mints a new PAT for the same localhost:8181, so the second GitLab
 # instance on a machine authenticates with the first one's stale token and fails
-# with "HTTP Basic: Access denied" — while the PAT itself is valid and the API
+# with "HTTP Basic: Access denied", while the PAT itself is valid and the API
 # accepts it, which sends you looking at GitLab rather than at the keychain.
-# Emptying the helper for these commands only neutralises it here; the user's
+# Emptying the helper for these commands only neutralises it here. The user's
 # own git config is untouched.
 GIT_NO_HELPER=(-c credential.helper=)
 git "${GIT_NO_HELPER[@]}" clone -q "${GITLAB_URL}/${ROOT_USER}/${PROJECT_NAME}.git" "${WORK}" \
@@ -132,7 +125,6 @@ docker rm -f gle2e-extract >/dev/null 2>&1 || true
 SHA="$(cd "${WORK}" && git rev-parse HEAD)"
 ok "pushed ${SHA:0:8}"
 
-# ── wait for the pipeline ───────────────────────────────────────────────────
 step "Wait for the pipeline on the Kubernetes runner (Maven resolves from scratch)"
 PIPELINE_ID=""
 for _ in $(seq 1 60); do
@@ -167,7 +159,7 @@ fetch_artifacts() {  # $1 = job id ; $2 = destination dir
   mkdir -p "$2" && unzip -oq "${zip}" -d "$2" 2>/dev/null
 }
 
-# G1 — the pipeline really ran the recipe on the runner.
+# G1: the pipeline really ran the recipe on the runner.
 step "G1: the pipeline ran the recipe and capture wrote a trace file"
 IT_JOB="$(job_id integration-tests)"
 SPANS=0
@@ -199,7 +191,7 @@ else
   assert_fail "G1" "spans=${SPANS} (expected ${EXPECTED_SPANS}), pipeline status=${STATUS}, job=${IT_JOB:-missing}"
 fi
 
-# G2 — the trace file carries the planted anti-pattern.
+# G2: the trace file carries the planted anti-pattern.
 step "G2: analyze finds the planted n_plus_one_sql"
 PS_JOB="$(job_id perf-sentinel)"
 OCC=0
@@ -219,7 +211,7 @@ else
   assert_fail "G2" "occurrences=${OCC} (expected ${ITEMS}), job=${PS_JOB:-missing}"
 fi
 
-# G3 — the Pages job published the dashboard.
+# G3: the Pages job published the dashboard.
 step "G3: the Pages job publishes public/index.html"
 PAGES_JOB="$(job_id pages)"
 PAGES_BYTES=0
@@ -233,8 +225,8 @@ else
   assert_fail "G3" "public/index.html is ${PAGES_BYTES} bytes, job=${PAGES_JOB:-missing}"
 fi
 
-# G4 — the gap docs/GITLAB-CI.md:83-86 admits: actually fetch Pages over HTTP.
-# GitLab Pages routes on the Host header; *.localhost resolves to 127.0.0.1, so
+# G4: the gap docs/GITLAB-CI.md:83-86 admits: actually fetch Pages over HTTP.
+# GitLab Pages routes on the Host header, *.localhost resolves to 127.0.0.1, so
 # a port-forward plus the real hostname is enough, with no /etc/hosts surgery.
 step "G4: fetch the dashboard from GitLab Pages over HTTP and render it"
 if [ "${PAGES_BYTES}" -le 0 ]; then

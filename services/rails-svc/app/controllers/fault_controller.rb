@@ -9,7 +9,7 @@ class FaultController < ApplicationController
   # This is THE endpoint the validation keys on. Loading records (not `.count`)
   # routes through ActiveRecord's `_query_by_sql`, which the OTel ActiveRecord
   # instrumentation wraps in a span under
-  # `OpenTelemetry::Instrumentation::ActiveRecord` — the ORM marker the daemon
+  # `OpenTelemetry::Instrumentation::ActiveRecord`, the ORM marker the daemon
   # maps to suggested_fix.framework = ruby_active_record. (`.count` would only
   # produce an adapter-level PG span and miss the ActiveRecord scope.)
   def n_plus_one_sql

@@ -50,17 +50,17 @@ Report at `/tmp/scenario-template-jenkinsfile-report.md`.
 
 ## Limitations
 
-- The runtime step uses `jenkinsfile-runner lint` (no actual execution,
-  just declarative pipeline parse). Even `lint` has a fragility: the
-  bundled image Java cannot reach modern HTTPS endpoints (PKIX cert
-  path build failure) when downloading the Jenkins WAR on first run.
-  The scenario tolerates this and reports SKIPPED with a clear note;
-  structural lint remains the hard gate.
+- The runtime step uses `jenkinsfile-runner lint` (no actual
+  execution, just declarative pipeline parse). Even `lint` has a
+  fragility: the bundled image Java cannot reach modern HTTPS
+  endpoints (PKIX cert path build failure) when downloading the
+  Jenkins WAR on first run. The scenario tolerates this and reports
+  SKIPPED with a clear note. Structural lint remains the hard gate.
 - The upstream Jenkinsfile downloads the perf-sentinel binary from
   `github.com/robintra/perf-sentinel/releases/v${PERF_SENTINEL_VERSION}/`.
-  Real users in CI will hit this URL; the lab does not pre-fetch it.
+  Real users in CI will hit this URL. The lab does not pre-fetch it.
 - `--platform linux/amd64` is forced for ARM hosts (M-series Mac).
-- `timeout` is GNU-only; the script falls back to `gtimeout` (brew
+- `timeout` is GNU-only. The script falls back to `gtimeout` (brew
   coreutils) or no timeout on stock macOS.
 
 ## Files

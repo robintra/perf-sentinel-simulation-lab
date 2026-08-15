@@ -3,7 +3,7 @@
 # Chrome and report whether the dashboard ACTUALLY RENDERED.
 #
 # Why this exists: the report packs its CSS and its ~4500 lines of JavaScript
-# inline, and the static DOM carries no tab, no table row and no value — every
+# inline, and the static DOM carries no tab, no table row and no value, every
 # one of them is built at load time from the embedded JSON. The report declares
 # its own permissive CSP in a <meta>, but a <meta> CSP and an HTTP header CSP
 # INTERSECT, strictest wins. A CI system that serves artifacts under a strict
@@ -21,7 +21,7 @@
 # Prints one line of evidence on stdout:
 #   RENDERED rows=<n>/<static> tabs=<n>/<static> notice=<present|absent>
 #   BLANK    rows=<n>/<static> tabs=<n>/<static> notice=<present|absent>
-# and exits 0 either way — which of the two is expected belongs to the caller,
+# and exits 0 either way, which of the two is expected belongs to the caller,
 # since both are legitimate depending on the CSP under test.
 #
 # `notice` reports the `#ps-no-js` block 0.9.25 added: a plain unstyled paragraph
@@ -131,7 +131,7 @@ PY
 read -r ROWS TABS <<< "$(count_markers "${WORK}/dom.html")"
 read -r STATIC_ROWS STATIC_TABS <<< "$(count_markers "${BASELINE}")"
 
-# Absent means the script ran and removed it; present means it did not. Matched
+# Absent means the script ran and removed it. Present means it did not. Matched
 # on the id rather than on the wording, which is prose and will be reworded.
 NOTICE="absent"
 grep -q 'id="ps-no-js"' "${WORK}/dom.html" && NOTICE="present"

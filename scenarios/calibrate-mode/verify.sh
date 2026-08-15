@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
 # calibrate mode: energy coefficients calibration.
 #
-# Use case: a customer wants accurate green-ops scoring on their own
-# hardware. They measure power consumption during a baseline trace
-# window and feed both the trace JSON and the power CSV to
-# `perf-sentinel calibrate`. The output is a calibration TOML with
-# coefficients tuned to their hardware.
-#
 # Note: `calibrate` is NOT for anti-pattern thresholds (the brief was
 # wrong on that). It is for energy coefficients (cf. `calibrate --help`:
 # "Calibrate energy coefficients from real measurements").

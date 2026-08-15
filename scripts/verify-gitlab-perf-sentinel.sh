@@ -170,7 +170,7 @@ api -X POST "${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/merge_requests" \
   > "${RESULTS_DIR}/mr.json"
 # Pin the wait to the merge_request_event pipeline so the verify
 # observes the gate-enforced run. GitLab also creates a push-event
-# pipeline on the source branch in parallel; that one would skip the
+# pipeline on the source branch in parallel. That one would skip the
 # perf-sentinel job on its own rules and report success even when the
 # gate is breached.
 MR_RESULT="$(wait_for_pipeline "${SHA_MR}" merge_request_event)"

@@ -15,7 +15,7 @@
 # Instrumentation scopes are captured ONLY at OTLP ingestion (Jaeger/Zipkin
 # carry none), so this is OTLP/protobuf to /v1/traces.
 #
-# Self-contained: needs only the local release binary; launches a throwaway
+# Self-contained: needs only the local release binary. Launches a throwaway
 # loopback daemon in the lab's strict detection mode.
 set -euo pipefail
 

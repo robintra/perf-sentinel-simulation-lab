@@ -17,14 +17,15 @@ make verify-sidecar-pattern
 
 ## What is verified
 
-The verify script applies a dedicated namespace `b2-6-sidecar` (name
-retained from the original sprint slug to avoid forcing a
-`kubectl delete namespace` on existing deployments) with a 2-container
-pod (order-service + perf-sentinel daemon), sends 60
-in-cluster POST requests to `/api/fault/n-plus-one-sql?items=15` (via
-an ephemeral curl pod with restricted PSA security context), waits 30s
-for the OTel BatchSpanProcessor to flush, snapshots the sidecar daemon's
-report, asserts non-zero events and traces, and prints the pod's memory
+The verify script applies a dedicated namespace `b2-6-sidecar` with
+a 2-container pod, order-service + perf-sentinel daemon. The name
+is retained from the original sprint slug, to avoid forcing a
+`kubectl delete namespace` on existing deployments. The script then
+sends 60 in-cluster POST requests to
+`/api/fault/n-plus-one-sql?items=15`, through an ephemeral curl pod
+with restricted PSA security context. It waits 30s for the OTel
+BatchSpanProcessor to flush, snapshots the sidecar daemon's report,
+asserts non-zero events and traces, and prints the pod's memory
 footprint.
 
 ## Configuration trade-off (read this)

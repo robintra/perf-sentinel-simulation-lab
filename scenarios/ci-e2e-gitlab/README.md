@@ -11,10 +11,11 @@ in the lab: `make up-gitlab` deploys GitLab CE with a Kubernetes-executor runner
 that runs real pipelines and real merge requests.
 
 It also closes a gap the lab had documented against itself.
-`docs/GITLAB-CI.md:83-86` noted that the Pages job produces `public/index.html`
-but that `${CI_PAGES_URL}` is never fetched over HTTP. G4 fetches it, loads it in
-a browser, and asserts the dashboard actually rendered — which is the whole point
-of this family, and something no lab scenario did before.
+`docs/GITLAB-CI.md:83-86` noted that the Pages job produces
+`public/index.html` but that `${CI_PAGES_URL}` is never fetched over HTTP. G4
+fetches it, loads it in a browser, and asserts the dashboard actually
+rendered, which is the whole point of this family, and something no lab
+scenario did before.
 
 ## What it asserts
 
@@ -42,26 +43,27 @@ It also confirmed, from a third angle, the defect `ci-e2e-jenkins` reports as J0
 
 Two lab-side changes, both deliberate and both worth knowing about.
 
-**Egress for CI job pods.** The GitLab Kubernetes executor creates a fresh pod per
-job, and those pods carry none of the labels `gitlab-runner-egress` selects on, so
-they fell through to `default-deny-all` and could reach nothing — not a package
-mirror, not Maven Central. Any real Java pipeline in this cluster failed at
-dependency resolution. `manifests/network-policies.yaml` now carries
-`gitlab-ci-jobs-maven-egress`: namespace-wide on the source because job pods are
-unlabelled, but opening **only** Maven Central over 443. Nothing else in
-`gitlab-ce` gains egress it did not have.
+**Egress for CI job pods.** The GitLab Kubernetes executor creates a fresh
+pod per job, and those pods carry none of the labels `gitlab-runner-egress`
+selects on, so they fell through to `default-deny-all` and could reach
+nothing, not a package mirror, not Maven Central. Any real Java pipeline in
+this cluster failed at dependency resolution.
+`manifests/network-policies.yaml` now carries `gitlab-ci-jobs-maven-egress`:
+namespace-wide on the source because job pods are unlabelled, but opening
+**only** Maven Central over 443. Nothing else in `gitlab-ce` gains egress it
+did not have.
 
 **The integration test seeds its own schema.** It used to rely on a `psql` step,
 which needs a package mirror the runner cannot reach. `OrderItemsIT` now creates
 and fills its table itself, idempotently, before the request span opens. One
 fixture, no external seeding, and all three `ci-e2e-*` scenarios benefit.
 
-Note the ordering constraint in that fixture: the setup statements run **before**
-the SERVER span and on their own connection. The agent instruments them anyway —
-they simply land in their own single-span traces — which is why the scenarios
-count the spans of the **largest trace** rather than every span in the file.
-Counting the file would report 18 instead of 16 and turn a correct capture into a
-false failure.
+Note the ordering constraint in that fixture: the setup statements run
+**before** the SERVER span and on their own connection. The agent instruments
+them anyway, and they simply land in their own single-span traces. That is
+why the scenarios count the spans of the **largest trace** rather than every
+span in the file. Counting the file would report 18 instead of 16 and turn a
+correct capture into a false failure.
 
 ## How it works
 
@@ -94,6 +96,6 @@ make up-gitlab && make seed-gitlab-project   # ~10 min, once per cluster
 make verify-ci-e2e-gitlab
 ```
 
-Needs the cluster, GitLab CE, python3 and Chrome or Chromium. SKIPs cleanly when
-GitLab is not up. The pipeline resolves Maven from scratch on each run — allow
-around ten minutes. Report at `/tmp/scenario-ci-e2e-gitlab-report.md`.
+Needs the cluster, GitLab CE, python3 and Chrome or Chromium. SKIPs cleanly
+when GitLab is not up. The pipeline resolves Maven from scratch on each run.
+Allow around ten minutes. Report at `/tmp/scenario-ci-e2e-gitlab-report.md`.

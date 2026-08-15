@@ -21,7 +21,7 @@ var validChannels = map[string]struct{}{
 
 // BusinessRoutes mounts /api/external/mock, /api/dispatch/{channel}
 // and /api/payments/history. paymentsHistory returns positional arrays
-// [id, order_id, customer_id, amount_cents, status] — matches the
+// [id, order_id, customer_id, amount_cents, status], matches the
 // multistack contract (helidon-mp / quarkus / mutiny / dotnet all do
 // the same).
 type BusinessRoutes struct {
@@ -84,7 +84,7 @@ func (b *BusinessRoutes) paymentsHistory(w http.ResponseWriter, r *http.Request)
            FROM "go".payments WHERE customer_id = $1 ORDER BY id LIMIT $2`,
 		customerID, limit)
 	if err != nil {
-		// Do not echo the driver message — same hygiene as the other
+		// Do not echo the driver message: same hygiene as the other
 		// services (avoids leaking role/auth state).
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "payments query failed"})
 		return

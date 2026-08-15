@@ -64,7 +64,6 @@ dc() {
     -f "${DEMO_DIR}/docker-compose.yml" -f "${OVERRIDE}" "$@"
 }
 
-# ── preflight ────────────────────────────────────────────────────────────────
 step "Preflight"
 [ -x "${PERF_SENTINEL_LOCAL_BIN}" ] || die "no local binary at ${PERF_SENTINEL_LOCAL_BIN} (cargo build --release first)"
 command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1 || die "Docker unavailable"
@@ -80,7 +79,6 @@ docker ps --format '{{.Names}}' | grep -q '^k3d-' \
   && warn "k3d lab cluster is running; the demo adds ~15-20 containers - stop it (make down) if Docker memory gets tight"
 ok "binary, docker compose, jq, python3, git, lsof, ports 8080/10000 free"
 
-# ── workspace + demo clone at the pinned tag ─────────────────────────────────
 step "Workspace + demo clone at ${DEMO_TAG}"
 mkdir -p "${ART}"
 rm -rf "${DUMP_DIR}"
@@ -99,7 +97,6 @@ fi
 OTEL_DEMO_COMMIT="$(git -C "${DEMO_DIR}" rev-parse HEAD)"
 ok "demo at ${OTEL_DEMO_COMMIT}"
 
-# ── inject the file exporter ─────────────────────────────────────────────────
 step "Inject file exporter (extras config + compose volume override)"
 # otelcol-config-extras.yml is the demo's designed extension hook, merged
 # second on the collector command line. Collector config merge REPLACES
@@ -128,7 +125,6 @@ ok "extras config + ${OVERRIDE}"
 
 trap 'dc down -v >/dev/null 2>&1 || true' EXIT
 
-# ── up + warmup ──────────────────────────────────────────────────────────────
 step "Demo up (pulls ghcr.io images on first run) + warmup ${WARMUP_SECONDS}s"
 # No --no-build: opensearch is build-only at this tag (a local config wrapper
 # image); everything else pulls its released ghcr image and is never rebuilt.
@@ -186,14 +182,12 @@ ok "degraded-full.ndjson: $(wc -l < "${ART}/degraded-full.ndjson" | tr -d ' ') l
 step "Demo down"
 dc down -v >/dev/null 2>&1 || true
 
-# ── curate the committed slices ──────────────────────────────────────────────
 step "Curate ${SLICE_TRACES}-trace slices (edge guard ${EDGE_GUARD_SECONDS}s)"
 python3 "${SCRIPT_DIR}/curate.py" "${ART}/clean-full.ndjson" "${FIXTURES}/clean-slice.ndjson" \
   --traces "${SLICE_TRACES}" --edge-guard "${EDGE_GUARD_SECONDS}" || die "clean curation failed"
 python3 "${SCRIPT_DIR}/curate.py" "${ART}/degraded-full.ndjson" "${FIXTURES}/degraded-slice.ndjson" \
   --traces "${SLICE_TRACES}" --edge-guard "${EDGE_GUARD_SECONDS}" || die "degraded curation failed"
 
-# ── stamp the manifest (fp_budget = exact observed count, default config) ───
 step "Stamp manifest: fp_budget from the observed clean-slice finding count"
 "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${FIXTURES}/clean-slice.ndjson" --format json \
   > "${ART}/clean-out.json" 2> "${ART}/clean-err.txt" \

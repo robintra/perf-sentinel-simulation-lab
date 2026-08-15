@@ -1,5 +1,5 @@
 # Shaped after docs/ci-templates/github-actions.yml with the HTML steps
-# UNCOMMENTED — they ship commented out, so this is the documented opt-in path
+# UNCOMMENTED: they ship commented out, so this is the documented opt-in path
 # and the one this scenario is here to exercise.
 #
 # Three deliberate departures from the published template, all about running
@@ -29,7 +29,7 @@ jobs:
       # workflow starts with one anyway.
       - uses: actions/checkout@v5
 
-      # GitHub-hosted ubuntu-latest ships a modern JDK and Maven; act's runner
+      # GitHub-hosted ubuntu-latest ships a modern JDK and Maven. act's runner
       # image ships neither. Compensating for the image, not changing the recipe.
       # setup-java is also what a real workflow uses, and it pins JAVA_HOME so
       # Maven does not fall back to whatever javac the image happens to carry.

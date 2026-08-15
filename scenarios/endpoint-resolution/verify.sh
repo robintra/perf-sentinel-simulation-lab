@@ -15,7 +15,7 @@
 #                              but SERVER / unspecified kinds still count and
 #                              http.route counts on any kind
 #   C  outermost, not nearest  two entry points over one shared DAO keep
-#                              distinct endpoints; a framework layer carrying
+#                              distinct endpoints. A framework layer carrying
 #                              code.* of its own wins, and they collide
 #   D  code-frame spelling     the legacy code.namespace + code.function pair
 #                              and the stable code.function.name must spell one

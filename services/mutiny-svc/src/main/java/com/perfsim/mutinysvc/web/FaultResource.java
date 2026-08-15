@@ -73,7 +73,7 @@ public class FaultResource {
         // client emits no such marker, so the detector lands on
         // redundant_sql instead. That is a real perf-sentinel
         // detection gap on bare-driver stacks (Vert.x SQL client,
-        // pgx, asyncpg, ...) that the lab is here to surface — we
+        // pgx, asyncpg, ...) that the lab is here to surface, we
         // do NOT paper over it from the service side via SQL
         // comments or sanitizer toggles, see
         // memory/project_perf_sentinel_followup.md.
@@ -138,7 +138,7 @@ public class FaultResource {
             @QueryParam("concurrency") @DefaultValue("20") int concurrency) {
         // The reactive PG pool is capped at 10 in application.properties.
         // Launching concurrency=20 parallel queries via transformToUniAndMerge
-        // forces 10 queries to queue behind 10 in-flight ones — the
+        // forces 10 queries to queue behind 10 in-flight ones, the
         // saturation signal the detector picks up.
         return runFault("pool_saturation", Map.of("concurrency", concurrency),
                 Multi.createFrom().range(0, concurrency)

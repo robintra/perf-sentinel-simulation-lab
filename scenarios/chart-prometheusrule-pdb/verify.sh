@@ -59,7 +59,6 @@ REQUIRED_METRICS=(
   perf_sentinel_cloud_energy_last_scrape_age_seconds
 )
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v helm    >/dev/null || die "helm not on PATH"
 command -v python3 >/dev/null || die "python3 not on PATH"
@@ -70,7 +69,6 @@ ok "chart ${CHART} (version ${CHART_VER}, appVersion ${APP_VER})"
 
 FLAGS=(--set prometheusRule.enabled=true --set prometheusRule.energyScrapers=true --set podDisruptionBudget.enabled=true)
 
-# === 1. render flags-on | kubeconform ===
 step "1. helm template flags-on | kubeconform -strict -ignore-missing-schemas"
 helm template t "${CHART}" "${FLAGS[@]}" > "${TMP_DIR}/all.yaml" 2>"${TMP_DIR}/helm-err.txt" \
   || die "helm template failed: $(cat "${TMP_DIR}/helm-err.txt")"
@@ -87,7 +85,6 @@ else
   fail "kubeconform absent"; record "kubeconform" "SKIP" "kubeconform not installed"
 fi
 
-# === 2. promtool check rules on the PrometheusRule spec ===
 step "2. promtool check rules (PrometheusRule spec.groups)"
 helm template t "${CHART}" --set prometheusRule.enabled=true --set prometheusRule.energyScrapers=true \
   --show-only templates/prometheusrule.yaml > "${TMP_DIR}/pr.yaml" 2>/dev/null || true
@@ -122,7 +119,6 @@ done
 if [ "$miss" -eq 0 ]; then record "metrics" "PASS" "all ${#REQUIRED_METRICS[@]} metrics present"
 else record "metrics" "FAIL" "$miss metric(s) missing"; fi
 
-# === 4. PDB edge cases ===
 step "4. PodDisruptionBudget edge cases"
 PDB0="$(helm template t "${CHART}" --set podDisruptionBudget.enabled=true --set podDisruptionBudget.minAvailable=0 --show-only templates/poddisruptionbudget.yaml 2>/dev/null)"
 PDBD="$(helm template t "${CHART}" --set podDisruptionBudget.enabled=true --show-only templates/poddisruptionbudget.yaml 2>/dev/null)"
@@ -169,7 +165,7 @@ if kubectl get crd prometheusrules.monitoring.coreos.com >/dev/null 2>&1; then
   cleanup() { helm uninstall t -n "$NS" >/dev/null 2>&1 || true; kubectl delete ns "$NS" --wait=false >/dev/null 2>&1 || true; }
   trap cleanup EXIT
   kubectl create ns "$NS" >/dev/null 2>&1 || true
-  # No --wait: the chart's appVersion image need not exist; we only assert admission of the
+  # No --wait: the chart's appVersion image need not exist. We only assert admission of the
   # two opt-in objects, not that the daemon pod becomes Ready.
   if helm install t "${CHART}" -n "$NS" "${FLAGS[@]}" >/dev/null 2>"${TMP_DIR}/install-err.txt"; then
     sleep 3
@@ -189,7 +185,6 @@ else
   record "install-admission" "SKIP" "no monitoring.coreos.com/v1 CRD"
 fi
 
-# === Summary ===
 step "Summary"
 pass=0; failc=0; skip=0
 { echo "# ${SCENARIO}"; echo; } > "${REPORT}"

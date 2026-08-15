@@ -96,7 +96,6 @@ items = d if isinstance(d, list) else d.get("findings", [])
 print(len(items))' "${TMP_DIR}/out.json"
 }
 
-# ── R1: recall on the degraded slice ────────────────────────────────────────
 step "R1: analyze degraded slice - an expected finding class is present"
 if run_analyze "${DEGRADED}"; then
   TA="$(traces_analyzed)"
@@ -137,11 +136,11 @@ fi
 # The demo's checkout service publishes to Kafka and accounting /
 # fraud-detection consume from it, so these slices carry PRODUCER spans from
 # canonical, community-maintained instrumentation we did not author. Until the
-# messaging block landed they were dropped as `not_io`; the count is what proves
+# messaging block landed they were dropped as `not_io`. The count is what proves
 # a real emitter reaches the detector, not a fixture built on our assumptions.
 #
 # Counted, not merely non-zero: the slices are frozen, so the number is a
-# contract like fp_budget. Findings are NOT asserted here — the demo publishes
+# contract like fp_budget. Findings are NOT asserted here, the demo publishes
 # one message per checkout, so there is no messaging anti-pattern to find, and
 # claiming otherwise would be asserting nothing.
 step "M1: real Kafka PRODUCER spans are counted as messaging I/O ops"
@@ -173,7 +172,6 @@ else
   assert_fail "M1" "${M1_FAILS} slice(s) did not ingest the expected messaging op count"
 fi
 
-# ── F2: report on the clean slice ───────────────────────────────────────────
 step "F2: report --input <clean slice> renders a usable dashboard"
 if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${CLEAN}" \
      --output "${TMP_DIR}/r.html" > /dev/null 2> "${TMP_DIR}/err.txt" \

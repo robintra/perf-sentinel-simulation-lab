@@ -13,11 +13,11 @@ and saying so matters more than pretending otherwise:
 - GitHub Pages serves HTML without a restrictive Content-Security-Policy.
 
 The CSP failure lives in Jenkins, which serves build artifacts through
-`DirectoryBrowserSupport` under a policy that blanks the dashboard — see
+`DirectoryBrowserSupport` under a policy that blanks the dashboard. See
 `scenarios/ci-e2e-jenkins/`. What this scenario buys is the **chain**: a real
-workflow engine really running the recipe, `capture` really writing the file, and
-what lands on Pages really rendering. H4 measures that rather than assuming it,
-which is the whole point of the family.
+workflow engine really running the recipe, `capture` really writing the file,
+and what lands on Pages really rendering. H4 measures that rather than
+assuming it, which is the whole point of the family.
 
 ## What it asserts
 
@@ -30,9 +30,10 @@ which is the whole point of the family.
 
 ## What it found (2026-08-01, released 0.9.24)
 
-**4/4 PASS**: 16 spans (15 JDBC + 1 SERVER), `n_plus_one_sql` at 15 occurrences,
-a 467 KB dashboard, and `RENDERED rows=24/7 tabs=4/1` when served without a
-restrictive CSP — the same report that comes out blank through Jenkins.
+**4/4 PASS**: 16 spans (15 JDBC + 1 SERVER), `n_plus_one_sql` at 15
+occurrences, a 467 KB dashboard, and `RENDERED rows=24/7 tabs=4/1` when
+served without a restrictive CSP, the same report that comes out blank
+through Jenkins.
 
 Building it surfaced one defect that belongs to the recipe rather than to act,
 already reported as J0 by `ci-e2e-jenkins`: `capture --output target/traces.json`
@@ -51,11 +52,11 @@ three scenarios share.
 
 ## How it works
 
-- The repository act runs against is assembled in `/tmp`: the workflow, the Maven
-  project copied from `scenarios/java-ci-capture/fixtures/` (one project, one
-  place to change it), and the perf-sentinel binary extracted from the
-  **released** image, which `PERF_SENTINEL_IMAGE` overrides for a pre-release
-  round; the default has to stay a real published tag.
+- The repository act runs against is assembled in `/tmp`: the workflow, the
+  Maven project copied from `scenarios/java-ci-capture/fixtures/` (one
+  project, one place to change it), and the perf-sentinel binary extracted
+  from the **released** image, which `PERF_SENTINEL_IMAGE` overrides for a
+  pre-release round. The default has to stay a real published tag.
 - `act --bind` mounts the working directory instead of copying it into the
   runner. Without it act's copy stays inside the container and the workflow's
   outputs never reach the host, so the assertions would have nothing to read.
@@ -86,7 +87,7 @@ the documented opt-in path, and the one worth exercising.
 make verify-ci-e2e-github
 ```
 
-Self-contained, no cluster. Needs Docker, `act` (`brew install act`), python3 and
-Chrome or Chromium. The first run pulls the runner image and resolves Maven from
-scratch — allow around ten minutes. Report at
+Self-contained, no cluster. Needs Docker, `act` (`brew install act`), python3
+and Chrome or Chromium. The first run pulls the runner image and resolves
+Maven from scratch. Allow around ten minutes. Report at
 `/tmp/scenario-ci-e2e-github-report.md`.

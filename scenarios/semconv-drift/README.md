@@ -36,10 +36,11 @@ nothing committed, no cluster, no Docker:
 - The resolved value is always the **preferred** key's - the one ingest
   reads first. The preference is mixed on purpose: `db.system.name` is
   new-preferred (`otlp/mod.rs:225-230`) while the other three pairs are
-  old-preferred (`otlp/mod.rs:567-586`); a hardcoded "old wins" would be
-  subtly wrong on a dual-keyed span. On the current capture this is moot
-  (measured: zero spans carry both keys of any pair - dual emission is per
-  service), but the rule makes the equality assertion recapture-proof.
+  old-preferred (`otlp/mod.rs:567-586`). A hardcoded "old wins" would
+  be subtly wrong on a dual-keyed span. On the current capture this is
+  moot (measured: zero spans carry both keys of any pair - dual
+  emission is per service), but the rule makes the equality assertion
+  recapture-proof.
 - Strict per-class count equality is safe to assert because the rewrite is
   value-preserving by construction and the replay is deterministic: if it
   ever fails, that is precisely the ingest asymmetry this scenario exists

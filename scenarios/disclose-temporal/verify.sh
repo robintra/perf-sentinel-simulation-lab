@@ -61,7 +61,6 @@ die()  { color_red   "    error: $*"; exit 1; }
 # Frozen to match the frozen fixture `ts` values (2026-05-08 .. 2026-06-06 = 30 days).
 PERIOD_ARGS=(--period-type custom --from 2026-05-08 --to 2026-06-06)
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v docker >/dev/null || die "docker not on PATH"
 command -v python3 >/dev/null || die "python3 not on PATH"
@@ -78,7 +77,7 @@ cp "${FIXTURES_DIR}/org-config.toml"       "${TMP_DIR}/org-config.toml"
 rm -f "${TMP_DIR}"/out-*.json "${TMP_DIR}"/*.stderr
 ok "fixtures + image OK (${IMAGE})"
 
-# disclose is offline; run as the host user so outputs are writable on the mount.
+# disclose is offline. Run as the host user so outputs are writable on the mount.
 in_image() {
   docker run --rm -u "$(id -u):$(id -g)" -v "${TMP_DIR}:/workdir" "${IMAGE}" "$@"
 }
@@ -124,7 +123,6 @@ else
   record "1. schema + fields" FAIL "${note:-no out-dense.json}"
 fi
 
-# === Sub-test 2: dense continuity ===
 step "2. dense continuity (1.0, 30/30, gap 0, no warning, disclaimer present)"
 note=""
 if [ -f "${TMP_DIR}/out-dense.json" ] \
@@ -151,7 +149,6 @@ else
   record "2. dense continuity" FAIL "${note:-stderr warning present or no output}"
 fi
 
-# === Sub-test 3: sparse continuity ===
 step "3. sparse continuity (0.1, 3/30, gap 14, warning + disclaimer)"
 note=""
 if [ -f "${TMP_DIR}/out-sparse.json" ] \
@@ -182,7 +179,7 @@ fi
 step "4. verify-hash content_hash round-trips (dense + sparse), tampered fails"
 t4="FAIL"; t4note=""
 # Capture the verify-hash JSON first (|| true swallows its non-zero exit:
-# unsigned reports are PARTIAL=2, tampered are UNTRUSTED=1), THEN parse — so a
+# unsigned reports are PARTIAL=2, tampered are UNTRUSTED=1), THEN parse, so a
 # non-zero exit under `pipefail` cannot spuriously append "unknown".
 ch() {
   local vh

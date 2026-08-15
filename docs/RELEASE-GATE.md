@@ -52,7 +52,7 @@ with `#` are ignored.
   same lab state (relevant if the lab itself evolves).
 - `YYYY-MM-DD`: UTC date of the validation.
 - `verdict`: `PASS` or `FAIL`. Only PASS entries are accepted by the
-  gate; FAIL entries are recorded for audit but never green-light a
+  gate. FAIL entries are recorded for audit but never green-light a
   release.
 
 Example:

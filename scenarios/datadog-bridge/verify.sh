@@ -72,7 +72,7 @@ trap cleanup EXIT
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 # Free our loopback ports for a fresh daemon. The port lives only in the TOML,
-# not the argv, so a port-pattern pkill is a no-op; kill by the unique config
+# not the argv, so a port-pattern pkill is a no-op. Kill by the unique config
 # path (our own stragglers) AND by whoever holds the ports (a SIGKILLed prior
 # run whose EXIT trap never fired). Without this, the port-only readiness probe
 # would adopt a stale daemon and the scenario would validate the wrong binary.
@@ -140,7 +140,7 @@ print(" ".join(u(it).get("type","") for it in items if u(it).get("service") == s
 }
 
 # =============================================================================
-# C + D — cross-format canonicalization (batch analyze + explain)
+# C + D: cross-format canonicalization (batch analyze + explain)
 # =============================================================================
 # Read the trace id straight from the committed fixture so it can never drift
 # from the generator (explain --trace-id must match the encoded id exactly).
@@ -164,7 +164,7 @@ blob = json.dumps(d).lower()
 leak = any(s in blob for s in ('secret-ddb-xf','dynamodb','getitem'))
 print('%d|%s|%d' % (ev, ','.join(tables), leak))
 ")"
-  # D: pg legacy + pg stable + db-system-less all yield SQL n+1; dynamodb dropped.
+  # D: pg legacy + pg stable + db-system-less all yield SQL n+1. Dynamodb dropped.
   if echo "${N1}" | grep -q "orders" && echo "${N1}" | grep -q "line_items" && echo "${N1}" | grep -q "users"; then
     assert_pass "D-${fmt}" "${fmt}: orders/line_items(stable name)/users all -> n_plus_one_sql"
   else
@@ -188,7 +188,7 @@ print('%d|%s|%d' % (ev, ','.join(tables), leak))
 done
 
 # =============================================================================
-# A, E, F(auto), B, G — dd-trace bridge, default auto mode (throwaway daemon)
+# A, E, F(auto), B, G: dd-trace bridge, default auto mode (throwaway daemon)
 # =============================================================================
 step "Daemon (auto): dd-trace SQL detection (A), snowflake (E), F3 auto (F), drops + gaps (B/G)"
 start_local_daemon auto || die "daemon not ready on ${DAEMON_URL}: $(tail -3 "${TMP_DIR}/daemon.log")"
@@ -220,7 +220,7 @@ else
   assert_fail "E" "no SQL finding for snowflake (got [${SNOW_TYPES}])"
 fi
 # B: no non-SQL key/secret leaked into findings, and none in the HTML report.
-# The HTML half must inspect a freshly-generated report — if the export or the
+# The HTML half must inspect a freshly-generated report, if the export or the
 # render fails we CANNOT claim "no leak", so that is a FAIL, not a vacuous PASS.
 curl -fsS "${DAEMON_URL}/api/export/report" > "${TMP_DIR}/report.json" 2>/dev/null || true
 HTML_OK=0
@@ -252,7 +252,7 @@ else
 fi
 
 # =============================================================================
-# F(strict) — high-occurrence recovery (throwaway daemon, strict mode)
+# F(strict): high-occurrence recovery (throwaway daemon, strict mode)
 # =============================================================================
 step "Daemon (strict): F3 recovery at high occurrence (>=3x threshold)"
 start_local_daemon strict || die "strict daemon not ready: $(tail -3 "${TMP_DIR}/daemon.log")"
@@ -271,7 +271,7 @@ fi
 kill "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""
 
 # =============================================================================
-# (live) optional end-to-end through the REAL datadogreceiver — SKIP if no Docker
+# (live) optional end-to-end through the REAL datadogreceiver, SKIP if no Docker
 # =============================================================================
 LIVE_RESULT="SKIP"
 step "Live (optional): dd-trace v0.4 -> real datadogreceiver -> daemon"

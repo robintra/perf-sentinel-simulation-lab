@@ -15,7 +15,7 @@
 #        scenario: it was absent from the SARIF emitter until 0.9.0 closed
 #        that gap, and the scenario reports which side it observes rather
 #        than pinning either.
-#        Markdown format is probed and expected to fail; the failure is
+#        Markdown format is probed and expected to fail. The failure is
 #        logged informationally (memory item 11).
 #
 #   6.B. Diff mode. Runs `perf-sentinel diff --before baseline --after
@@ -71,7 +71,6 @@ else
   DOCKER_NET_FLAGS=(--add-host=host.docker.internal:host-gateway)
 fi
 
-# === Pre-flight ===
 step "0. Pre-flight"
 
 command -v docker  >/dev/null || die "docker not on PATH"
@@ -102,7 +101,6 @@ cp "${CISL_DIR}/baseline-traces.json"   "${TMP_DIR}/baseline.json"
 cp "${CISL_DIR}/regression.json"        "${TMP_DIR}/cisl-regression.json"
 cp "${CISL_CONFIG}"                     "${TMP_DIR}/.perf-sentinel.toml"
 
-# === 6.A. Coverage formats supported + signature presence ===
 step "6.A. Coverage of 4 supported formats + signature presence"
 
 # analyze writes the chosen format to stdout (no --output flag), so
@@ -241,7 +239,6 @@ else
   ok "markdown format accepted - upstream may have closed memory item 11"
 fi
 
-# === 6.B. Diff mode ===
 step "6.B. Diff mode (--before baseline, --after regression)"
 
 # `-u` for the same bind-mount-EACCES reason as the `report` invocation.
@@ -287,7 +284,6 @@ else
   fi
 fi
 
-# === 6.C. Cap loader 16 MiB on ack file ===
 step "6.C. Ack file cap loader (>16 MiB rejected)"
 
 # Generate ~17 MiB of valid-ish TOML.
@@ -339,7 +335,6 @@ else
   warn "analyze accepted oversized ack file (cap loader broken)"
 fi
 
-# === 6.D. Sanity: clean gate ===
 step "6.D. Sanity: gate on clean baseline"
 
 docker run --rm "${DOCKER_NET_FLAGS[@]}" \
@@ -359,10 +354,9 @@ else
   warn "clean gate failed exit ${SANITY_EXIT} (residue findings on long-lived cluster)"
 fi
 
-# === Verdict ===
 step "7. Verdict"
 
-# 6.D is informational; the 5 hard assertions are A formats coherence,
+# 6.D is informational. The 5 hard assertions are A formats coherence,
 # A signature in JSON, B diff schema + new_findings, C cap loader.
 if [ "${ASSERT_FORMATS}" = "PASS" ] \
    && [ "${ASSERT_COHERENCE}" = "PASS" ] \

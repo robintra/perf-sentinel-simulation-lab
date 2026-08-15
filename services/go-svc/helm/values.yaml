@@ -9,7 +9,7 @@ service:
 database:
   # pgx DSN. pool_max_conns=10 makes pool-saturation observable at
   # concurrency=20. search_path=go (quoted because `go` is a reserved
-  # word in Postgres identifier lists in some grammars; pgxpool
+  # word in Postgres identifier lists in some grammars. Pgxpool
   # parses the URL form and passes it through to the connection).
   dsn: "postgres://go_user:lab_go@postgres.db.svc.cluster.local:5432/lab?search_path=%22go%22&pool_max_conns=10"
   username: go_user

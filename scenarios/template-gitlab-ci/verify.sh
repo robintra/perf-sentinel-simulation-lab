@@ -50,7 +50,6 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 
 verdict="UNKNOWN"
 
-# === Step 1: fetch upstream template ===
 step "1. Fetch upstream template at v${UPSTREAM_VERSION}"
 
 if [ -n "${UPSTREAM_PATH:-}" ] && [ -f "${UPSTREAM_PATH}" ]; then
@@ -73,7 +72,6 @@ fi
 UPSTREAM_BYTES=$(wc -c < "${TMP_DIR}/upstream-gitlab-ci.yml")
 ok "template size: ${UPSTREAM_BYTES} bytes"
 
-# === Step 2: lint via GitLab CE CI Lint API ===
 step "2. Lint via GitLab CE CI Lint API"
 
 LINT_VERDICT="SKIPPED"
@@ -130,7 +128,6 @@ else
   warn "GitLab CE not reachable at ${GITLAB_URL}, skipping lint"
 fi
 
-# === Step 3: parity vs lab fixture ===
 step "3. Parity vs lab fixture"
 
 # Lab fixture is intentionally a derivative (adds integration-tests job,
@@ -158,7 +155,6 @@ UPSTREAM_VERSION_PINNED=$(grep -oE 'PERF_SENTINEL_VERSION:\s*"[0-9.]+"' "${TMP_D
 FIXTURE_VERSION_PINNED=$(grep -oE 'PERF_SENTINEL_VERSION:\s*"[0-9.]+"' "${LAB_FIXTURE}" || true)
 ok "version pin: upstream=${UPSTREAM_VERSION_PINNED:-?}, fixture=${FIXTURE_VERSION_PINNED:-?}"
 
-# === Step 4: delegate to verify-gitlab-perf-sentinel ===
 step "4. End-to-end: delegate to verify-gitlab-perf-sentinel.sh"
 
 E2E_VERDICT="SKIPPED"
@@ -187,11 +183,10 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
   fi
 fi
 
-# === Verdict ===
 step "5. Verdict"
 
 # Lint and parity are the hard gates. E2E SKIPPED is acceptable when
-# GitLab CE is not deployed; E2E FAIL is a real failure.
+# GitLab CE is not deployed. E2E FAIL is a real failure.
 if [ "${PARITY_VERDICT}" = "PASS" ] \
    && { [ "${LINT_VERDICT}" = "PASS" ] || [ "${LINT_VERDICT}" = "SKIPPED" ]; } \
    && [ "${E2E_VERDICT}" != "FAIL" ]; then

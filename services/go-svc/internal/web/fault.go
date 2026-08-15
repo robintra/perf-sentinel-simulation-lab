@@ -134,7 +134,7 @@ func (f *FaultRoutes) nPlusOneSQL(w http.ResponseWriter, r *http.Request) {
 		// Parameterised pgx query. otelpgx emits one span per Exec/Query
 		// under scope `github.com/exaring/otelpgx`. With the strict
 		// classifier's ORM-marker list extended to include otelpgx,
-		// these N statements keep the n+1_sql verdict; without, they
+		// these N statements keep the n+1_sql verdict, without, they
 		// collapse to redundant_sql (Gap #20 expected on this stack).
 		var c int
 		err := f.Pool.QueryRow(r.Context(),
@@ -182,7 +182,7 @@ func (f *FaultRoutes) slowSQL(w http.ResponseWriter, r *http.Request) {
 	for i := 0; i < repeats; i++ {
 		// Literal interpolation, lab-intentional. fmt with %f uses
 		// dot decimal in any locale (Go's strconv is locale-independent
-		// by spec) — no comma/period drift risk.
+		// by spec): no comma/period drift risk.
 		sql := fmt.Sprintf(
 			`SELECT pg_sleep(%g), * FROM "go".orders ORDER BY id OFFSET %d LIMIT 1`,
 			seconds, i)

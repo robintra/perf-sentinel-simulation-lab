@@ -24,7 +24,7 @@
 #   A4  clean trace-sampled: total findings <= fp_budget per rate (sampling
 #       must never create false positives)
 #   A5  degraded span-loss: traces_analyzed > 0 (counts unconstrained)
-#   A6  clean span-loss: classes subset of the in-run clean baseline; count
+#   A6  clean span-loss: classes subset of the in-run clean baseline. Count
 #       vs budget recorded informationally (broken parentage may reshape
 #       timing statistics, so no budget assertion here)
 set -uo pipefail
@@ -173,7 +173,6 @@ else
   assert_fail "A1" "crashed or invalid JSON on: ${A1_BAD} (first stderr: $(tail -1 "${TMP_DIR}/err-${FIRST}.txt" 2>/dev/null))"
 fi
 
-# ── A2: monotone degradation on the degraded trace-sampled chain ────────────
 step "A2: degraded trace-sampled totals monotone non-increasing"
 T50="$(findings_total deg-ts50 2>/dev/null || echo '?')"
 T10="$(findings_total deg-ts10 2>/dev/null || echo '?')"
@@ -212,7 +211,6 @@ for pair in 50:clean-ts50 10:clean-ts10 01:clean-ts01; do
   fi
 done
 
-# ── A5: span-loss on degraded still yields analyzable traces ────────────────
 step "A5: degraded span-loss variant still analyzes traces"
 TA="$(traces_analyzed deg-sl30 2>/dev/null || echo 0)"
 if [ "${TA}" -gt 0 ]; then
@@ -221,7 +219,6 @@ else
   assert_fail "A5" "traces_analyzed=${TA} on deg-sl30"
 fi
 
-# ── A6: span-loss on clean invents no class ─────────────────────────────────
 step "A6: clean span-loss variant invents no finding class"
 C="$(finding_classes clean-sl30 2>/dev/null)"
 EXTRA="$(extra_classes "${C}" "${CLEAN_BASE_CLASSES}")"

@@ -1,14 +1,14 @@
 Rails.application.routes.draw do
-  # Health (GET) — probed by the helm deployment.
+  # Health (GET): probed by the helm deployment.
   get "health/live",  to: "health#live"
   get "health/ready", to: "health#ready"
 
-  # Business (GET) — the targets the HTTP faults call back into.
+  # Business (GET): the targets the HTTP faults call back into.
   get "api/external/mock",          to: "business#mock"
   get "api/dispatch/:channel",      to: "business#dispatch_channel"
   get "api/payments/history",       to: "business#payments_history"
 
-  # Faults (POST) — mirror the multistack contract exactly.
+  # Faults (POST): mirror the multistack contract exactly.
   post "api/fault/n-plus-one-sql",  to: "fault#n_plus_one_sql"
   post "api/fault/n-plus-one-http", to: "fault#n_plus_one_http"
   post "api/fault/redundant-sql",   to: "fault#redundant_sql"

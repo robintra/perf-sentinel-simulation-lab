@@ -13,11 +13,11 @@
 # surfaced.
 #
 # Resolution order:
-#   1. PERF_SENTINEL_IMAGE — a full image reference, used verbatim. This is the
+#   1. PERF_SENTINEL_IMAGE: a full image reference, used verbatim. This is the
 #      pre-release path: a locally built tag, or a digest.
-#   2. PERF_SENTINEL_VERSION — a GHCR tag. Kept because every existing runbook
+#   2. PERF_SENTINEL_VERSION: a GHCR tag. Kept because every existing runbook
 #      and CI workflow passes it.
-#   3. manifests/perf-sentinel-daemon.yaml — the image the lab's daemon manifest
+#   3. manifests/perf-sentinel-daemon.yaml: the image the lab's daemon manifest
 #      pins, so a scenario tracks whatever version the lab is validating. Used
 #      verbatim: it may be a digest pin or a local pre-release tag left by
 #      scripts/seed-daemon-local.sh, and neither can be rebuilt from a version

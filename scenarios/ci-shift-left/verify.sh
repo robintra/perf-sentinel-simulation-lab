@@ -99,7 +99,6 @@ else
   DOCKER_NET_FLAGS=(--add-host=host.docker.internal:host-gateway)
 fi
 
-# === Pre-flight ===
 step "0. Pre-flight"
 
 command -v docker  >/dev/null || die "docker not on PATH"
@@ -136,7 +135,6 @@ fi
 cp "${CONFIG_TOML}" "${TMP_DIR}/.perf-sentinel.toml"
 cp "${TRACES_FIXTURE}" "${TMP_DIR}/regression-traces.json"
 
-# === Phase 1: clean baseline ===
 step "1. Clean baseline (filter fixture for fault-free traces)"
 
 python3 -c "
@@ -334,7 +332,6 @@ else
   warn "--show-acknowledged surfaced 0 entries (schema may differ, see ${TMP_DIR}/acked-show.json)"
 fi
 
-# === Verdict ===
 step "4. Verdict"
 
 if [ "${REG_GATE}" = "FAIL" ] \

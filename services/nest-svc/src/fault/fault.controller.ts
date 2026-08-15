@@ -151,7 +151,7 @@ export class FaultController {
   // query engine serialises concurrent queries, masking the saturation
   // pattern from the OTel spans. The raw pg Pool issues truly
   // concurrent connections so the daemon sees N overlapping SQL spans
-  // within a tight window — the shape its pool_saturation detector
+  // within a tight window: the shape its pool_saturation detector
   // requires.
   @Post('pool-saturation')
   async poolSaturation(@Query('concurrency') concurrency = '20') {

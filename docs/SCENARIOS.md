@@ -15,7 +15,7 @@ reproducible on a `make up-cni` + `make seed-services` +
 
 perf-sentinel is not "one tool you install in one place". It plugs in
 at every layer of the SDLC, with a different mode per environment.
-This section is the 10000-foot view; the per-scenario sections below
+This section is the 10000-foot view. The per-scenario sections below
 detail each mode in depth.
 
 ### Per-environment views
@@ -89,12 +89,12 @@ production daemon's findings.
 | (14)    | All other services flow through the OTel Collector, which forwards OTLP to both the centralized daemon and the trace store (Tempo / VictoriaTraces / Jaeger).                                                                                                                                                                                                                                                                                                                                                                                                                                              | centralized               |
 | (15)    | On-call polls the daemon's HTTP API (`/api/status`, `/api/findings`, `/api/correlations`, `/api/explain/<trace-id>`, `/api/export/report`) and snapshots the Report to a self-contained HTML for post-mortem.                                                                                                                                                                                                                                                                                                                                                                                              | centralized               |
 | (16)    | Optional nightly CI cron pulls recent traces from the trace store via `perf-sentinel tempo` (Tempo OTLP-JSON) or `perf-sentinel jaeger-query` (Jaeger / VictoriaTraces) to run regression detection on prod traffic.                                                                                                                                                                                                                                                                                                                                                                                       | CI batch                  |
-| (extra) | **Always-on metrics path**: Prometheus scrapes the daemon's `/metrics` endpoint (works for any daemon, sidecar or centralized — same port as OTLP HTTP) and Grafana renders it via the upstream dashboard at [`examples/grafana-dashboard.json`](https://github.com/robintra/perf-sentinel/blob/main/examples/grafana-dashboard.json) using `perf_sentinel_findings_total`, `perf_sentinel_io_waste_ratio`, `perf_sentinel_service_io_ops_total`.                                                                                                                                                          | centralized + sidecar     |
+| (extra) | **Always-on metrics path**: Prometheus scrapes the daemon's `/metrics` endpoint (works for any daemon, sidecar or centralized, on the same port as OTLP HTTP) and Grafana renders it via the upstream dashboard at [`examples/grafana-dashboard.json`](https://github.com/robintra/perf-sentinel/blob/main/examples/grafana-dashboard.json) using `perf_sentinel_findings_total`, `perf_sentinel_io_waste_ratio`, `perf_sentinel_service_io_ops_total`.                                                                                                                                                          | centralized + sidecar     |
 | (extra) | **Always-on log path**: every daemon also streams findings as NDJSON to stdout, picked up by the log aggregator (Loki / Elasticsearch / Splunk) via `kubectl logs` or fluent-bit. Useful for alerting and grep-style triage when the HTTP API is overkill.                                                                                                                                                                                                                                                                                                                                                 | centralized + sidecar     |
 | (A)     | **pg_stat ingestion via CSV file**: a scheduled or on-demand `psql \copy (SELECT ... FROM pg_stat_statements) TO STDOUT WITH CSV HEADER` exports a snapshot of SQL hotspot counters to `pg-stat.csv`. The file is fed to `analyze`, `report` or the standalone `pg-stat` subcommand via `--pg-stat <csv>`. Works in both CI and local dev.                                                                                                                                                                                                                                                                 | CI batch + local batch    |
 | (B)     | **pg_stat ingestion via Prometheus**: `postgres_exporter` exposes `pg_stat_statements` on `:9187/metrics`, scraped by the cluster Prometheus. perf-sentinel reaches it via `--pg-stat-prometheus <url>` (one-shot HTTP GET against either `postgres_exporter` directly or the Prometheus aggregating it). Mutually exclusive with `--pg-stat <csv>`. Auth via `--pg-stat-auth-header` (`PERF_SENTINEL_PGSTAT_AUTH_HEADER` env var preferred in production).                                                                                                                                                | CI batch + local batch    |
 | (D)     | **Live prod triage by dev/architect**: an authorized dev can `curl` the prod daemon's HTTP API directly. Three formats: JSON via `/api/findings`, `/api/correlations`, `/api/explain/<trace-id>` (the explain endpoint only works while the trace is still inside the `trace_ttl_ms=30s` window) ; HTML via `curl /api/export/report \| perf-sentinel report --input - --output report.html` ; NDJSON streaming via `kubectl logs deploy/perf-sentinel-daemon -f` for live tailing. Useful when reproducing a customer issue without waiting for the next CI cycle.                                        | centralized               |
-| (E)     | **Daemon Report → local batch (best of both worlds)**: pull a Report snapshot from `/api/export/report`, render it with the local CLI. The daemon's `correlations` field is preserved as-is by `report --input` (the local CLI does not recompute correlations in batch — they are only available because the daemon already did the work over its rolling window). pg_stat is **not** part of the Report and must be added at render time: `curl /api/export/report \| perf-sentinel report --input - --pg-stat /tmp/pg-stat.csv --output dashboard.html`. The dev keeps the JSON locally for re-renders. | centralized → local batch |
+| (E)     | **Daemon Report → local batch (best of both worlds)**: pull a Report snapshot from `/api/export/report`, render it with the local CLI. The daemon's `correlations` field is preserved as-is by `report --input` (the local CLI does not recompute correlations in batch, and they are only available because the daemon already did the work over its rolling window). pg_stat is **not** part of the Report and must be added at render time: `curl /api/export/report \| perf-sentinel report --input - --pg-stat /tmp/pg-stat.csv --output dashboard.html`. The dev keeps the JSON locally for re-renders. | centralized → local batch |
 
 ### Trade-offs by entity and context
 
@@ -121,7 +121,7 @@ the group and what is morally an N+1 ends up classified as
 `redundant_sql` by the redundant detector. The
 `[detection].sanitizer_aware_classification` setting (in `config.toml`
 for daemons, in `.perf-sentinel.toml` for CI/local batch) tunes the
-recovery heuristic. Same key, same effect, both modes — just different
+recovery heuristic. Same key, same effect, both modes, just different
 file location.
 
 | Value              | Behavior                                                                                                                                                                                              | When to use                                                                                                                                                                                                        |
@@ -188,7 +188,120 @@ Findings produced by the standard rule omit the field.
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 | [`grouping-identity`](#grouping-identity)                  | 0.11 grouping identity across ingest, detection and outputs    | local binary + Docker + Chrome                    | PASS   |
 
-The first nine rows are the core deployment-mode scenarios; `astronomy-shop` is the foreign-instrumentation replay gate; `grouping-identity` is the 0.11 contract gate. The lab now ships 70 scenarios in total, all wired into `make verify-all-scenarios` (run `make help` for the full per-target list). The others cover the CI quality gate (`ci-shift-left`, `output-formats-coverage`), the three CI templates (GitLab, Jenkins, GitHub Actions), the resilience and failure-mode scenarios (including `daemon-sigterm-drain`, the 0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`, the 0.8.6 metered analysis load-shedding proof), the measured-energy backends (Scaphandre, Kepler, Redfish, and `alumet-conformance`, the 0.9.12 Alumet gate against the real upstream agent, and `alumet-db-waste`, the 0.9.13 database-waste gate — the Alumet DB-cgroup energy attributed to the SQL-only avoidable share, with sticky/staleness and carry-over-under-shedding legs), the ack workflow, the query monitor data plane (`query-monitor-api`, the 0.8.8 read-only endpoints behind `query monitor`: `/api/config` with its secret-leak gate, `/api/energy`, the extended `/api/status`, and the six energy/carbon/capacity gauges), the disclose (two-tier waste v1.1), disclose-temporal (continuity v1.2), and verify-hash CLI, the five 0.8.13 disclosure/chart gates (`sci-functional-unit` G1 SCI-per-trace intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk` R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2 signed-without-identity fail-closed, `chart-prometheusrule-pdb` Phase A PrometheusRule + PodDisruptionBudget), plus `chart-disclose-persistence` (a real `helm install` in `StatefulSet`+persistence mode: the disclosure archive survives a pod reschedule and round-trips through `disclose`, the live counterpart to the render-only chart gates above; it is the first scenario to consume the chart as an OCI artifact rather than a local path, resolving the newest published version from the GHCR tag list by default and switching to the working-tree chart only when that one is newer, i.e. a pre-publication release candidate, so in OCI mode it needs no perf-sentinel checkout at all), plus the six limit-testing scenarios (`limit-*`, below), plus the four 0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`, `non-sql-datastore-drop`, `non-sql-datastore-metering`, `ruby-activerecord-suggestion`), plus the 0.9.3 Datadog/dd-trace bridge gate (`datadog-bridge`), plus the two 0.9.5 gates (`batch-otlp-file` OTLP/JSON batch input from the Collector file exporter, and `mysql-stat` on a real MySQL LTS performance_schema — see the sections near the end of this guide), plus the `astronomy-shop` capture-and-replay gate (foreign OTel demo auto-instrumentation and a false-positive budget on committed slices), plus the two astronomy-replay robustness gates (`sampling-degradation`, deterministic trace-sampled and span-loss variants of the astronomy slices, and `semconv-drift`, old-only/new-only/dup attribute-key rewrites — see the sections after astronomy-shop), plus the `prod-topology-replay` gate (a committed slice of real Alibaba v2022 production call graphs for the topological detector surface), plus the `rpc-carrier-parity` gate (that same slice rewritten onto the OTel RPC semconv keys the ingest admits since product 0.9.8), plus the `chaos-replay` gate (a committed slice of the OTel demo captured under live chaos — failure flags, a mid-tier SIGKILL, a paused dependency — asserting clean degradation and a deterministic finding census), plus the `endpoint-resolution` gate (the 0.9.22 `source.endpoint` ancestor walk: the inbound route resolved through ancestors rather than the direct parent, the CLIENT skip that stops an outbound URL naming a finding, the outermost-not-nearest code frame, and the per-language spelling parity that keeps one origin on one acknowledgment signature), plus the `appsec-hardening` gate (the 0.9.15 AppSec remediation: source_endpoint redaction, ack API-key enforcement on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real quality gate on `/api/export/report`, the verify-hash attestation PARTIAL cap, and the non-loopback bind advisory), plus the `broker-messaging-waste` gate (OTel messaging ingestion and the broker energy attribution: the two-source arbitration between a measured cgroup and a declared cluster, driven against a real scraper that is cut, restored with a retroactive catch-up, answers without the expected label, and is unreachable from boot; plus disclosure v1.5, the configuration refusals, the destination spellings across broker families, and the producer link on the real astronomy capture), plus the `java-ci-capture` gate (the upstream Java CI recipe run verbatim from the published POM — Maven Failsafe with the OTel agent attached to the fork, `perf-sentinel capture` receiving OTLP over the network, `analyze --ci` on the result — together with the capture exit-code contract: size cap, unusable versus backpressure rejections, refusal to start on an unwritable output, whole-process-group stop on SIGTERM, and cross-container listening), plus the `otlp-compression-matrix` gate (the 0.9.28 OTLP transport × encoding matrix: gzipped gRPC ingested and refused on the pre-fix image, the HTTP and uncompressed paths kept green, deflate over both transports, zstd/snappy still refused, and a cluster leg that temporarily switches the real collector onto the daemon's gRPC port), plus the `ack-lifecycle-warning` gate (the 0.9.28 acknowledgment life cycle: the unmatched warning, the fixed-versus-not-run split driven by per-endpoint I/O counts, and the guard that keeps a pre-computed report from advising the removal of a still-useful entry). plus the `export-snapshot-scope` gate (the 0.13.1 export slice: the configurable `max_export_findings` cap where it is published, acts and discloses, the `snapshot_scope` entries and their absence on a cold start, an oversized snapshot named rather than flattened into an unreachable daemon, and the startup advisory that fires on the two knobs together but never on retained traces alone). The release gate runs all 70. Each validated version is recorded in the upstream `release-gate/lab-validations.txt` ledger.
+The first nine rows are the core deployment-mode scenarios.
+`astronomy-shop` is the foreign-instrumentation replay gate.
+`grouping-identity` is the 0.11 contract gate. The lab now ships 70
+scenarios in total, all wired into `make verify-all-scenarios` (run
+`make help` for the full per-target list). The others cover the CI
+quality gate (`ci-shift-left`, `output-formats-coverage`), the three
+CI templates (GitLab, Jenkins, GitHub Actions), and the resilience and
+failure-mode scenarios. Those last include `daemon-sigterm-drain`, the
+0.8.5 graceful-drain-on-SIGTERM proof, and `daemon-analysis-shedding`,
+the 0.8.6 metered analysis load-shedding proof.
+
+They cover the measured-energy backends: Scaphandre, Kepler, Redfish,
+`alumet-conformance` (the 0.9.12 Alumet gate against the real upstream
+agent) and `alumet-db-waste` (the 0.9.13 database-waste gate covering
+the Alumet DB-cgroup energy attributed to the SQL-only avoidable
+share, with sticky/staleness and carry-over-under-shedding legs). They
+cover the ack workflow, and the query monitor data plane through
+`query-monitor-api`, the 0.8.8 read-only endpoints behind
+`query monitor`: `/api/config` with its secret-leak gate,
+`/api/energy`, the extended `/api/status`, and the six
+energy/carbon/capacity gauges.
+
+They cover the disclose (two-tier waste v1.1), disclose-temporal
+(continuity v1.2), and verify-hash CLI, plus the five 0.8.13
+disclosure/chart gates: `sci-functional-unit` G1 SCI-per-trace
+intensity, `rgesn-crosswalk` G2 RGESN crosswalk, `esrs-e1-crosswalk`
+R1 schema v1.3 + ESRS E1 crosswalk, `verify-hash-fail-closed` R2
+signed-without-identity fail-closed, and `chart-prometheusrule-pdb`
+Phase A PrometheusRule + PodDisruptionBudget.
+
+`chart-disclose-persistence` is a real `helm install` in
+`StatefulSet`+persistence mode: the disclosure archive survives a pod
+reschedule and round-trips through `disclose`, the live counterpart to
+the render-only chart gates above. It is the first scenario to consume
+the chart as an OCI artifact rather than a local path. It resolves the
+newest published version from the GHCR tag list by default, and
+switches to the working-tree chart only when that one is newer, i.e. a
+pre-publication release candidate, so in OCI mode it needs no
+perf-sentinel checkout at all.
+
+Then come the six limit-testing scenarios (`limit-*`, below), the four
+0.9.2 ingestion/normalize/suggestion gates (`sql-backtick-redaction`,
+`non-sql-datastore-drop`, `non-sql-datastore-metering`,
+`ruby-activerecord-suggestion`), the 0.9.3 Datadog/dd-trace bridge
+gate (`datadog-bridge`), and the two 0.9.5 gates: `batch-otlp-file`
+for OTLP/JSON batch input from the Collector file exporter, and
+`mysql-stat` on a real MySQL LTS performance_schema. See the sections
+near the end of this guide for those two.
+
+The `astronomy-shop` capture-and-replay gate covers foreign OTel demo
+auto-instrumentation and a false-positive budget on committed slices.
+Two astronomy-replay robustness gates build on it:
+`sampling-degradation`, deterministic trace-sampled and span-loss
+variants of the astronomy slices, and `semconv-drift`,
+old-only/new-only/dup attribute-key rewrites. See the sections after
+astronomy-shop for both.
+
+The `prod-topology-replay` gate replays a committed slice of real
+Alibaba v2022 production call graphs for the topological detector
+surface, and the `rpc-carrier-parity` gate rewrites that same slice
+onto the OTel RPC semconv keys the ingest admits since product 0.9.8.
+The `chaos-replay` gate replays a committed slice of the OTel demo
+captured under live chaos, namely failure flags, a mid-tier SIGKILL
+and a paused dependency, asserting clean degradation and a
+deterministic finding census.
+
+The `endpoint-resolution` gate locks the 0.9.22 `source.endpoint`
+ancestor walk. It covers the inbound route resolved through ancestors
+rather than the direct parent, the CLIENT skip that stops an outbound
+URL naming a finding, the outermost-not-nearest code frame, and the
+per-language spelling parity that keeps one origin on one
+acknowledgment signature. The `appsec-hardening` gate locks the 0.9.15
+AppSec remediation: source_endpoint redaction, ack API-key enforcement
+on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real
+quality gate on `/api/export/report`, the verify-hash attestation
+PARTIAL cap, and the non-loopback bind advisory.
+
+The `broker-messaging-waste` gate covers OTel messaging ingestion and
+the broker energy attribution. At its centre is the two-source
+arbitration between a measured cgroup and a declared cluster. It is
+driven against a real scraper that is cut, restored with a retroactive
+catch-up, answers without the expected label, and is unreachable from
+boot. It also covers disclosure v1.5, the configuration refusals, the
+destination spellings across broker families, and the producer link on
+the real astronomy capture.
+
+The `java-ci-capture` gate runs the upstream Java CI recipe verbatim
+from the published POM: Maven Failsafe with the OTel agent attached to
+the fork, `perf-sentinel capture` receiving OTLP over the network, and
+`analyze --ci` on the result. It holds the capture exit-code contract
+too: size cap, unusable versus backpressure rejections, refusal to
+start on an unwritable output, whole-process-group stop on SIGTERM,
+and cross-container listening.
+
+The `otlp-compression-matrix` gate locks the 0.9.28 OTLP transport ×
+encoding matrix. Gzipped gRPC is ingested, and refused on the pre-fix
+image. The HTTP and uncompressed paths stay green, deflate works over
+both transports, and zstd/snappy are still refused. A cluster leg
+temporarily switches the real collector onto the daemon's gRPC port.
+The `ack-lifecycle-warning` gate locks the 0.9.28 acknowledgment life
+cycle: the unmatched warning, the fixed-versus-not-run split driven by
+per-endpoint I/O counts, and the guard that keeps a pre-computed
+report from advising the removal of a still-useful entry.
+
+The `export-snapshot-scope` gate locks the 0.13.1 export slice. It
+covers the configurable `max_export_findings` cap where it is
+published, acts and discloses, and the `snapshot_scope` entries
+together with their absence on a cold start. It also covers an
+oversized snapshot named rather than flattened into an unreachable
+daemon, and the startup advisory that fires on the two knobs together
+but never on retained traces alone.
+
+The release gate runs all 70. Each validated version is recorded in
+the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
 
@@ -793,9 +906,9 @@ min_confidence = 0.5
   than that, you will see no correlations. The lab verify waits 90s
   for fresh entries and runs `make validate-findings` (chatty +
   fanout + serialized scenarios) to seed the correlator.
-- `confidence > 0.5` is a sane production threshold. Lower it to surface
-  noisy candidates during exploration; do not lower it in production
-  alerts.
+- `confidence > 0.5` is a sane production threshold. Lower it to
+  surface noisy candidates during exploration. Do not lower it in
+  production alerts.
 - The `source` and `target` fields are dicts, not strings. Consumers
   must extract `service` + `template` (the lab verify includes a small
   `fmt(d)` Python helper).
@@ -1058,12 +1171,13 @@ visible in Grafana :
 
 ## CI/CD integration scenarios
 
-5 scenarios that validate the perf-sentinel integration in CI/CD. `ci-shift-left` and
-`output-formats-coverage` derive their CLI image from `manifests/perf-sentinel-daemon.yaml`,
-so they track the version under validation; override with `PERF_SENTINEL_VERSION` (a GHCR
-tag). The three template scenarios still fetch the upstream templates at a pinned git tag
-(`UPSTREAM_VERSION`, default 0.5.17) because the fetch is by tag and a newer one only
-exists once the release is published
+5 scenarios that validate the perf-sentinel integration in CI/CD.
+`ci-shift-left` and `output-formats-coverage` derive their CLI image
+from `manifests/perf-sentinel-daemon.yaml`, so they track the version
+under validation. Override with `PERF_SENTINEL_VERSION` (a GHCR tag).
+The three template scenarios still fetch the upstream templates at a
+pinned git tag (`UPSTREAM_VERSION`, default 0.5.17) because the fetch
+is by tag and a newer one only exists once the release is published
 pipelines: the canonical ack workflow (regression to ack via PR to
 green pipeline), the 3 upstream templates (GitLab CI, Jenkinsfile,
 GitHub Actions), and the output formats / diff / cap loader coverage.
@@ -1163,7 +1277,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 
 ### Coverage table (B1 sprint additions)
 
-| Slug | Scope | Local | GHA |
+| Slug                           | Scope                                                              | Local                                  | GHA                                       |
 | --- | --- | --- | --- |
 | ci-shift-left | clean / regression / acked workflow | yes (primary) | yes |
 | output-formats-coverage | json/sarif/text/html, diff, cap loader | yes (primary) | yes |
@@ -1174,61 +1288,69 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 `make verify-all-scenarios` includes all 70 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
-`java-ci-capture` is the first lab scenario whose trace file is produced by a
-language agent rather than by a Collector, committed fixtures, or a backend
-query API — the gap that let two broken Java CI recipes ship before anyone
-noticed. It runs the upstream recipe (Maven Failsafe + `perf-sentinel capture` →
-`analyze --ci`) verbatim from the published POM, and holds the exit-code
-contract that command promises: size cap, unusable versus backpressure
-rejections, refusal to start on an unwritable output, whole-process-group stop
-on SIGTERM, and cross-container listening.
+`java-ci-capture` is the first lab scenario whose trace file is
+produced by a language agent rather than by a Collector, committed
+fixtures, or a backend query API. That is the gap that let two broken
+Java CI recipes ship before anyone noticed. It runs the upstream
+recipe verbatim from the published POM: Maven Failsafe +
+`perf-sentinel capture` → `analyze --ci`. It also holds the exit-code
+contract that command promises, namely the size cap, unusable versus
+backpressure rejections, refusal to start on an unwritable output,
+whole-process-group stop on SIGTERM, and cross-container listening.
 
-`ci-e2e-jenkins` runs the documented Java CI recipe inside a real Jenkins
-controller and follows the artifact all the way to whether the published
-dashboard **renders in a browser** — the first lab scenario to serve a report
-over HTTP and assert on the rendered DOM rather than on the file size. It
-reproduces, in situ, the unstyled-report symptom caused by Jenkins' default
-Content-Security-Policy, confirms the remedy documented in `docs/CI.md` works,
-and measures that the "sibling files" fix promised there would not help.
+`ci-e2e-jenkins` runs the documented Java CI recipe inside a real
+Jenkins controller. It follows the artifact all the way to whether the
+published dashboard **renders in a browser**. It is the first lab
+scenario to serve a report over HTTP and assert on the rendered DOM
+rather than on the file size. It reproduces, in situ, the
+unstyled-report symptom caused by Jenkins' default
+Content-Security-Policy, confirms the remedy documented in
+`docs/CI.md` works, and measures that the "sibling files" fix promised
+there would not help.
 
-It was quarantined out of the gate from 2026-08-01 to 2026-08-02 on one
-assertion, J0: `capture --output target/traces.json -- mvn verify`, the
-documented one-liner, could not run on a clean CI workspace because `target/`
-does not exist yet, and `capture` refused to start, so the test suite never ran.
-Product 0.9.25 creates the directory, J0 is green, and the scenario is back in
-`make verify-all-scenarios`. It gained J8 at the same time: 0.9.25 makes the
-report open with a notice naming both causes of a blank page, which a script
-removes during parsing, so the notice must be present exactly when the page
-failed to render. Its shared browser helper lives in
-`scenarios/ci-e2e-common/`, which is not a scenario and is not counted, like
-`scenarios/limit-common/`.
+It was quarantined out of the gate from 2026-08-01 to 2026-08-02 on
+one assertion, J0.
+`capture --output target/traces.json -- mvn verify`, the documented
+one-liner, could not run on a clean CI workspace, because `target/`
+does not exist yet. `capture` refused to start, so the test suite
+never ran. Product 0.9.25 creates the directory, J0 is green, and the
+scenario is back in `make verify-all-scenarios`. It gained J8 at the
+same time: 0.9.25 makes the report open with a notice naming both
+causes of a blank page, which a script removes during parsing, so the
+notice must be present exactly when the page failed to render. Its
+shared browser helper lives in `scenarios/ci-e2e-common/`, which is
+not a scenario and is not counted, like `scenarios/limit-common/`.
 
-`ci-e2e-github` is the same chain through a real GitHub Actions workflow, run
-locally by `act`, and it is part of the gate. It passes: the display risk on
-GitHub is low by construction — artifacts are zip downloads GitHub never renders,
-and Pages serves without a restrictive CSP — so the same dashboard that comes out
-blank through Jenkins renders here. That contrast is measured on both sides
-rather than assumed.
+`ci-e2e-github` is the same chain through a real GitHub Actions
+workflow, run locally by `act`, and it is part of the gate. It passes:
+the display risk on GitHub is low by construction: artifacts are zip
+downloads GitHub never renders, and Pages serves without a restrictive
+CSP, so the same dashboard that comes out blank through Jenkins
+renders here. That contrast is measured on both sides rather than
+assumed.
 
-`ci-e2e-gitlab` completes the family on the lab's only real CI engine: GitLab CE
-with its Kubernetes-executor runner. It also closes a gap the lab had documented
-against itself — `docs/GITLAB-CI.md:83-86` noted that the Pages job produces
-`public/index.html` but that `${CI_PAGES_URL}` is never fetched over HTTP. It is
-now fetched, loaded in a browser, and asserted to have rendered. It needs
-`make up-gitlab` and `make seed-gitlab-project`, and SKIPs cleanly without them.
+`ci-e2e-gitlab` completes the family on the lab's only real CI engine:
+GitLab CE with its Kubernetes-executor runner. It also closes a gap
+the lab had documented against itself. `docs/GITLAB-CI.md:83-86` noted
+that the Pages job produces `public/index.html` but that
+`${CI_PAGES_URL}` is never fetched over HTTP. It is now fetched,
+loaded in a browser, and asserted to have rendered. It needs
+`make up-gitlab` and `make seed-gitlab-project`, and SKIPs cleanly
+without them.
 
 ### Ack workflow walkthrough
 
 The canonical use case `ci-shift-left` validates end-to-end:
 
-1. Developer pushes a feature branch; integration tests run, daemon
+1. Developer pushes a feature branch. Integration tests run, daemon
    ingests traces, `analyze --ci` fails the gate (regression in
    anti-patterns).
-2. Developer opens the PR; CI surfaces the findings via SARIF (Code
+2. Developer opens the PR. CI surfaces the findings via SARIF (Code
    Scanning) and a sticky comment.
-3. Team reviews; some findings are intentional (caching, optimisation),
-   the developer adds a `[[acknowledged]]` block per signature in
-   `.perf-sentinel-acknowledgments.toml` with a justification.
+3. Team reviews. Some findings are intentional (caching,
+   optimisation), the developer adds a `[[acknowledged]]` block per
+   signature in `.perf-sentinel-acknowledgments.toml` with a
+   justification.
 4. Next pipeline: `analyze --acknowledgments` re-runs, the
    acknowledged findings are excluded from the gate, the pipeline
    passes. `--show-acknowledged` keeps the audit trail visible in the
@@ -1314,15 +1436,17 @@ make verify-failure-mode-daemon-restart
 ### daemon-sigterm-drain
 
 Proves the v0.8.5 graceful-drain-on-`SIGTERM` contract that
-`failure-mode-daemon-restart` predates. Injects a real N+1 (six SQL spans,
-one template, distinct ids) via an in-cluster OTLP/protobuf Job while a scoped
-ConfigMap holds `trace_ttl_ms = 30000` so the trace stays in-flight, then runs
-two controls reading the same per-window NDJSON archive: a **positive** control
-(graceful `SIGTERM` via `scale --replicas=0`) where the in-flight finding is
-flushed, and a **negative** control (ungraceful `SIGKILL` of the daemon PID via
-`docker exec <node> kill -9`) where it is lost. Tests the image under test
-(`SIGTERM_DRAIN_IMAGE`, default `ghcr.io/robintra/perf-sentinel:0.8.5`); on a 0.8.4
-daemon the positive control FAILs by design, which is the counter-check.
+`failure-mode-daemon-restart` predates. Injects a real N+1 (six SQL
+spans, one template, distinct ids) via an in-cluster OTLP/protobuf
+Job, while a scoped ConfigMap holds `trace_ttl_ms = 30000` so the
+trace stays in-flight. It then runs two controls reading the same
+per-window NDJSON archive. The **positive** control is a graceful
+`SIGTERM` via `scale --replicas=0`, where the in-flight finding is
+flushed. The **negative** control is an ungraceful `SIGKILL` of the
+daemon PID via `docker exec <node> kill -9`, where it is lost. Tests
+the image under test (`SIGTERM_DRAIN_IMAGE`, default
+`ghcr.io/robintra/perf-sentinel:0.8.5`). On a 0.8.4 daemon the
+positive control FAILs by design, which is the counter-check.
 
 ```bash
 make verify-daemon-sigterm-drain   # default: ghcr.io/robintra/perf-sentinel:0.8.5
@@ -1330,19 +1454,23 @@ make verify-daemon-sigterm-drain   # default: ghcr.io/robintra/perf-sentinel:0.8
 
 ### daemon-analysis-shedding
 
-Proves the v0.8.6 **decoupled analysis worker** and its **metered load-shedding**.
-0.8.6 moves `detect + score` off the `select!` loop onto a single worker behind a
-bounded channel (`[daemon] analysis_queue_capacity`, default 1024). A scoped
-ConfigMap reduces the queue to `2` and shrinks `max_active_traces` to `10`, then a
-telemetrygen Job overloads the daemon. The scenario asserts the three 0.8.6
-surfaces climb/move (`perf_sentinel_analysis_shed_batches_total`,
-`perf_sentinel_analysis_shed_traces_total`, `perf_sentinel_analysis_queue_depth`),
-that **ingestion is not blocked while analysis sheds** (`events_processed` keeps
-climbing and `/api/status` answers on every poll), and that the new tunable is
-range-validated (`analysis_queue_capacity = 0` is rejected, via the local 0.8.6
-binary; skipped in CI). Fail-loud on worker death
-(`DaemonError::AnalysisWorkerStopped`) is covered by upstream unit tests and
-asserted statically (no safe lab lever to panic a detector mid-flight).
+Proves the v0.8.6 **decoupled analysis worker** and its **metered
+load-shedding**. 0.8.6 moves `detect + score` off the `select!` loop
+onto a single worker behind a bounded channel
+(`[daemon] analysis_queue_capacity`, default 1024). A scoped ConfigMap
+reduces the queue to `2` and shrinks `max_active_traces` to `10`, then
+a telemetrygen Job overloads the daemon. The scenario asserts the
+three 0.8.6 surfaces climb/move
+(`perf_sentinel_analysis_shed_batches_total`,
+`perf_sentinel_analysis_shed_traces_total`,
+`perf_sentinel_analysis_queue_depth`), that **ingestion is not blocked
+while analysis sheds** (`events_processed` keeps climbing and
+`/api/status` answers on every poll), and that the new tunable is
+range-validated (`analysis_queue_capacity = 0` is rejected, via the
+local 0.8.6 binary. Skipped in CI). Fail-loud on worker death
+(`DaemonError::AnalysisWorkerStopped`) is covered by upstream unit
+tests and asserted statically (no safe lab lever to panic a detector
+mid-flight).
 
 ```bash
 make verify-daemon-analysis-shedding
@@ -1445,7 +1573,7 @@ steps 4-11 each emit one PASS/FAIL verdict for a total of 8 verdicts):
 
 Counter assertions tolerate a 0.5.20 daemon that has not yet adopted
 the 0.5.21 pre-warmed series. When the surface is absent the verdict
-falls back to API-list lookups; the report records the verdict source
+falls back to API-list lookups. The report records the verdict source
 so any regression in counter pre-warming is visible without breaking
 the scenario.
 
@@ -1611,7 +1739,7 @@ Digest pins under `manifests/`, `helm/values/` and
 `scenarios/*/manifests.yaml` are **not** auto-bumped, they have to be
 refreshed manually whenever the upstream image moves. A migration to
 Renovate would close this gap (Renovate parses Kubernetes and Helm
-values natively); deferred to a dedicated effort.
+values natively). Deferred to a dedicated effort.
 
 To verify nothing has drifted back to floating refs, run:
 
@@ -1640,12 +1768,13 @@ ends with a JSON line of exactly what was sent (traces, spans, planted
 patterns), which the verify scripts reconcile against the daemon
 counters.
 
-Prerequisites: `make seed-tracegen` once (builds + imports the generator
-image), and a 0.8.7+ daemon (before the release image exists, run
-`make seed-daemon-local` to build one from a local checkout - it pins the
-manifest with an uncommitted working-tree edit that the release flow
-replaces with the GHCR digest). For clean cardinality and saturation
-numbers, tear the shop fleet down first (`scripts/teardown-services.sh`).
+Prerequisites: `make seed-tracegen` once, which builds and imports the
+generator image, and a 0.8.7+ daemon. Before the release image exists,
+run `make seed-daemon-local` to build one from a local checkout. That
+pins the manifest with an uncommitted working-tree edit, which the
+release flow replaces with the GHCR digest. For clean cardinality and
+saturation numbers, tear the shop fleet down first
+(`scripts/teardown-services.sh`).
 
 | Scenario | What it proves | Fast mode |
 |---|---|---|
@@ -1663,42 +1792,45 @@ report and in `/tmp/limit-saturation-curve/saturation.tsv`.
 ## 0.9.2 ingestion / normalize / suggestion scenarios
 
 Four scenarios validate the `0.9.2` changes to span ingestion, the SQL
-tokenizer, and framework-aware suggestions. They are **self-contained**: each
-needs only the local release binary (`cargo build --release -p perf-sentinel`),
-with no cluster — the daemon-facing ones launch a throwaway loopback
-`perf-sentinel watch` daemon (fresh per run), POST OTLP/protobuf to
-`/v1/traces`, and read `/api/findings`, `/metrics`, `/api/export/report`. The
-changes are pure ingestion/detection logic, identical in the local binary and
-the GHCR image, so a loopback daemon validates them faithfully and the
+tokenizer, and framework-aware suggestions. They are
+**self-contained**: each needs only the local release binary
+(`cargo build --release -p perf-sentinel`), with no cluster. The
+daemon-facing ones launch a throwaway loopback `perf-sentinel watch`
+daemon (fresh per run), POST OTLP/protobuf to `/v1/traces`, and read
+`/api/findings`, `/metrics`, `/api/export/report`. The changes are
+pure ingestion/detection logic, identical in the local binary and the
+GHCR image, so a loopback daemon validates them faithfully and the
 scenarios stay CI-runnable without a cluster.
 
 | Scenario | What it proves |
 |---|---|
 | `sql-backtick-redaction` | MySQL backtick identifiers are preserved (incl. the numeric `` `2024` `` the pre-0.9.2 tokenizer masked); PostgreSQL bracket/array string literals (`ARRAY['secret','pii']`, `data['ssn']`) are masked to `?` with no leak in the `analyze --format json` output |
-| `non-sql-datastore-drop` | redis + elasticsearch (with `url.full`) spans dropped on `db.system` alone across batch Jaeger, batch Zipkin, and OTLP daemon — only the PostgreSQL N+1 survives, ES is not reclassified as HTTP, `non_sql_datastore` counter rises by the dropped count |
+| `non-sql-datastore-drop` | redis + elasticsearch (with `url.full`) spans dropped on `db.system` alone across batch Jaeger, batch Zipkin, and OTLP daemon. Only the PostgreSQL N+1 survives, ES is not reclassified as HTTP, `non_sql_datastore` counter rises by the dropped count |
 | `non-sql-datastore-metering` | a Redis-only fleet raises the `non_sql_datastore` counter but **not** the `/api/export/report` zero-retention warning (0.9.2 excludes it from the gap); an internal `not_io` fleet still raises the warning (negative control) |
 | `ruby-activerecord-suggestion` | an N+1 under the OTLP scope `OpenTelemetry::Instrumentation::ActiveRecord` is enriched with `suggested_fix.framework = ruby_active_record` (recommends `includes`/`preload`/`eager_load`); a `.rb` `code.filepath` with no ORM scope yields `ruby_generic` |
 
 The `non-sql-datastore-metering` warning lives in the Report, which
-short-circuits to a cold-start envelope until ≥1 trace is analyzed, so each
-case first seeds one analyzable trace over the NDJSON socket (a non-OTLP path
-that does not bump `otlp_spans_received_total`) before flooding OTLP — see that
-scenario's `README.md`. Validated end to end against a `0.9.2` (`feature/0.9.2`)
-binary.
+short-circuits to a cold-start envelope until ≥1 trace is analyzed, so
+each case first seeds one analyzable trace over the NDJSON socket (a
+non-OTLP path that does not bump `otlp_spans_received_total`) before
+flooding OTLP. See that scenario's `README.md`. Validated end to end
+against a `0.9.2` (`feature/0.9.2`) binary.
 
 ## 0.9.3 Datadog / dd-trace bridge scenario
 
-One scenario, `datadog-bridge`, validates the `0.9.3` Datadog / dd-trace
-ingestion bridge and the db-system classification hardening that shipped with
-it. **Self-contained**: local release binary + a throwaway loopback daemon
-(OTLP `/v1/traces`) and batch `analyze`/`explain` on committed Jaeger/Zipkin
-fixtures, no cluster. Every bridged fixture mimics the **real** OTel Collector
-`datadogreceiver` output (contrib v0.155.0): instrumentation scope `Datadog`,
-SQL pre-obfuscated (`?`) in `dd.span.Resource`, the engine under the stable
-OTel 1.27+ key `db.system.name`. An optional live leg sends a synthetic
-dd-trace v0.4 payload through a real `datadogreceiver` container into the daemon
-(`otlphttp` tee); it **SKIPs** cleanly when Docker is unavailable, so the
-deterministic assertions always gate.
+One scenario, `datadog-bridge`, validates the `0.9.3` Datadog /
+dd-trace ingestion bridge and the db-system classification hardening
+that shipped with it. **Self-contained**: local release binary + a
+throwaway loopback daemon (OTLP `/v1/traces`) and batch
+`analyze`/`explain` on committed Jaeger/Zipkin fixtures, no cluster.
+Every bridged fixture mimics the **real** OTel Collector
+`datadogreceiver` output (contrib v0.155.0): instrumentation scope
+`Datadog`, SQL pre-obfuscated (`?`) in `dd.span.Resource`, the engine
+under the stable OTel 1.27+ key `db.system.name`. An optional live leg
+sends a synthetic dd-trace v0.4 payload through a real
+`datadogreceiver` container into the daemon (`otlphttp` tee). It
+**SKIPs** cleanly when Docker is unavailable, so the deterministic
+assertions always gate.
 
 | Assertion | What it proves |
 |---|---|
@@ -1710,55 +1842,63 @@ deterministic assertions always gate.
 | F | F3 limitation locked, not flagged: pre-obfuscated SQL under default `auto` + uniform timing surfaces as `redundant_sql`; `strict` recovers `n_plus_one_sql` at ≥ 3× the threshold (≥ 15 identical) |
 | G | `perf_sentinel_otlp_spans_filtered_total{reason="non_sql_datastore"}` and `{reason="missing_db_statement"}` rise for dropped stores and a statement-less SQL gap |
 
-Note: the `operation` label (assertion C) is exposed by `explain --format json`
-on the batch (Jaeger/Zipkin) paths; OTLP does not round-trip through `analyze`,
-so the OTLP path asserts the same canonicalization via finding recognition
-(assertion A/D) rather than the label string. Validated end to end against a
-`0.9.3` (`feature/0.9.3`) binary, including the live `datadogreceiver` leg.
+Note: the `operation` label (assertion C) is exposed by
+`explain --format json` on the batch (Jaeger/Zipkin) paths. OTLP does
+not round-trip through `analyze`, so the OTLP path asserts the same
+canonicalization via finding recognition (assertion A/D) rather than
+the label string. Validated end to end against a `0.9.3`
+(`feature/0.9.3`) binary, including the live `datadogreceiver` leg.
 
 ## 0.9.5 batch OTLP + mysql-stat scenarios
 
-Two scenarios validate the `0.9.5` features. Both need the local release
-binary and Docker; `batch-otlp-file` adds an optional cluster leg.
+Two scenarios validate the `0.9.5` features. Both need the local
+release binary and Docker. `batch-otlp-file` adds an optional cluster
+leg.
 
-`batch-otlp-file` proves the **OTLP/JSON batch input**: the whole `--input`
-family auto-detects `ExportTraceServiceRequest` payloads (structural top-level
-key sniff), both as a single pretty-printed object and as the NDJSON stream
-written by the Collector `file` exporter. The headline path is backend-less:
-dd-trace → `datadogreceiver` → `file` exporter → `analyze`, no Tempo/Jaeger.
-A throwaway contrib collector tees the converted OTLP to a loopback daemon
-(strict sanitizer mode on both sides, dd-trace SQL is pre-obfuscated) and to
-an NDJSON dump; batch findings must cohere with `/api/findings` on the same
-traffic. A truncated trailing line (file rotation / in-flight write) is
-tolerated with the `truncated trailing OTLP JSON document` warning; a
-half-line-only file and mid-stream garbage hard-fail; a Jaeger UI export
-stays Jaeger even when a tag value says `resourceSpans`, and an OTLP dump
-stays OTLP even with an attribute named/valued `data`. The native-OTel leg
-layers `collector-overlay.yaml` (a `file/dump` exporter + hostPath mount) on
-the cluster collector, drives order-service N+1 faults, reads the dump off
-the k3d nodes (the contrib image is scratch-based: no tar, no `kubectl cp`),
-and reverts the overlay on exit; it SKIPs cleanly without a cluster.
+`batch-otlp-file` proves the **OTLP/JSON batch input**: the whole
+`--input` family auto-detects `ExportTraceServiceRequest` payloads
+(structural top-level key sniff), both as a single pretty-printed
+object and as the NDJSON stream written by the Collector `file`
+exporter. The headline path is backend-less: dd-trace →
+`datadogreceiver` → `file` exporter → `analyze`, no Tempo/Jaeger. A
+throwaway contrib collector tees the converted OTLP to a loopback
+daemon (strict sanitizer mode on both sides, dd-trace SQL is
+pre-obfuscated) and to an NDJSON dump. Batch findings must cohere with
+`/api/findings` on the same traffic. A truncated trailing line (file
+rotation / in-flight write) is tolerated with the
+`truncated trailing OTLP JSON document` warning. A half-line-only file
+and mid-stream garbage hard-fail. A Jaeger UI export stays Jaeger even
+when a tag value says `resourceSpans`, and an OTLP dump stays OTLP
+even with an attribute named/valued `data`. The native-OTel leg layers
+`collector-overlay.yaml` (a `file/dump` exporter + hostPath mount) on
+the cluster collector, drives order-service N+1 faults, reads the dump
+off the k3d nodes (the contrib image is scratch-based: no tar, no
+`kubectl cp`), and reverts the overlay on exit. It SKIPs cleanly
+without a cluster.
 
 `mysql-stat` proves the **`pg-stat` twin for MySQL** on a real
-`performance_schema.events_statements_summary_by_digest`: a `mysql:9.7`
-container runs a workload mirroring the instrumented services' patterns
-(N+1 point lookups, `IN (a, b, c)`, `UPDATE`, full-scan aggregates), exported
-as JSON via `JSON_ARRAYAGG` (never `INTO OUTFILE`, which emits unsupported
-TSV) plus a properly quoted CSV twin. It asserts the four rankings in stable
-order (`top by total_exec_time`, `calls`, `mean_exec_time`, `rows_examined`)
-with plausible millisecond timers (picoseconds / 1e9), CSV/JSON equivalence,
-and the `--traces` cross-reference: `[seen in traces]` lands on a genuine
-backticked MySQL digest matching a dd-trace obfuscated template (backtick /
-spacing / case canonicalization on real data on both sides). Robustness legs
-force the real `DIGEST_TEXT = NULL` catch-all row with
-`--performance-schema-digests-size=10` (ignored without failing the export),
-reject an all-null export with an error naming `DIGEST_TEXT`, render
-`NULL`/`\N` schemas as absent, and prove ANSI escape sequences in a trapped
-export never reach the terminal (normal and parse-error paths — the check
-targets the attacker-controlled OSC/BEL bytes, not the logger's own CSI color
-codes). The dashboard legs cover `report --mysql-stat` (tab + 4 ranking
-chips + digest data, `--mysql-stat-top` bounds and companion-flag
-validation) and the populated `mysql_stat` tab in `demo --html`.
+`performance_schema.events_statements_summary_by_digest`. A
+`mysql:9.7` container runs a workload mirroring the instrumented
+services' patterns: N+1 point lookups, `IN (a, b, c)`, `UPDATE` and
+full-scan aggregates. That workload is exported as JSON via
+`JSON_ARRAYAGG`, never `INTO OUTFILE`, which emits unsupported TSV,
+plus a properly quoted CSV twin. It asserts the four rankings in
+stable order (`top by total_exec_time`, `calls`, `mean_exec_time`,
+`rows_examined`) with plausible millisecond timers (picoseconds /
+1e9), CSV/JSON equivalence, and the `--traces` cross-reference:
+`[seen in traces]` lands on a genuine backticked MySQL digest matching
+a dd-trace obfuscated template (backtick / spacing / case
+canonicalization on real data on both sides). Robustness legs force
+the real `DIGEST_TEXT = NULL` catch-all row with
+`--performance-schema-digests-size=10` (ignored without failing the
+export), reject an all-null export with an error naming `DIGEST_TEXT`,
+render `NULL`/`\N` schemas as absent, and prove ANSI escape sequences
+in a trapped export never reach the terminal (normal and parse-error
+paths, where the check targets the attacker-controlled OSC/BEL bytes,
+not the logger's own CSI color codes). The dashboard legs cover
+`report --mysql-stat` (tab + 4 ranking chips + digest data,
+`--mysql-stat-top` bounds and companion-flag validation) and the
+populated `mysql_stat` tab in `demo --html`.
 
 ## astronomy-shop capture-and-replay
 
@@ -1771,34 +1911,36 @@ instrumentation we did not author), and a **false-positive budget** on
 continuous, concurrent, legitimate mixed traffic (until now the only negative
 fixture was `scenarios/clean-load.js`, two endpoints on one controller).
 
-The design is capture-once/replay-forever. The demo is ~15-20 services and
-would blow the Docker budget on top of the lab stack, so it never enters the
-k3d cluster: `make capture-astronomy-shop` (one-off) runs the upstream docker
-compose at a pinned tag, injects a Collector `file` exporter through the
-demo's own `otelcol-config-extras.yml` extension hook (restating the exporter
-list - the collector config merge replaces arrays), and cuts two phases by
-stop/mv/start of the collector (the live dump is never truncated: buffered
-writer, fd not guaranteed O_APPEND). The clean phase (all flagd flags off,
-normal load-generator profile) is the false-positive corpus; the degraded
-phase (the manifest's `flags_enabled` on, `recommendationCacheFailure` by
-default) is the recall corpus. Full dumps stay in gitignored
-`artifacts/astronomy-shop/`; `curate.py` selects a deterministic slice of
-complete traces from each (window minus a 30s edge guard, ordered by start
-time) and only the slices plus `fixtures/fixture-manifest.json` are
-committed.
+The design is capture-once/replay-forever. The demo is ~15-20 services
+and would blow the Docker budget on top of the lab stack, so it never
+enters the k3d cluster. `make capture-astronomy-shop` (one-off) runs
+the upstream docker compose at a pinned tag. It injects a Collector
+`file` exporter through the demo's own `otelcol-config-extras.yml`
+extension hook, restating the exporter list because the collector
+config merge replaces arrays. It then cuts two phases by stop/mv/start
+of the collector, so the live dump is never truncated (buffered
+writer, fd not guaranteed O_APPEND). The clean phase (all flagd flags
+off, normal load-generator profile) is the false-positive corpus. The
+degraded phase (the manifest's `flags_enabled` on,
+`recommendationCacheFailure` by default) is the recall corpus. Full
+dumps stay in gitignored `artifacts/astronomy-shop/`. `curate.py`
+selects a deterministic slice of complete traces from each (window
+minus a 30s edge guard, ordered by start time) and only the slices
+plus `fixtures/fixture-manifest.json` are committed.
 
 The manifest is the contract: `flags_enabled` drives the capture, and
-`demo_version` / `otel_demo_commit` / `fp_budget` are stamped back. Ground
-truth is loose and documented - we do not control Astronomy Shop internals -
-so R1 asserts at least one finding class from `expected_finding_classes`
-appears on the degraded slice, not that a specific service owns a specific
-pattern. F1 is the novel gate: total findings on the clean slice must stay
-`<= fp_budget`, stamped as the **exact observed count** at curation time
-(replay is deterministic, so no slack factor); a later binary exceeding it
-fails by design and forces a human triage, and the actual classes are
-emitted into the report even on PASS so a class shift under budget stays
-visible. R1 and F1 run under the same default detection config. F2 renders
-the batch dashboard from the clean slice. `make verify-astronomy-shop`
+`demo_version` / `otel_demo_commit` / `fp_budget` are stamped back.
+Ground truth is loose and documented - we do not control Astronomy
+Shop internals - so R1 asserts at least one finding class from
+`expected_finding_classes` appears on the degraded slice, not that a
+specific service owns a specific pattern. F1 is the novel gate: total
+findings on the clean slice must stay `<= fp_budget`, stamped as the
+**exact observed count** at curation time (replay is deterministic, so
+no slack factor). A later binary exceeding it fails by design and
+forces a human triage, and the actual classes are emitted into the
+report even on PASS so a class shift under budget stays visible. R1
+and F1 run under the same default detection config. F2 renders the
+batch dashboard from the clean slice. `make verify-astronomy-shop`
 replays the committed slices with no cluster and no Docker.
 
 Day-one catch: on first capture R1 FAILed because `analyze` rejected the
@@ -1831,29 +1973,32 @@ spans physically present against fixed thresholds. The lab's services run
 locks the next-best contract: the analyzer must **degrade properly** on
 partial corpora rather than crash, flail, or false-positive.
 
-The scenario is transform-based replay over the committed astronomy-shop
-fixtures - nothing new is committed, no cluster, no Docker. `degrade.py`
-streams the NDJSON slices (curate.py's re-emit pattern) into 8 run-time
-variants: trace-consistent sampling at 50/10/1% keep, where a span is kept
-iff `fnv1a64(traceId)/2^64 < keep-rate` - a byte-for-byte port of the
-product's own sampler hash, self-checked at import, which makes keep-sets
-**nested across rates** - plus a 30% span-loss variant per slice that keeps
-every root and drops non-root spans on a `traceId+spanId` salt (collector
-loss: partial call graphs with broken parentage). An S0 die-guard aborts the
-run if a transform ever no-ops, so the assertions cannot pass vacuously.
+The scenario is transform-based replay over the committed
+astronomy-shop fixtures - nothing new is committed, no cluster, no
+Docker. `degrade.py` streams the NDJSON slices, using curate.py's
+re-emit pattern, into 8 run-time variants. The first is
+trace-consistent sampling at 50/10/1% keep, where a span is kept iff
+`fnv1a64(traceId)/2^64 < keep-rate`. That is a byte-for-byte port of
+the product's own sampler hash, self-checked at import, which makes
+keep-sets **nested across rates**. The second is a 30% span-loss
+variant per slice that keeps every root and drops non-root spans on a
+`traceId+spanId` salt, reproducing collector loss: partial call graphs
+with broken parentage. An S0 die-guard aborts the run if a transform
+ever no-ops, so the assertions cannot pass vacuously.
 
-Assertions are all relational against in-run baselines, nothing restamped:
-A1 every variant analyzes without crashing (down to the ~2-trace 1% corpus);
-A2 total findings on the degraded chain are monotone non-increasing
-(sound because keep-sets are nested; first run: 247 >= 117 >= 35 >= 3 at
-100/50/10/1%); A3 no variant invents a finding class beyond the degraded
-baseline, with the manifest intersection recorded for recall visibility;
-A4 the clean corpus stays under the astronomy manifest's `fp_budget` at
-every rate - sampling must never create false positives; A5/A6 the
-span-loss variants still analyze traces and invent no class (counts
-deliberately unconstrained: broken parentage may legitimately reshape
-timing statistics). `make verify-sampling-degradation` runs it with the
-local release binary and python3 only.
+Assertions are all relational against in-run baselines, nothing
+restamped: A1 every variant analyzes without crashing (down to the
+~2-trace 1% corpus); A2 total findings on the degraded chain are
+monotone non-increasing (sound because keep-sets are nested; first
+run: 247 >= 117 >= 35 >= 3 at 100/50/10/1%). A3 no variant invents a
+finding class beyond the degraded baseline, with the manifest
+intersection recorded for recall visibility; A4 the clean corpus stays
+under the astronomy manifest's `fp_budget` at every rate - sampling
+must never create false positives. A5/A6 the span-loss variants still
+analyze traces and invent no class (counts deliberately unconstrained:
+broken parentage may legitimately reshape timing statistics).
+`make verify-sampling-degradation` runs it with the local release
+binary and python3 only.
 
 ## semconv-drift migration robustness
 
@@ -1896,212 +2041,227 @@ the local release binary and python3 only.
 
 ## prod-topology-replay real production topology
 
-Every corpus so far — the lab services, astronomy-shop, the transform
-gates — is at most demo-scale topology. `prod-topology-replay` replays the
-one thing none of them can provide: **real production call graphs**, from
-the Alibaba cluster-trace-microservices-v2022 dataset (17k+ hashed
-microservices, 20M+ call graphs over 13 days). The scenario follows the
-astronomy-shop fetch-once/replay-forever design: `make fetch-prod-topology`
-(one-off) downloads the first 3 minutes of the dataset (~223 MB) into
-gitignored `artifacts/alibaba/`, and `convert.py` turns it into a
-committed OTLP/JSON NDJSON slice — deduping the dataset's double-recorded
-RPCs `(traceid, rpc_id)` first-wins, keeping only traces whose call tree
-is consistent (exactly one root, every parent present — the cheap version
-of the CASPER reconstruction filter for the dataset's documented
-topological inconsistencies), and selecting deterministically (earliest
-timestamp, 5–300 spans, first 300 traces) with md5-derived ids and a fixed
-epoch anchor so the output is byte-stable.
+Every corpus so far, meaning the lab services, astronomy-shop and the
+transform gates, is at most demo-scale topology.
+`prod-topology-replay` replays the one thing none of them can provide:
+**real production call graphs**, from the Alibaba
+cluster-trace-microservices-v2022 dataset (17k+ hashed microservices,
+20M+ call graphs over 13 days). The scenario follows the
+astronomy-shop fetch-once/replay-forever design.
+`make fetch-prod-topology` (one-off) downloads the first 3 minutes of
+the dataset (~223 MB) into gitignored `artifacts/alibaba/`.
+`convert.py` then turns it into a committed OTLP/JSON NDJSON slice. It
+dedupes the dataset's double-recorded RPCs `(traceid, rpc_id)`
+first-wins, and keeps only traces whose call tree is consistent:
+exactly one root, every parent present, the cheap version of the
+CASPER reconstruction filter for the dataset's documented topological
+inconsistencies. It selects deterministically (earliest timestamp,
+5–300 spans, first 300 traces) with md5-derived ids and a fixed epoch
+anchor, so the output is byte-stable.
 
-The scope is stated honestly in the README: the dataset carries topology
-and timing, not attributes, so every call is emitted as an HTTP client
-span with a synthetic carrier url (`http://<dm>/<interface>`) that exists
-only so ingest keeps the span. What the gate validates is the topological
-detector surface (fanout, chatty, serialized) and ingest on real-world
-trace shapes — not query-shape detection. Assertions mirror astronomy's
-contract philosophy against a stamped manifest: T1 deterministic
-`traces_analyzed`, T2 every stamped finding class still found, T3 exact
-stamped finding count (drift forces a human look; restamp deliberately by
-rerunning fetch.sh), T4 one request line per curated trace, T5 the
-dashboard renders. `make verify-prod-topology-replay` needs only the local
-release binary and python3.
+The scope is stated honestly in the README: the dataset carries
+topology and timing, not attributes, so every call is emitted as an
+HTTP client span with a synthetic carrier url
+(`http://<dm>/<interface>`) that exists only so ingest keeps the span.
+What the gate validates is the topological detector surface (fanout,
+chatty, serialized) and ingest on real-world trace shapes, not
+query-shape detection. Assertions mirror astronomy's contract
+philosophy against a stamped manifest: T1 deterministic
+`traces_analyzed`, T2 every stamped finding class still found, T3
+exact stamped finding count (drift forces a human look; restamp
+deliberately by rerunning fetch.sh), T4 one request line per curated
+trace, T5 the dashboard renders. `make verify-prod-topology-replay`
+needs only the local release binary and python3.
 
 ## rpc-carrier-parity OTel RPC semconv ingest
 
-Since product 0.9.8 the ingest admits OTel RPC
-semconv spans natively (`rpc.system` present, `span.kind == CLIENT`,
-target `"{rpc.service}/{rpc.method}"` with the span name as fallback,
-modeled as outbound `*_http` calls) — the synthetic carrier above is no
-longer the only way to feed RPC-shaped production topology.
+Since product 0.9.8 the ingest admits OTel RPC semconv spans natively
+(`rpc.system` present, `span.kind == CLIENT`, target
+`"{rpc.service}/{rpc.method}"` with the span name as fallback, modeled
+as outbound `*_http` calls). The synthetic carrier above is no longer
+the only way to feed RPC-shaped production topology.
 `rpc-carrier-parity` proves it at scale without downloading anything:
-`rpcify.py` rewrites the committed Alibaba slice into three shapes — the
-carrier stripped and replaced by `rpc.service`/`rpc.method` (client), by
-a `<dm>/<interface>` span name only (fallback), and the client shape
-with every span flipped to SERVER kind — and analyzes them against the
-in-run carrier baseline.
+`rpcify.py` rewrites the committed Alibaba slice into three shapes:
+the carrier stripped and replaced by `rpc.service`/`rpc.method`
+(client), by a `<dm>/<interface>` span name only (fallback), and the
+client shape with every span flipped to SERVER kind, and analyzes them
+against the in-run carrier baseline.
 
-The gate asserts P1 client == fallback exactly (both target resolutions
-are one admission path), P2 identical `traces_analyzed`,
-`events_processed` and the four topology-class counts vs the carrier,
-P3 `redundant_http` floored and recorded (the HTTP normalizer strips the
-URL host, so the carrier merges same-interface calls to different dm
-hosts into false redundancy groups — 10 findings on this slice — which
-the RPC target correctly keeps apart), and P4 zero findings on the
-SERVER-kind corpus (rpc.* rides inbound handler spans too; admitting
-them would double-count every hop). `make verify-rpc-carrier-parity`
-needs only the committed fixture, python3 and a local release binary at
-product 0.9.8 or later.
+The gate asserts four things. P1 is client == fallback exactly,
+because both target resolutions are one admission path. P2 is
+identical `traces_analyzed`, `events_processed` and the four
+topology-class counts vs the carrier. P3 is `redundant_http` floored
+and recorded: the HTTP normalizer strips the URL host, so the carrier
+merges same-interface calls to different dm hosts into false
+redundancy groups, 10 findings on this slice, which the RPC target
+correctly keeps apart. P4 is zero findings on the SERVER-kind corpus,
+since rpc.* rides inbound handler spans too, and admitting them would
+double-count every hop. `make verify-rpc-carrier-parity` needs only
+the committed fixture, python3 and a local release binary at product
+0.9.8 or later.
 
 ## chaos-replay live-chaos telemetry from the OTel demo
 
 The last of the four "break the assumptions" axes (clean / complete /
-mono-convention / **coherent** telemetry): where `sampling-degradation`
-and `semconv-drift` transform healthy captures offline, `chaos-replay`
-commits a slice of what real instrumentation emits while the system
-actually breaks. `capture.sh` (one-off, `make capture-chaos-replay`)
-drives the Astronomy Shop demo — sharing the pinned clone and
-file-exporter machinery with `astronomy-shop` — through a
-manifest-driven chaos window: four failure flags on
-(`paymentUnreachable`, `kafkaQueueProblems`, `adHighCpu`,
-`loadGeneratorFloodHomepage`), a SIGKILL of `checkout` mid-load (a
-mid-tier orchestrator, so its buffered spans die while its callees'
-SERVER spans still export → structural broken-parent traces a
-leaf-service kill cannot produce), and a 90 s `docker compose pause` of
-`shipping` (client timeouts, huge-duration spans on resume).
+mono-convention / **coherent** telemetry): where
+`sampling-degradation` and `semconv-drift` transform healthy captures
+offline, `chaos-replay` commits a slice of what real instrumentation
+emits while the system actually breaks. `capture.sh` (one-off,
+`make capture-chaos-replay`) drives the Astronomy Shop demo through a
+manifest-driven chaos window, sharing the pinned clone and
+file-exporter machinery with `astronomy-shop`. That window turns on
+four failure flags: `paymentUnreachable`, `kafkaQueueProblems`,
+`adHighCpu` and `loadGeneratorFloodHomepage`. It SIGKILLs `checkout`
+mid-load, a mid-tier orchestrator, so its buffered spans die while its
+callees' SERVER spans still export. That yields structural
+broken-parent traces a leaf-service kill cannot produce. It finally
+pauses `shipping` for 90 s with `docker compose pause`, producing
+client timeouts and huge-duration spans on resume.
 
 The gate (`make verify-chaos-replay`, local release binary only)
 asserts X1 clean degradation (`analyze` exits 0, `traces_analyzed`
 equals the stamp, no panic on stderr), X2 the per-class finding census
 equals the stamped census (deterministic replay: any count drift or
-invented class forces a human look; restamping = rerun capture.sh),
-X3 the chaos guard (the slice still carries the stamped counts of
-ERROR spans and broken-parent traces, so X1/X2 can never pass
-vacuously on a tame corpus — capture.sh refuses to stamp one), and
-X4 `report --input` renders. Curation reuses `astronomy-shop/curate.py`,
-whose eligibility filter is purely temporal — the half-traces survive
-by design.
+invented class forces a human look. Restamping = rerun capture.sh), X3
+the chaos guard (the slice still carries the stamped counts of ERROR
+spans and broken-parent traces, so X1/X2 can never pass vacuously on a
+tame corpus, and capture.sh refuses to stamp one), and X4
+`report --input` renders. Curation reuses `astronomy-shop/curate.py`,
+whose eligibility filter is purely temporal, so the half-traces
+survive by design.
 
 ## alumet-conformance Alumet measured-energy backend vs the real agent
 
 The 0.9.12 gate for the 6th measured-energy backend, and the first
-scenario where a local daemon scrapes a Prometheus exporter that runs in
-a throwaway docker container: the REAL upstream `alumet-agent` (v0.9.5
-`.deb`, sha256-pinned per arch, procfs + prometheus-exporter plugins).
-It pre-validates the product CI job `alumet-wire-conformance` by
-replaying its steps — including the verbatim dynamic metric-name
-discovery, mandatory because upstream's unit-suffix branch is inverted
-(unit-carrying metrics lose the unit, unitless ones gain a trailing
-underscore) — then locks the math the CI job cannot: against the
-committed frozen capture (`fixtures/alumet-wire-capture.prom`),
-`per_service_energy_kwh` must equal `sum(positive process rows) x
-scrape_interval / (energy_interval_secs x 3.6e6)` within 1% (rows
-sharing a label value are summed), a declared-interval desync of 5.0 vs
-1.0 must rescale by exactly x5, Alumet must outrank a configured-and-
-matching Scaphandre (`alumet_rapl`), both warn latches fire exactly
-once, and `/api/energy` returns 6 rows with alumet first (breaking
-change vs 0.9.11). Docker is optional: the live legs SKIP cleanly
-without it, the frozen legs always gate. Container gotchas are locked
-in the scenario README (file capabilities on the packaged binary, and the
-shipped conffile lacking the prometheus-exporter section, which the agent
-backfills from defaults, so we use a fresh ALUMET_CONFIG only for a clean
-capture).
+scenario where a local daemon scrapes a Prometheus exporter that runs
+in a throwaway docker container: the REAL upstream `alumet-agent`
+(v0.9.5 `.deb`, sha256-pinned per arch, procfs + prometheus-exporter
+plugins). It pre-validates the product CI job
+`alumet-wire-conformance` by replaying its steps, including the
+verbatim dynamic metric-name discovery. That discovery is mandatory
+because upstream's unit-suffix branch is inverted: unit-carrying
+metrics lose the unit, and unitless ones gain a trailing underscore.
+It then locks the math the CI job cannot, against the committed frozen
+capture (`fixtures/alumet-wire-capture.prom`).
+`per_service_energy_kwh` must equal
+`sum(positive process rows) x scrape_interval / (energy_interval_secs x 3.6e6)`
+within 1%, with rows sharing a label value summed. A declared-interval
+desync of 5.0 vs 1.0 must rescale by exactly x5. Alumet must outrank a
+configured-and- matching Scaphandre (`alumet_rapl`), both warn latches
+must fire exactly once, and `/api/energy` must return 6 rows with
+alumet first, a breaking change vs 0.9.11. Docker is optional: the
+live legs SKIP cleanly without it, the frozen legs always gate.
+Container gotchas are locked in the scenario README (file capabilities
+on the packaged binary, and the shipped conffile lacking the
+prometheus-exporter section, which the agent backfills from defaults,
+so we use a fresh ALUMET_CONFIG only for a clean capture).
 
 ## alumet-db-waste Alumet DB-cgroup energy x SQL waste ratio
 
 The 0.9.13 gate for the database-waste feature, built directly on the
-0.9.12 Alumet backend. It reuses the `alumet-conformance` harness — a
-local daemon on loopback scraping a `python3 -m http.server` — but
+0.9.12 Alumet backend. It reuses the `alumet-conformance` harness, a
+local daemon on loopback scraping a `python3 -m http.server`, but
 augments the committed frozen capture with **one synthetic
-database-cgroup series** (`resource_consumer_kind="pg-cgroup"`, a known
-`72000 J/poll`, so every figure is checkable; the label is deliberately
-distinct from any `service_mappings` value, since a collision is a config
-error). `[green.alumet.database]` declares that cgroup, and each scored
-window the daemon reports `green_summary.database_waste = { energy_kwh,
-waste_kwh, waste_gco2, region, sql_waste_ratio }`, where `sql_waste_ratio
-= min(avoidable_sql_io_ops / total_sql_io_ops, 1.0)` and `waste_kwh =
-energy_kwh x sql_waste_ratio` — a CPU-only lower bound, **excluded** from
-the top-level `energy_kwh`, from `co2`, and from the public `disclose`
-output. Five legs: **B** recomputes the arithmetic and proves the
-exclusion (the DB label never enters the per-service energy maps, the
-top-level `energy_kwh` equals the pure service sum, and `disclose` strips
-`database_waste` even though the per-window archive carries it); **C**
-locks the review-hardened sticky live cell — no flapping to `null`
-between scrapes, then ageing out within the TTL (`2 x staleness = 6 x
-scrape interval`) once the scraper dies under continued traffic, not
-pinned forever; **D** floods a 1-deep analysis queue and a 20-trace
-window (the `daemon-analysis-shedding` recipe) to shed whole batches and
-checks that the DB energy summed across the archived NDJSON windows
-equals the measured `scrape_total x per-scrape` (quantized to whole
-scrapes; the carry-over signature is one window absorbing the energy that
-accumulated while scoring around it was shed) with the daemon **shedding
-instead of OOMing**; **E** validates the config surface (collision,
-typo'd subsection, missing endpoint, and the `deny_unknown_fields`
-compat-break are rejected at load; an unknown-but-charset-valid region
-only warns and drops `waste_gco2`); and **F** confirms the
-`/api/export/report` snapshot backing the `query monitor` "Database
-waste:" line. Self-contained: local binary, no cluster, Docker not
-required.
+database-cgroup series** (`resource_consumer_kind="pg-cgroup"`, a
+known `72000 J/poll`, so every figure is checkable. The label is
+deliberately distinct from any `service_mappings` value, since a
+collision is a config error). `[green.alumet.database]` declares that
+cgroup, and each scored window the daemon reports
+`green_summary.database_waste = { energy_kwh, waste_kwh, waste_gco2, region, sql_waste_ratio }`,
+where
+`sql_waste_ratio = min(avoidable_sql_io_ops / total_sql_io_ops, 1.0)`
+and `waste_kwh = energy_kwh x sql_waste_ratio`, a CPU-only lower
+bound, **excluded** from the top-level `energy_kwh`, from `co2`, and
+from the public `disclose` output. Five legs: **B** recomputes the
+arithmetic and proves the exclusion (the DB label never enters the
+per-service energy maps, the top-level `energy_kwh` equals the pure
+service sum, and `disclose` strips `database_waste` even though the
+per-window archive carries it), **C** locks the review-hardened sticky
+live cell, with no flapping to `null` between scrapes, then ageing out
+within the TTL (`2 x staleness = 6 x scrape interval`) once the
+scraper dies under continued traffic, not pinned forever, **D** floods
+a 1-deep analysis queue and a 20-trace window (the
+`daemon-analysis-shedding` recipe) to shed whole batches and checks
+that the DB energy summed across the archived NDJSON windows equals
+the measured `scrape_total x per-scrape` (quantized to whole scrapes.
+The carry-over signature is one window absorbing the energy that
+accumulated while scoring around it was shed) with the daemon
+**shedding instead of OOMing**, **E** validates the config surface
+(collision, typo'd subsection, missing endpoint, and the
+`deny_unknown_fields` compat-break are rejected at load. An
+unknown-but-charset-valid region only warns and drops `waste_gco2`),
+and **F** confirms the `/api/export/report` snapshot backing the
+`query monitor` "Database waste:" line. Self-contained: local binary,
+no cluster, Docker not required.
 
 ## 0.9.15 AppSec hardening scenario
 
 `appsec-hardening` validates the 0.9.15 AppSec remediation end to end,
 self-contained (local release binary + throwaway loopback daemon, no
-cluster, no Docker). Five legs: **A** batch-analyzes a synthetic native
-fixture whose N+1 parent URL carries `user:pass@`, `?token=SECRET` and
-`#frag` — the finding's `source_endpoint` and signature must come back
-stripped, while a path-`@` (`/users/a@b.example/orders`) and a route
-template survive untouched (0.9.14 leaks the full URL, which is why ack
-signatures recorded against such endpoints change across the upgrade);
-**B** configures `[daemon.ack] api_key` and proves `GET /api/acks`
-answers 401 bare / 200 with `X-API-Key`, then restarts the daemon with
-`PERF_SENTINEL_ACK_API_KEY` and proves the env key beats the TOML key
-(both go through the same >=12-char validation); **C** reads
-`/api/export/report` cold (three evaluated rules, `passed:true` — 0.9.14
-hardcoded `rules:[]`) and after seeding a 12-occurrence critical N+1 SQL
-over the NDJSON socket against `n_plus_one_sql_critical_max = 0`
-(`passed:false`, the rule trips); **D** builds a baked report
-(analyze → disclose → hash-bake), injects `integrity.binary_attestation`
-post-bake — a post-sign field, so the content hash still validates — and
-asserts the PARTIAL cap (exit 2) with the new `--verify-binary <path>`
-hint (the flag does not exist in 0.9.14; note the exit code alone is not
-a discriminator, an unsigned report is PARTIAL on both versions); **E**
-binds `0.0.0.0` and asserts the non-loopback advisory is logged while the
-daemon still serves, then pins the 0.9.15 matcher widening with a second bind
-on `[::1]` that must stay silent (the 0.9.14 string-compare matcher warned on
-it). Ports 14406-14407 on loopback; leg E binds 14408-14409 on all
-interfaces, then on `[::1]`.
+cluster, no Docker). Five legs: **A** batch-analyzes a synthetic
+native fixture whose N+1 parent URL carries `user:pass@`,
+`?token=SECRET` and `#frag`. The finding's `source_endpoint` and
+signature must come back stripped, while a path-`@`
+(`/users/a@b.example/orders`) and a route template survive untouched.
+0.9.14 leaks the full URL, which is why ack signatures recorded
+against such endpoints change across the upgrade. **B** configures
+`[daemon.ack] api_key` and proves `GET /api/acks` answers 401 bare and
+200 with `X-API-Key`. It then restarts the daemon with
+`PERF_SENTINEL_ACK_API_KEY` and proves the env key beats the TOML key,
+both going through the same >=12-char validation. **C** reads
+`/api/export/report` cold, with three evaluated rules and
+`passed:true`, where 0.9.14 hardcoded `rules:[]`. It reads it again
+after seeding a 12-occurrence critical N+1 SQL over the NDJSON socket
+against `n_plus_one_sql_critical_max = 0`, where `passed:false` and
+the rule trips. **D** builds a baked report (analyze → disclose →
+hash-bake) and injects `integrity.binary_attestation` post-bake. That
+is a post-sign field, so the content hash still validates. It asserts
+the PARTIAL cap (exit 2) with the new `--verify-binary <path>` hint, a
+flag that does not exist in 0.9.14. Note that the exit code alone is
+not a discriminator, since an unsigned report is PARTIAL on both
+versions. **E** binds `0.0.0.0` and asserts the non-loopback advisory
+is logged while the daemon still serves. It then pins the 0.9.15
+matcher widening with a second bind on `[::1]` that must stay silent,
+where the 0.9.14 string-compare matcher warned on it. Ports
+14406-14407 on loopback. Leg E binds 14408-14409 on all interfaces,
+then on `[::1]`.
 
 ## endpoint-resolution (0.9.22 `source.endpoint`)
 
-`make verify-endpoint-resolution` — self-contained: a local release binary,
-two committed OTLP/JSON fixtures, no cluster and no daemon. Requires product
-**>= 0.9.22**.
+`make verify-endpoint-resolution`. Self-contained: a local release
+binary, two committed OTLP/JSON fixtures, no cluster and no daemon.
+Requires product **>= 0.9.22**.
 
-Pins how `source.endpoint` is resolved at OTLP ingestion. 0.9.22 replaced the
-direct-parent lookup with one bounded walk up the parent chain
-(`CODE_ATTRS_MAX_DEPTH = 8`) resolving, in order, the nearest inbound HTTP route
-(`http.route` on any kind, `http.url`/`url.full` on any kind **except** CLIENT,
-blank values skipped), then the **outermost** usable `code.*` frame, then
-`"unknown"`. Since the acknowledgment signature is
-`type : service : endpoint : hash(template)`, each of those rules decides which
-findings share an ack — acknowledging one silently hides every other finding
-resolving to the same endpoint. That makes this an ack-correctness gate, not a
-display one.
+Pins how `source.endpoint` is resolved at OTLP ingestion. 0.9.22
+replaced the direct-parent lookup with one bounded walk up the parent
+chain (`CODE_ATTRS_MAX_DEPTH = 8`) resolving, in order, the nearest
+inbound HTTP route (`http.route` on any kind, `http.url`/`url.full` on
+any kind **except** CLIENT, blank values skipped), then the
+**outermost** usable `code.*` frame, then `"unknown"`. Since the
+acknowledgment signature is
+`type : service : endpoint : hash(template)`, each of those rules
+decides which findings share an ack. Acknowledging one silently hides
+every other finding resolving to the same endpoint. That makes this an
+ack-correctness gate, not a display one.
 
-Thirty assertions in four groups: **A** the walk (a route two levels above the
-leaf, a route outranking the frames below it, the depth bound honoured on both
-sides, a blank `http.route` skipped rather than adopted — 0.9.17 turned a
-whitespace-only route into a whitespace-only endpoint); **B** the CLIENT skip
-(an outbound `url.full` no longer names the finding, while SERVER and
-kind-unspecified spans stay eligible and `http.route` counts on any kind);
-**C** outermost-not-nearest (two entry points over one shared DAO keep distinct
-endpoints, and the documented cost — a framework layer carrying `code.*` of its
-own wins and collapses both onto itself, frozen here because no agent in this
-lab emits framework frames: under the OTel javaagent only 5 of 5216
-`order-service` spans carry `code.*`, all of them the `@Scheduled` method);
-**D** spelling parity (the legacy `code.namespace` + `code.function` pair and
-the stable `code.function.name` must produce one endpoint string per origin,
-plus the frames the resolver must refuse rather than mangle — `?`, `@`, a bare
-unqualified name, a blank namespace — and `#` rewritten to `.`).
+Thirty assertions in four groups. **A** covers the walk: a route two
+levels above the leaf, a route outranking the frames below it, the
+depth bound honoured on both sides, and a blank `http.route` skipped
+rather than adopted, where 0.9.17 turned a whitespace-only route into
+a whitespace-only endpoint. **B** covers the CLIENT skip: an outbound
+`url.full` no longer names the finding, while SERVER and
+kind-unspecified spans stay eligible and `http.route` counts on any
+kind. **C** covers outermost-not-nearest: two entry points over one
+shared DAO keep distinct endpoints. Its documented cost is that a
+framework layer carrying `code.*` of its own wins and collapses both
+onto itself. That is frozen here because no agent in this lab emits
+framework frames: under the OTel javaagent only 5 of 5216
+`order-service` spans carry `code.*`, all of them the `@Scheduled`
+method. **D** covers spelling parity: the legacy `code.namespace` +
+`code.function` pair and the stable `code.function.name` must produce
+one endpoint string per origin. It also covers the frames the resolver
+must refuse rather than mangle (`?`, `@`, a bare unqualified name, a
+blank namespace), and `#` rewritten to `.`.
 
 The frames in `agent-frames.ndjson` are read out of real agent output, never
 invented: the PHP ones from the committed astronomy `quote` service (Slim +
@@ -2111,61 +2271,67 @@ file exporter. `fixtures/generate.py` regenerates both files.
 
 Discrimination: 28/30 on `feature/0.9.22`, 18/30 on 0.9.17.
 
-**Known red at `1160c183`: D1 and D2.** PHP qualifies namespaces with `\` but
-methods with `::`, and `frame_separator()` picks `\` for any namespace holding
-one, so `code.function.name = Slim\App::handle` resolves to `Slim\App::handle`
-while the legacy pair `Slim\App` + `handle` resolves to `Slim\App\handle`. Two
-spellings of one origin, two ack signatures — the exact re-keying the separator
-rule was written to prevent, on the exact language it was written for. Reported
-upstream; the gate stays red until the fix lands.
+**Known red at `1160c183`: D1 and D2.** PHP qualifies namespaces with
+`\` but methods with `::`, and `frame_separator()` picks `\` for any
+namespace holding one, so `code.function.name = Slim\App::handle`
+resolves to `Slim\App::handle` while the legacy pair `Slim\App` +
+`handle` resolves to `Slim\App\handle`. Two spellings of one origin,
+two ack signatures, the exact re-keying the separator rule was written
+to prevent, on the exact language it was written for. Reported
+upstream. The gate stays red until the fix lands.
 
 ## broker-messaging-waste (messaging ingestion + broker energy)
 
-`make verify-broker-messaging-waste` — self-contained: a local release binary on
-loopback plus a `python3 -m http.server` energy mock. No cluster, no Docker.
+`make verify-broker-messaging-waste`. Self-contained: a local release
+binary on loopback plus a `python3 -m http.server` energy mock. No
+cluster, no Docker.
 
-Gates the two coupled blocks added on top of 0.9.22. **Messaging ingestion**:
-broker spans (Kafka, RabbitMQ, Pulsar, SQS, NATS, JMS) stop being dropped as
-`not_io` and become `EventType::Messaging`, with `n_plus_one_messaging` /
-`slow_messaging` and a producer → consumer edge resolved through OTel span
-links. **Broker energy attribution**: no joules-per-message coefficient is
-derivable, so the broker's own energy is measured (`[green.alumet.broker]`) or
-declared (`[green.broker_static]`, the only option on a managed broker) and
-split by a messaging waste ratio, exactly like `database_waste`; measurement
-wins over declaration.
+Gates the two coupled blocks added on top of 0.9.22. **Messaging
+ingestion**: broker spans (Kafka, RabbitMQ, Pulsar, SQS, NATS, JMS)
+stop being dropped as `not_io` and become `EventType::Messaging`, with
+`n_plus_one_messaging` / `slow_messaging` and a producer → consumer
+edge resolved through OTel span links. **Broker energy attribution**:
+no joules-per-message coefficient is derivable, so the broker's own
+energy is measured (`[green.alumet.broker]`) or declared
+(`[green.broker_static]`, the only option on a managed broker) and
+split by a messaging waste ratio, exactly like `database_waste`.
+Measurement wins over declaration.
 
 Deterministic batch fixtures assert both `n_plus_one_messaging` and
 `slow_messaging` through executable code.
 
-The arbitration between those two sources is what this scenario is really for.
-It is already covered upstream by unit tests **against an injected clock**
-(`take_broker_energy` / `patch_broker_energy` take `now` as a parameter), and
-that is precisely the limit: no unit test meets a scraper that delivers energy
-per interval *and retroactively*, that answers *without carrying the expected
-label*, and that *dies then comes back*. The logic was rewritten three times in
-review, each correction revealing the next, so legs A1–A6 map 1:1 onto the four
+The arbitration between those two sources is what this scenario is
+really for. It is already covered upstream by unit tests **against an
+injected clock** (`take_broker_energy` / `patch_broker_energy` take
+`now` as a parameter), and that is precisely the limit: no unit test
+meets a scraper that delivers energy per interval *and retroactively*,
+that answers *without carrying the expected label*, and that *dies
+then comes back*. The logic was rewritten three times in review, each
+correction revealing the next, so legs A1-A6 map 1:1 onto the four
 rules the current code rests on.
 
 Twelve legs. **D** eight configuration cases (half-declared
 `[green.broker_static]`, `provider = "asw"`, the cgroup colliding with
-`service_mappings` and with the database declaration, a broker without an Alumet
-endpoint, an invalid broker `region` and a control char in its `label_value` —
-all refused, each naming *that* section; plus `provider = ""` accepted as
-`generic`).
-**A1/A2** the nominal regime: `alumet_rapl` in every window once the measurement
-owns the timeline, and the summed energy matching the closed form
-`elapsed × J / (energy_interval × 3.6e6)` rather than the declared cluster's — a
-per-tick double billing, the arbitration's first failure mode, lands near 2×.
-**A3/A4** Alumet cut past the staleness window (3× the scrape interval) then
-restored while handing over the whole outage in one catch-up reading, which must
-be dropped exactly once. **A5** a healthy endpoint whose `label_value` is absent
-from the exposition: `broker_specpower` continuously and `messaging_waste`
-**present** — the review regression that silently emptied the figure on a
-perfectly valid config. **A6** boot with Alumet unreachable. **B** disclosure
-v1.5 (three-term provenance invariant, the `measured_windows = 0` shape no unit
-test exercised, and the v1.4 disclosure written by 0.9.22 still verifying).
-**C** the display surfaces with no flicker. **E** destination spellings across
-broker families. **F** the producer link on the real astronomy capture.
+`service_mappings` and with the database declaration, a broker without
+an Alumet endpoint, an invalid broker `region` and a control char in
+its `label_value`, all refused, each naming *that* section, plus
+`provider = ""` accepted as `generic`). **A1/A2** the nominal regime:
+`alumet_rapl` in every window once the measurement owns the timeline,
+and the summed energy matching the closed form
+`elapsed × J / (energy_interval × 3.6e6)` rather than the declared
+cluster's, and a per-tick double billing, the arbitration's first
+failure mode, lands near 2×. **A3/A4** Alumet cut past the staleness
+window (3× the scrape interval) then restored while handing over the
+whole outage in one catch-up reading, which must be dropped exactly
+once. **A5** a healthy endpoint whose `label_value` is absent from the
+exposition: `broker_specpower` continuously and `messaging_waste`
+**present**, the review regression that silently emptied the figure on
+a perfectly valid config. **A6** boot with Alumet unreachable. **B**
+disclosure v1.5 (three-term provenance invariant, the
+`measured_windows = 0` shape no unit test exercised, and the v1.4
+disclosure written by 0.9.22 still verifying). **C** the display
+surfaces with no flicker. **E** destination spellings across broker
+families. **F** the producer link on the real astronomy capture.
 
 Three design points worth keeping when editing it:
 
@@ -2173,43 +2339,49 @@ Three design points worth keeping when editing it:
   billing is `scrape_interval > analysis batch cadence`, not the 30 s of the
   product report: 3 s scrape against a 1 s trace TTL keeps the relation and
   turns an hour into minutes.
-- **A static exposition cannot test the recovery rule.** A real Alumet agent
-  accumulates while unreachable and hands the gap over on the first successful
-  scrape; a constant file never catches up, so A4 would pass vacuously. The
-  served value is rewritten to one outage's worth of joules for **exactly one**
-  successful scrape, tracked through the daemon's own
-  `perf_sentinel_alumet_scrape_total{status="success"}` rather than a sleep.
-- **Boot is not the nominal regime.** Before any scrape lands, the declaration
-  bills legitimately — that is what A6 asserts — so A1 counts declared windows
-  only from the first measured one onwards.
+- **A static exposition cannot test the recovery rule.** A real Alumet
+  agent accumulates while unreachable and hands the gap over on the
+  first successful scrape. A constant file never catches up, so A4
+  would pass vacuously. The served value is rewritten to one outage's
+  worth of joules for **exactly one** successful scrape, tracked
+  through the daemon's own
+  `perf_sentinel_alumet_scrape_total{status="success"}` rather than a
+  sleep.
+- **Boot is not the nominal regime.** Before any scrape lands, the
+  declaration bills legitimately, which is what A6 asserts, so A1
+  counts declared windows only from the first measured one onwards.
 
 **Leg F fails on the current branch and the failure is the finding.**
-`resolve_producer_link` walks **ancestors** only, while the real OpenTelemetry
-Java/.NET Kafka instrumentation emits the `receive` CONSUMER span as a
-**sibling** of the work it triggered, under a shared parent. On the committed
-astronomy capture: 28 linked consumer traces, 0 links surfaced. The two crafted
-shapes in `fixtures/broker_cases.py` isolate the cause to that one variable —
-same trace, same link, only the parent of the analyzable span differs, and only
-the ancestor form renders `triggered by trace`. Reported upstream; the gate
-stays red until the fix lands.
+`resolve_producer_link` walks **ancestors** only, while the real
+OpenTelemetry Java/.NET Kafka instrumentation emits the `receive`
+CONSUMER span as a **sibling** of the work it triggered, under a
+shared parent. On the committed astronomy capture: 28 linked consumer
+traces, 0 links surfaced. The two crafted shapes in
+`fixtures/broker_cases.py` isolate the cause to that one variable:
+same trace, same link, only the parent of the analyzable span differs,
+and only the ancestor form renders `triggered by trace`. Reported
+upstream. The gate stays red until the fix lands.
 
-One validator subtlety pinned by legs d7/d8 rather than assumed: `label_value`
-is deliberately permissive — a value with spaces or `!` is accepted, because
-cgroup names carry odd characters and `validate_workload_fields` bounds only
-length and control characters there. The charset rule (`ASCII letters, digits,
-'-' and '_'`) applies to **`region`**. Those two rejections are the ones that
-flow through the validator broker and database share, so they are where a
-section mix-up would surface, and both name `[green.alumet.broker]` alone.
+One validator subtlety pinned by legs d7/d8 rather than assumed:
+`label_value` is deliberately permissive, since a value with spaces or
+`!` is accepted, because cgroup names carry odd characters and
+`validate_workload_fields` bounds only length and control characters
+there. The charset rule (`ASCII letters, digits, '-' and '_'`) applies
+to **`region`**. Those two rejections are the ones that flow through
+the validator broker and database share, so they are where a section
+mix-up would surface, and both name `[green.alumet.broker]` alone.
 
-Noted rather than failed: on a RabbitMQ **default exchange** `messaging.destination.name` is blank and
-`messaging.rabbitmq.destination.routing_key` is never read, so publishes to
-distinct routing keys collapse into one template — the same class as the
-host-strip merges documented in `rpc-carrier-parity`.
+Noted rather than failed: on a RabbitMQ **default exchange**
+`messaging.destination.name` is blank and
+`messaging.rabbitmq.destination.routing_key` is never read, so
+publishes to distinct routing keys collapse into one template, the
+same class as the host-strip merges documented in
+`rpc-carrier-parity`.
 
 ## archive-integrity-chain (0.9.25 hash chain over the window archive)
 
-`make verify-archive-integrity-chain` — self-contained: a local release binary
-and python3. No cluster, no Docker. Around 90 seconds.
+`make verify-archive-integrity-chain`. Self-contained: a local release
+binary and python3. No cluster, no Docker. Around 90 seconds.
 
 Until 0.9.25, integrity stopped at the published document. `content_hash` and
 the cosign signature proved a report had not moved since generation, while the
@@ -2218,40 +2390,43 @@ running `disclose` produced a coherent report with a valid hash, and no scenario
 here could tell. Each archive line now records `{ts, report, prev, seq, hash}`
 and `disclose` publishes the verdict under `integrity.trace_integrity_chain`.
 
-Six legs: an intact archive (`breaks = 0`, `windows_verified` equal to the
-window count), one window edited in place (`breaks = 1`, and the report is still
-produced — a break is published, not fatal), a pre-chaining archive
-(`windows_unchained = N`, `breaks = 0`, no accusation of tampering on an old
-file), the `hash` field **removed** after the chain has started (a break, which
-closes the obvious workaround for the edit case), a `SIGKILL` mid-write followed
-by a restart (`breaks = 0`, because a restarted daemon reads the last hash back
-before appending), and a deterministically torn tail (the torn line counts as a
-**lost window**, never as a break).
+Six legs: an intact archive (`breaks = 0`, `windows_verified` equal to
+the window count), one window edited in place (`breaks = 1`, and the
+report is still produced, since a break is published rather than
+fatal), a pre-chaining archive (`windows_unchained = N`, `breaks = 0`,
+no accusation of tampering on an old file), the `hash` field
+**removed** after the chain has started (a break, which closes the
+obvious workaround for the edit case), a `SIGKILL` mid-write followed
+by a restart (`breaks = 0`, because a restarted daemon reads the last
+hash back before appending), and a deterministically torn tail (the
+torn line counts as a **lost window**, never as a break).
 
-The last two are the same guarantee from two angles. The `SIGKILL` is the
-operational shape and cannot promise it will tear a line; cutting the last line
-in half by hand measures the case the product fixed at the very end of the
-branch, which had only ever run under unit tests.
+The last two are the same guarantee from two angles. The `SIGKILL` is
+the operational shape and cannot promise it will tear a line. Cutting
+the last line in half by hand measures the case the product fixed at
+the very end of the branch, which had only ever run under unit tests.
 
-The archive is generated by a **real daemon** on every run rather than committed
-as a fixture, so the chain always matches the binary under test. Two constraints
-on the plumbing: `TMP_DIR` must stay short, because the daemon's JSON socket
-lives there and a Unix socket path is capped near 104 bytes; and the window
-cadence is `trace_ttl_ms`, not a timer, since the daemon archives one window per
-eviction cycle that carried traffic.
+The archive is generated by a **real daemon** on every run rather than
+committed as a fixture, so the chain always matches the binary under
+test. Two constraints on the plumbing: `TMP_DIR` must stay short,
+because the daemon's JSON socket lives there and a Unix socket path is
+capped near 104 bytes, and the window cadence is `trace_ttl_ms`, not a
+timer, since the daemon archives one window per eviction cycle that
+carried traffic.
 
-Two limits are upstream trade-offs rather than defects, and the scenario says so
-instead of testing them: a clean truncation of the file's *tail* is invisible to
-the chain alone (what remains is a shorter self-consistent chain — detecting it
-needs an anchor outside the file, which `integrity.cross_period_log` stays
-reserved for), and a **version rollback** appends unchained windows after
-chained ones, which the anti-strip rule counts as a break. Rotate the archive
-before a downgrade.
+Two limits are upstream trade-offs rather than defects, and the
+scenario says so instead of testing them: a clean truncation of the
+file's *tail* is invisible to the chain alone (what remains is a
+shorter self-consistent chain, so detecting it needs an anchor outside
+the file, which `integrity.cross_period_log` stays reserved for), and
+a **version rollback** appends unchained windows after chained ones,
+which the anti-strip rule counts as a break. Rotate the archive before
+a downgrade.
 
 ## config-fragments (0.9.25 `.perf-sentinel.d/` loader)
 
-`make verify-config-fragments` — self-contained: a local release binary and
-python3. No cluster, no Docker, no daemon. A few seconds.
+`make verify-config-fragments`. Self-contained: a local release binary
+and python3. No cluster, no Docker, no daemon. A few seconds.
 
 Configuration can now be split into fragments named `NN-lowercase-name.toml`,
 loaded by ascending priority with the main `.perf-sentinel.toml` last. That part
@@ -2293,11 +2468,11 @@ are, and the methodology tag stays `sci_v1_numerator+transport` either way.
 
 ## otlp-compression-matrix (0.9.28 OTLP transport × encoding)
 
-`make verify-otlp-compression-matrix` — self-contained for legs A–H: Docker
-only, no cluster and no local binary, because the counter-proof needs a
-*published* pre-fix image rather than a build. Leg I needs a running cluster
-with `make seed-services` done and SKIPs cleanly otherwise. Around five
-minutes.
+`make verify-otlp-compression-matrix`. Self-contained for legs A-H:
+Docker only, no cluster and no local binary, because the counter-proof
+needs a *published* pre-fix image rather than a build. Leg I needs a
+running cluster with `make seed-services` done and SKIPs cleanly
+otherwise. Around five minutes.
 
 Up to and including 0.9.26 the daemon's OTLP gRPC listener mounted its
 `TraceServiceServer` without ever calling `accept_compressed`. The Collector's
@@ -2308,28 +2483,31 @@ silent loss of telemetry: the pod stays `Ready`, `/health` answers, every
 `/metrics` counter stays at zero, and the failure lives only in the Collector's
 logs.
 
-**This lab could not have caught it**, and that is the more useful finding. Two
-compounding reasons: the collector's only exporter toward the daemon is
-`otlphttp/perf_sentinel` on `:14318`, so the gRPC listener never saw the
-collector at all; and the two producers that do speak gRPC to a perf-sentinel
-listener — `tracegen.py --protocol=grpc` in `limit-multi-source` and
-`telemetrygen` in `java-ci-capture` — both sent uncompressed. The lab had a gRPC
-path and a compressed path, never both at once. `tracegen.py` gained a
+**This lab could not have caught it**, and that is the more useful
+finding. Two compounding reasons: the collector's only exporter toward
+the daemon is `otlphttp/perf_sentinel` on `:14318`, so the gRPC
+listener never saw the collector at all, and the two producers that do
+speak gRPC to a perf-sentinel listener: `tracegen.py --protocol=grpc`
+in `limit-multi-source` and `telemetrygen` in `java-ci-capture`, both
+sent uncompressed. The lab had a gRPC path and a compressed path,
+never both at once. `tracegen.py` gained a
 `--compression {none,gzip,deflate}` flag for exactly this reason.
 
-Ten legs: gzipped gRPC ingested (A) and refused on the baseline image with the
-`Unimplemented` quoted in the report (B); the three paths that already worked
-kept working — gRPC uncompressed, HTTP gzip, HTTP uncompressed (C, D, E);
-deflate over HTTP and over gRPC ingested (F, G) and refused on the baseline
-(F′); zstd and snappy still refused as `docs/INSTRUMENTATION.md` states (H); and
-the real cluster collector switched onto `:14317` with its compression left at
-the default, producing findings on an N+1 burst before reverting (I).
+Ten legs: gzipped gRPC ingested (A) and refused on the baseline image
+with the `Unimplemented` quoted in the report (B). The three paths
+that already worked kept working: gRPC uncompressed, HTTP gzip, HTTP
+uncompressed (C, D, E); deflate over HTTP and over gRPC ingested (F,
+G) and refused on the baseline (F′). Zstd and snappy still refused as
+`docs/INSTRUMENTATION.md` states (H), and the real cluster collector
+switched onto `:14317` with its compression left at the default,
+producing findings on an N+1 burst before reverting (I).
 
-Leg B is the point of the scenario. Without it a green A cannot distinguish
-"fixed" from "never exercised" — which is precisely how the bug survived every
-release since the gRPC listener existed. Legs F and G go through tracegen's
-native client because the Collector's gRPC exporter offers gzip, snappy and
-zstd only: deflate is unreachable from it.
+Leg B is the point of the scenario. Without it a green A cannot
+distinguish "fixed" from "never exercised", which is precisely how the
+bug survived every release since the gRPC listener existed. Legs F and
+G go through tracegen's native client because the Collector's gRPC
+exporter offers gzip, snappy and zstd only: deflate is unreachable
+from it.
 
 Leg I mutates the shared cluster collector through a Helm overlay, with the
 revert armed **before** the upgrade and executed from the EXIT trap, the same
@@ -2339,8 +2517,8 @@ twice and skew every finding count in the suite.
 
 ## ack-lifecycle-warning (0.9.28 unmatched acknowledgments)
 
-`make verify-ack-lifecycle-warning` — self-contained: the local release binary
-and python3. No cluster, no Docker. A few seconds.
+`make verify-ack-lifecycle-warning`. Self-contained: the local release
+binary and python3. No cluster, no Docker. A few seconds.
 
 0.9.28 reports an active TOML acknowledgment that suppressed nothing under the
 `unmatched_acknowledgment` warning, and the optional `service` /
@@ -2350,24 +2528,26 @@ problem looks fixed, the entry can be removed*), or the endpoint emitted no I/O
 at all (*this proves nothing, keep the entry*). An entry without those fields
 keeps the indeterminate double reading and points at the two fields.
 
-The load-bearing half is the guard, and it is the reason this scenario exists:
-the warning is derived **only from a fresh analysis of traces**. A pre-computed
-report — a daemon `/api/export/report` snapshot, or a report JSON replayed
-through `report --input` — has already been ack-filtered, so every entry that
-is still doing its job would look unmatched there, and the tool would advise
-removing exactly the acknowledgments that are working. That is a wrong-advice
-bug, not a crash: nothing fails, the operator simply deletes a useful entry.
+The load-bearing half is the guard, and it is the reason this scenario
+exists: the warning is derived **only from a fresh analysis of
+traces**. A pre-computed report, whether a daemon `/api/export/report`
+snapshot or a report JSON replayed through `report --input`, has
+already been ack-filtered, so every entry that is still doing its job
+would look unmatched there, and the tool would advise removing exactly
+the acknowledgments that are working. That is a wrong-advice bug, not
+a crash: nothing fails, the operator simply deletes a useful entry.
 
 Nine legs: the life cycle (finding, acked, fixed, not-run, bare entry), the
 guard on both pre-computed paths, and the transport through `diff` (text block
 plus an additive `warning_details` field in JSON, checked against the lab's own
 `jq` consumer in `output-formats-coverage`).
 
-One leg is a **positive control**: it asserts that the same acknowledgment
-*does* warn on fresh traces. Without it, both guard assertions would pass on
-any version that never emits the warning at all — including every release
-before 0.9.28. Run against the 0.9.26 binary the scenario fails five legs, and
-that control is the one that says why the silence is not evidence.
+One leg is a **positive control**: it asserts that the same
+acknowledgment *does* warn on fresh traces. Without it, both guard
+assertions would pass on any version that never emits the warning at
+all, including every release before 0.9.28. Run against the 0.9.26
+binary the scenario fails five legs, and that control is the one that
+says why the silence is not evidence.
 
 The A2.3 leg reads a committed daemon snapshot fixture so it runs without a
 cluster, and additionally queries a live daemon at `DAEMON_URL` when one
@@ -2375,23 +2555,25 @@ answers.
 
 ## export-snapshot-scope (0.13.1 export slice and its disclosure)
 
-`make verify-export-snapshot-scope` — self-contained: the local release binary,
-python3 and jq. No cluster, no Docker. Under a minute.
+`make verify-export-snapshot-scope`. Self-contained: the local release
+binary, python3 and jq. No cluster, no Docker. Under a minute.
 
-The daemon Report an operator pulls from `/api/export/report` is a **slice**,
-not the store. 0.13.1 made the slice's size configurable (`[daemon]
-max_export_findings`, `watch --max-export-findings`, range 0 to 100 000,
-default 1000), and the payload now says what it covers under the
-`snapshot_scope` warning kind: one entry always (the green figures describe the
-latest analyzed batch, not the findings listed beside them), a second one only
-when the store holds more than the export ships.
+The daemon Report an operator pulls from `/api/export/report` is a
+**slice**, not the store. 0.13.1 made the slice's size configurable
+through `[daemon] max_export_findings` and
+`watch --max-export-findings`, range 0 to 100 000, default 1000. The
+payload now says what it covers under the `snapshot_scope` warning
+kind. One entry is always present: the green figures describe the
+latest analyzed batch, not the findings listed beside them. A second
+appears only when the store holds more than the export ships.
 
-Thirteen legs across four surfaces. The cap is checked where it is *published*
-(`/api/config` reports the CLI override, not the file), where it *acts* (a cap
-of 2 over a store of 3 exports 2), and where it *discloses* (the truncation
-entry names both counts and warns that the quality gate counts only the
-exported slice). The cold-start envelope carries no `snapshot_scope` at all —
-deliberate upstream, and pinned here because no product test pins it.
+Thirteen legs across four surfaces. The cap is checked where it is
+*published* (`/api/config` reports the CLI override, not the file),
+where it *acts* (a cap of 2 over a store of 3 exports 2), and where it
+*discloses* (the truncation entry names both counts and warns that the
+quality gate counts only the exported slice). The cold-start envelope
+carries no `snapshot_scope` at all, deliberate upstream, and pinned
+here because no product test pins it.
 
 The cap-0 leg is the one worth reading. It is an A/B over identical traces
 through the same daemon: at the default cap `n_plus_one_sql_critical_max` reads
@@ -2404,17 +2586,18 @@ which no cap empties, and it still failed the gate on those same traces
 (`docs/QUERY-API.md` describes this split correctly). The scenario pins the
 split rather than the claim.
 
-The last two surfaces are client-side. A `/api/export/report` body past the
-8 MiB the query clients read is no longer flattened into an indistinguishable
-"daemon unreachable": `query monitor` prints `over the 8 MB read limit: lower
-max_export_findings or max_retained_traces` beside its `[STALE]` marker, and
-the leg asserts the reason survives the 96-character header budget *with* the
-knob still named — a reason cut before it names a fix is no better than the
-bare marker. `query inspect` was not fixed and still flattens the same overrun;
-that gap is recorded as `KNOWN` and flips to `CHANGED` if a later release
-closes it. Driving a TUI needs a terminal, and `script(1)` needs a tty on its
-own stdin that CI does not have, so the scenario opens one with
-`pty.openpty()` at 200 columns.
+The last two surfaces are client-side. A `/api/export/report` body
+past the 8 MiB the query clients read is no longer flattened into an
+indistinguishable "daemon unreachable": `query monitor` prints
+`over the 8 MB read limit: lower max_export_findings or max_retained_traces`
+beside its `[STALE]` marker, and the leg asserts the reason survives
+the 96-character header budget *with* the knob still named, because a
+reason cut before it names a fix is no better than the bare marker.
+`query inspect` was not fixed and still flattens the same overrun.
+That gap is recorded as `KNOWN` and flips to `CHANGED` if a later
+release closes it. Driving a TUI needs a terminal, and `script(1)`
+needs a tty on its own stdin that CI does not have, so the scenario
+opens one with `pty.openpty()` at 200 columns.
 
 Finally, the startup advisory fires on the **pair**: 2000 findings with 400
 retained traces project ~10 MB and are named together, while
@@ -2426,30 +2609,34 @@ is clamped to the byte budget `traces_store::snapshot_for` already enforces.
 Scenarios split into two families by how they reach perf-sentinel, and the
 difference decides what a PASS actually proves.
 
-**Local-binary scenarios** run `${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel`
-directly. They always exercise the working tree, so a `cargo build --release` is
-the only prerequisite — and forgetting it silently validates the previous build,
-which is why every such scenario prints the binary path and version it resolved.
+**Local-binary scenarios** run
+`${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel` directly.
+They always exercise the working tree, so a `cargo build --release` is
+the only prerequisite, and forgetting it silently validates the
+previous build, which is why every such scenario prints the binary
+path and version it resolved.
 
 **Image scenarios** run `docker run <image>`, because they need the artifact a
 user installs rather than a host build: a `FROM scratch` static binary, the same
 one the daemon manifest pins. All of them resolve that image through
 `scripts/resolve-image.sh`, in this order:
 
-1. `PERF_SENTINEL_IMAGE` — a full reference, used verbatim. The pre-release path:
-   a locally built tag, or a digest.
-2. `PERF_SENTINEL_VERSION` — a GHCR tag. Every existing runbook and CI workflow
-   passes this one.
-3. `manifests/perf-sentinel-daemon.yaml` — the pin the lab is currently
-   validating, used verbatim since it may be a digest or a local pre-release tag.
+1. `PERF_SENTINEL_IMAGE`: a full reference, used verbatim. The
+   pre-release path: a locally built tag, or a digest.
+2. `PERF_SENTINEL_VERSION`: a GHCR tag. Every existing runbook and CI
+   workflow passes this one.
+3. `manifests/perf-sentinel-daemon.yaml`: the pin the lab is currently
+   validating, used verbatim since it may be a digest or a local
+   pre-release tag.
 
-Each of those scenarios used to carry its own hardcoded default instead — 0.5.17,
-0.5.21, 0.7.2, 0.8.13, `latest`. A scenario pinned to an old tag runs green on
-every release without ever touching the version under validation, so the gate
-reported a PASS for code it had not executed. The 0.9.25 round unpinned all
-eight and found two assertions that had been stale for releases:
-`esrs-e1-crosswalk` still required schema exactly `v1.3`, and `intent-validator`
-still declared a 2024 SPECpower vintage its binary no longer recognised. Neither
+Each of those scenarios used to carry its own hardcoded default
+instead: 0.5.17, 0.5.21, 0.7.2, 0.8.13, `latest`. A scenario pinned to
+an old tag runs green on every release without ever touching the
+version under validation, so the gate reported a PASS for code it had
+not executed. The 0.9.25 round unpinned all eight and found two
+assertions that had been stale for releases: `esrs-e1-crosswalk` still
+required schema exactly `v1.3`, and `intent-validator` still declared
+a 2024 SPECpower vintage its binary no longer recognised. Neither
 could have surfaced while the pin held.
 
 **Building a pre-release image.** Never point a `docker build` at the product
@@ -2464,7 +2651,8 @@ rm -f "${CTX}/.dockerignore"
 docker build -f tools/daemon-image/Dockerfile -t perf-sentinel:X.Y.Z-local "${CTX}"
 ```
 
-A scenario that genuinely needs a fixed old version — a compatibility leg against
-an earlier binary, say — should name that version inline at its call site rather
-than defaulting the whole run to it. `broker-messaging-waste` does exactly that
-for its v1.4 hash-compatibility leg.
+A scenario that genuinely needs a fixed old version, a compatibility
+leg against an earlier binary for instance, should name that version
+inline at its call site rather than defaulting the whole run to it.
+`broker-messaging-waste` does exactly that for its v1.4
+hash-compatibility leg.

@@ -1,7 +1,7 @@
 # OTel Collector (contrib) config for the headline dd-trace leg: ingest
 # dd-trace APM on :8126 via the datadogreceiver, then TEE the converted OTLP
 # to the loopback perf-sentinel daemon AND to the file exporter (NDJSON, one
-# ExportTraceServiceRequest per line) — the backend-less batch path.
+# ExportTraceServiceRequest per line): the backend-less batch path.
 # No batch processor: each intake request maps to exactly one NDJSON line,
 # which the truncation / mid-stream-garbage legs rely on.
 receivers:
@@ -15,7 +15,7 @@ exporters:
 service:
   telemetry:
     logs:
-      # info so the "Everything is ready" startup banner is emitted —
+      # info so the "Everything is ready" startup banner is emitted, and
       # verify.sh gates readiness on it (same trick as datadog-bridge/live).
       level: info
   pipelines:

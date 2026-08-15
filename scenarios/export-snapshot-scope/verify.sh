@@ -17,12 +17,12 @@
 #      whole verdict flipping: `io_waste_ratio_max` comes from the green
 #      summary, which no cap empties, so it can still fail the gate. CHANGELOG
 #      and docs/CONFIGURATION.md claim the verdict "then passes whatever the
-#      daemon detected"; docs/QUERY-API.md describes the real split. This
+#      daemon detected". docs/QUERY-API.md describes the real split. This
 #      scenario pins the split, not the claim.
 #   B. `snapshot_scope` in `warning_details` says so in the payload: one entry
 #      always (green figures = one batch), a second one only when the store
 #      holds more than the export ships. The cold-start envelope carries
-#      NEITHER — deliberate, and pinned here because nothing upstream pins it.
+#      NEITHER: deliberate, and pinned here because nothing upstream pins it.
 #   C. A snapshot too large for the 8 MiB the query clients read is reported as
 #      such instead of being flattened into an unreachable daemon. `query
 #      monitor` names the reason beside its [STALE] marker. (`query inspect`
@@ -250,7 +250,7 @@ jq -e '.quality_gate.rules[]
 # But the verdict is NOT guaranteed to flip, and asserting that it does would
 # pin a claim the product contradicts elsewhere. CHANGELOG and
 # docs/CONFIGURATION.md say the verdict "then passes whatever the daemon
-# detected"; docs/QUERY-API.md says the gate "counts finding-based rules on the
+# detected". docs/QUERY-API.md says the gate "counts finding-based rules on the
 # exported slice AND reads io_waste_ratio from that batch". The second one is
 # what runs: io_waste_ratio_max comes from the green summary, which no cap
 # empties, so it still fails here on the same traces. Both facts are the leg.
@@ -269,7 +269,7 @@ ok "cap 0 blinds the count rules over ${ZERO_STORED} hidden findings; io_waste_r
 # =============================================================================
 step "C1. an oversized snapshot is named, not flattened into an unreachable daemon"
 # The client refuses past 8 MiB before parsing, so the stub body only has to be
-# big — the small-body control below is served by the real daemon.
+# big: the small-body control below is served by the real daemon.
 cat > "${TMP_DIR}/stub.py" <<'PY'
 import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer

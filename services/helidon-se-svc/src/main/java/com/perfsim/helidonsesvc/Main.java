@@ -77,7 +77,7 @@ public final class Main {
                 .mediaContext(mc -> mc.addMediaSupport(JsonpSupport.create()))
                 .routing(routing -> routing
                         // Lightweight liveness/readiness, wired by the
-                        // deployment's probes. Sufficient for the lab —
+                        // deployment's probes. Sufficient for the lab.
                         // Helidon SE has an ObserveFeature module for
                         // richer health checks, kept out of this minimal
                         // service to limit dependencies. application/json

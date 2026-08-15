@@ -15,21 +15,23 @@ self-contained (local release binary only, no cluster, no docker).
 
 ## Version discrimination (checked once against ghcr 0.9.14, 2026-07-23)
 
-Run against the 0.9.14 GHCR image, the legs fail exactly as expected:
-leg A leaks the full URL, leg B answers 200 on the bare GET, leg C returns
-`rules: []` on the cold envelope, leg D lacks the `--verify-binary` flag and
-its hint text differs, and leg E's `[::1]` bind draws the advisory (the 0.9.14
-matcher only recognized the literal spellings). The PARTIAL exit code itself is
-not a discriminator on an unsigned report (both versions cap at 2) — leg D
-therefore asserts the new hint text and flag, which are 0.9.15-only.
+Run against the 0.9.14 GHCR image, the legs fail exactly as expected. Leg
+A leaks the full URL, leg B answers 200 on the bare GET, and leg C returns
+`rules: []` on the cold envelope. Leg D lacks the `--verify-binary` flag
+and its hint text differs. Leg E's `[::1]` bind draws the advisory,
+because the 0.9.14 matcher only recognized the literal spellings. The
+PARTIAL exit code itself is not a discriminator on an unsigned report
+(both versions cap at 2). Leg D therefore asserts the new hint text and
+flag, which are 0.9.15-only.
 
 ## Prerequisites
 
 - Local release binary at `$PERF_SENTINEL_REPO_PATH/target/release/perf-sentinel`
   built from `feature/0.9.15` or later (`cargo build --release -p perf-sentinel`).
-- `jq`, `python3`. Ports 14406-14407 free on loopback; leg E additionally binds
-  14408-14409 on **all interfaces** (`0.0.0.0`, that is the point of the
-  advisory leg — expect a firewall prompt on first run) and then on `[::1]`.
+- `jq`, `python3`. Ports 14406-14407 free on loopback. Leg E additionally
+  binds 14408-14409 on **all interfaces** (`0.0.0.0`, that is the point of
+  the advisory leg, so expect a firewall prompt on first run) and then on
+  `[::1]`.
 
 ## Run
 
@@ -43,8 +45,8 @@ Report: `/tmp/scenario-appsec-hardening-report.md`.
 
 ## Fixture
 
-`fixtures/appsec.native.json` — synthetic native SpanEvent capture, three
-traces on `appsec-svc`: 12 SQL spans behind
-`http://user:pass@shop-svc/api/orders?token=SECRET#frag` (critical N+1, the
-redaction target), 6 behind `/users/a@b.example/orders` (path-`@` control),
-6 behind `GET /api/orders/{id}` (route-template control).
+`fixtures/appsec.native.json` is a synthetic native SpanEvent capture,
+three traces on `appsec-svc`: 12 SQL spans behind
+`http://user:pass@shop-svc/api/orders?token=SECRET#frag` (critical N+1,
+the redaction target), 6 behind `/users/a@b.example/orders` (path-`@`
+control), 6 behind `GET /api/orders/{id}` (route-template control).

@@ -35,12 +35,13 @@ Report at `/tmp/scenario-template-github-actions-report.md`.
      floating tags). Warning if any are unpinned.
    - Quality gate enforcement step.
    - PR comment + sticky comment plugin presence.
-3. **actionlint**. Run `rhysd/actionlint` against the workflow. This
-   is a GHA-aware schema + expression validator (catches bad
-   expressions, invalid `if:` conditions, unknown context refs, dead
-   needs:, etc.). Lighter than running act in a container and does
-   not require gh-pages/secrets. Failures downgrade to FAIL only when
-   the lint reports issues; pull failures downgrade to SKIPPED.
+3. **actionlint**. Run `rhysd/actionlint` against the workflow.
+   This is a GHA-aware schema + expression validator (catches
+   bad expressions, invalid `if:` conditions, unknown context
+   refs, dead needs:, etc.). Lighter than running act in a
+   container and does not require gh-pages/secrets. Failures
+   downgrade to FAIL only when the lint reports issues. Pull
+   failures downgrade to SKIPPED.
 
 ## Verdicts
 

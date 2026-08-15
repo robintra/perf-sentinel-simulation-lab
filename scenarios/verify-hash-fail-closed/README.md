@@ -8,8 +8,8 @@ The identity gate short-circuits **before** cosign, so:
 
 - exit code `1` / `Overall: UNTRUSTED`
 - `[FAIL] Signature` ("cannot verify without expected identity …")
-- `[OK] Content hash` — the canonical hash blanks the signature, so adding it
-  does not invalidate the content hash.
+- `[OK] Content hash`: the canonical hash blanks the signature, so adding
+  it does not invalidate the content hash.
 
 No cosign binary is required (the gate fires first). This guards against a
 Sigstore bundle forgeable by any GitHub/Google account holder.
@@ -31,7 +31,7 @@ PERF_SENTINEL_VERSION=0.8.13-rc make verify-verify-hash-fail-closed   # pre-rele
 reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
 GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
 
-It used to default to a hardcoded old tag, so the scenario ran green on every
-release without ever touching the version under validation — the gate reported a
-PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
-the eight image scenarios now share this resolution.
+It used to default to a hardcoded old tag, so the scenario ran green on
+every release without ever touching the version under validation. The gate
+reported a PASS for code it had not executed. The 0.9.25 round is what
+surfaced that, and the eight image scenarios now share this resolution.

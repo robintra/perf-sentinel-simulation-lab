@@ -34,7 +34,7 @@ data:
 
     # Ack store introduced in 0.5.20. JSONL appended on POST/DELETE,
     # compacted at startup. Storage path lives on the perf-sentinel-acks
-    # PVC mount; the rest of the rootfs stays read-only. No api_key is
+    # PVC mount. The rest of the rootfs stays read-only. No api_key is
     # set: the API binds to a ClusterIP Service so loopback access
     # control is sufficient for the lab.
     [daemon.ack]
@@ -83,13 +83,13 @@ data:
     # Per-service typed ProcessMatcher (v0.7.6 form, validated with
     # #[serde(deny_unknown_fields)]). One entry per service actually
     # running in the lab (order, payment, notification), all three on
-    # gcr.io/distroless/java25:nonroot — see
+    # gcr.io/distroless/java25:nonroot. See
     # services/shared-dockerfile/Dockerfile. `exe_contains` is the
     # stable substring of the OpenJDK runtime path that Scaphandre
     # reads from /proc/<pid>/exe (/usr/lib/jvm/java-25-openjdk-amd64/bin/java
     # under distroless, /usr/lib/jvm/.../bin/java on any OpenJDK
     # install). `cmdline_contains` discriminates between the three
-    # services that share the runtime; the jar filename is the
+    # services that share the runtime. The jar filename is the
     # stable substring the real Scaphandre keeps when concatenating
     # argv without separators.
     [green.scaphandre.process_map."order-service"]
@@ -162,7 +162,7 @@ data:
     cmdline_contains = "rails-svc"
 
     # PHP members run the built-in server (php -S), so the runtime path is
-    # bin/php; the service slug disambiguates the two identical runtimes.
+    # bin/php. The service slug disambiguates the two identical runtimes.
     [green.scaphandre.process_map."laravel-svc"]
     exe_contains = "bin/php"
     cmdline_contains = "laravel-svc"
@@ -177,7 +177,7 @@ data:
     # Python stdlib mock at manifests/kepler-mock.yaml serves the
     # `kepler_container_cpu_joules_total` counter perf-sentinel
     # consumes in container mode (Kepler v0.10+ name with the
-    # `_cpu_` infix; pre-v0.10 mocks are archived in
+    # `_cpu_` infix. pre-v0.10 mocks are archived in
     # manifests/kepler-mock-legacy.yaml). Scaphandre wins precedence
     # when both are active. Comment this block out to fall through
     # to Kepler if Scaphandre is unreachable.
@@ -204,7 +204,7 @@ data:
     # #[serde(deny_unknown_fields)]). The `schema` field selects the
     # canonical JSON pointer the parser reads (no operator-typed
     # pointer involved). chassis-1 covers the legacy Power resource
-    # still mandatory on every shipping BMC; chassis-2 covers the
+    # still mandatory on every shipping BMC. chassis-2 covers the
     # modern EnvironmentMetrics resource introduced by DMTF 2020.4.
     [green.redfish.endpoints."chassis-1"]
     url = "http://redfish-mock.observability.svc.cluster.local:8000/redfish/v1/Chassis/1/Power"
@@ -352,7 +352,7 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             # Under sustained CPU saturation the cgroup quota freezes the
-            # whole process in quanta; a tight liveness budget restarts a
+            # whole process in quanta. A tight liveness budget restarts a
             # functional daemon before queue shedding even engages.
             failureThreshold: 5
           readinessProbe:

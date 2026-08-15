@@ -106,9 +106,9 @@ chmod 700 "${ASKPASS_SCRIPT}"
 # consulted BEFORE GIT_ASKPASS, and it caches per host:port. Every `make
 # up-gitlab` mints a new PAT for the same localhost:8181, so the second GitLab
 # instance on a machine authenticates with the first one's stale token and fails
-# with "HTTP Basic: Access denied" — while the PAT itself is valid and the API
+# with "HTTP Basic: Access denied", while the PAT itself is valid and the API
 # accepts it, which sends you looking at GitLab rather than at the keychain.
-# Emptying the helper for these commands only neutralises it here; the user's
+# Emptying the helper for these commands only neutralises it here. The user's
 # own git config is untouched.
 GIT_NO_HELPER=(-c credential.helper=)
 export LAB_GIT_TOKEN="${TOKEN}"

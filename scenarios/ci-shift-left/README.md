@@ -34,10 +34,10 @@ Report lands at `/tmp/scenario-ci-shift-left-report.md`. Wall clock
 2. Daemon ingests for 30s, then `/api/export/report` is queried.
 3. `perf-sentinel analyze --ci` runs against the clean export with strict
    thresholds (zero-tolerance n+1, io_waste_ratio_max 0.30).
-4. **Expected**: the gate passes (exit 0). On a long-lived lab cluster
-   with residue findings from prior runs, the gate may fail; the verify
-   accepts both outcomes and only fails if `analyze` cannot produce an
-   output file.
+4. **Expected**: the gate passes (exit 0). On a long-lived lab
+   cluster with residue findings from prior runs, the gate may
+   fail. The verify accepts both outcomes and only fails if
+   `analyze` cannot produce an output file.
 
 ### Phase 2: regression
 
@@ -102,9 +102,9 @@ These files are reused by `output-formats-coverage`:
 ## Limitations
 
 - `--show-acknowledged` output schema is probed across two shapes
-  (`acknowledged_findings` vs `findings[].acknowledged`). If neither
-  matches, the assertion fails informationally; the upstream schema
-  should be confirmed and the verify updated.
+  (`acknowledged_findings` vs `findings[].acknowledged`). If
+  neither matches, the assertion fails informationally. The
+  upstream schema should be confirmed and the verify updated.
 - The clean phase tolerates a non-zero gate on long-lived clusters with
   residue findings. To force a strict baseline, run from a freshly
   bootstrapped cluster (`make destroy-up-cni`) before invoking the

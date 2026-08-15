@@ -2,7 +2,7 @@ server:
   port: 8085
   host: 0.0.0.0
 
-# HikariCP datasource. Raw JDBC — no ORM, no Hibernate scope marker on
+# HikariCP datasource. Raw JDBC: no ORM, no Hibernate scope marker on
 # the spans, which is exactly the point of helidon-se-svc: a third
 # data point on perf-sentinel's Gap #20 (n+1 SQL detection without
 # ORM scope) after mutiny-svc. Pool capped at 10 so the pool-saturation
@@ -26,7 +26,7 @@ self:
   base-url: http://localhost:8085
 
 # Enable Helidon's OpenTelemetry tracing provider. The OTel Java agent
-# at runtime exports the spans; this section just tells Helidon
+# at runtime exports the spans. This section just tells Helidon
 # WebClient + WebServer to emit spans into the OTel SDK the agent
 # already installs.
 tracing:

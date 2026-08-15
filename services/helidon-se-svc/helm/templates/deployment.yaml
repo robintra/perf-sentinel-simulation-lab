@@ -36,7 +36,7 @@ spec:
               containerPort: {{ .Values.service.port }}
               protocol: TCP
           env:
-            # HTTP_PORT (not QUARKUS_HTTP_PORT — this is not Quarkus) is
+            # HTTP_PORT (not QUARKUS_HTTP_PORT: this is not Quarkus) is
             # read by Main.envOrInt to override the YAML default, so
             # values.service.port is the single source of truth.
             - name: HTTP_PORT

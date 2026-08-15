@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 class HealthController extends Controller
 {
-    // Liveness: cheap, no DB — the process is up.
+    // Liveness: cheap, no DB, the process is up.
     public function live()
     {
         return response()->json(['status' => 'UP']);

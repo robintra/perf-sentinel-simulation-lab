@@ -20,12 +20,6 @@
 #   4. official+public incomplete org-config: above-coverage archive +
 #      org-config missing organisation.country. Disclose fails with
 #      stderr matching `missing field` and `country`.
-#
-# Fixtures under fixtures/:
-#   - org-config-complete.toml      all required fields populated
-#   - org-config-incomplete.toml    missing organisation.country
-#   - reports-above-coverage.ndjson 4 runtime windows (energy_kwh>0)
-#   - reports-below-coverage.ndjson 1 runtime + 3 fallback windows
 
 set -euo pipefail
 
@@ -59,7 +53,6 @@ else
   DOCKER_NET_FLAGS=(--add-host=host.docker.internal:host-gateway)
 fi
 
-# === Pre-flight ===
 step "0. Pre-flight"
 
 command -v docker >/dev/null || die "docker not on PATH"
@@ -109,7 +102,7 @@ PERIOD_ARGS=(--period-type calendar-quarter --from 2026-01-01 --to 2026-03-31)
 # and the embedded table is refreshed from upstream coefficients every so often,
 # so a committed literal expires silently: the scenario then fails on a stale
 # fixture and reads as a product defect. The committed file keeps a documentary
-# value; this run overwrites the staged copy.
+# value. This run overwrites the staged copy.
 #
 # `disclose --intent internal` does not run the official validator, so it is a
 # safe way to read `binary_specpower_vintage` back out of a report. Only its
@@ -154,7 +147,6 @@ else
   record "1. internal G1 happy path" FAIL "exit=${RUN_EXIT}, output exists: $([ -f "${TMP_DIR}/t1-output.json" ] && echo yes || echo no)"
 fi
 
-# === Sub-test 2: official+public above gate ===
 step "2. official+public ABOVE complete (G2 produced)"
 rm -f "${TMP_DIR}/t2-output.json"
 run_disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \
@@ -169,7 +161,6 @@ else
   record "2. official G2 happy path" FAIL "exit=${RUN_EXIT}, output exists: $([ -f "${TMP_DIR}/t2-output.json" ] && echo yes || echo no)"
 fi
 
-# === Sub-test 3: official+public below gate ===
 step "3. official+public BELOW complete (75% gate triggers, non-zero exit)"
 rm -f "${TMP_DIR}/t3-output.json"
 run_disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \
@@ -184,7 +175,6 @@ else
   record "3. period_coverage gate" FAIL "exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | grep -i threshold | head -1 || echo none)"
 fi
 
-# === Sub-test 4: official+public incomplete org-config ===
 step "4. official+public ABOVE incomplete (org-config required field, non-zero exit)"
 rm -f "${TMP_DIR}/t4-output.json"
 run_disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \

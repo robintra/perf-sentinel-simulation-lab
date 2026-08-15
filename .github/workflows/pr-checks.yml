@@ -4,7 +4,7 @@ name: pr checks (lightweight, no cluster)
 # The full lab validation (validate-on-release.yml) only runs on main via
 # schedule / dispatch, so PRs would otherwise merge with no signal at all.
 # This builds only the service images whose directory changed and lints the
-# Helm charts — no k3d cluster, no observability stack, no seeding.
+# Helm charts: no k3d cluster, no observability stack, no seeding.
 
 on:
   pull_request:

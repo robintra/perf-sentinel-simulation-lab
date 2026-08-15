@@ -16,7 +16,7 @@
 #   J2  analyze finds the planted n_plus_one_sql with the expected occurrences
 #   J3  report.html is produced and published by Jenkins
 #   J4  what the dashboard does when fetched THROUGH JENKINS under its default
-#       CSP — an observation, not a contract: today it is blank, and if that
+#       CSP: an observation, not a contract: today it is blank, and if that
 #       ever changes the limitation was lifted and the docs need updating
 #   J5  with the documented Script Console remedy applied, it RENDERS
 #   J7  the documented future fix (CSS and JS in sibling files) would NOT help
@@ -39,7 +39,7 @@ JAVA_FIXTURES="${SCRIPT_DIR}/../java-ci-capture/fixtures"
 
 JENKINS_IMAGE="${JENKINS_IMAGE:-perf-sentinel-lab-jenkins:2.568.1}"
 # Where the perf-sentinel binary baked into the controller comes from. Defaults
-# to the published release; a pre-release validation points it at a locally
+# to the published release. A pre-release validation points it at a locally
 # built image, the same override the other two ci-e2e scenarios take.
 PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.13.1}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
@@ -133,7 +133,7 @@ ok "jenkins up ($(curl -sS -o /dev/null -w '%{http_code}' "${JENKINS_URL}/login"
 
 # Jenkins enforces CSRF on POSTs even with an unsecured authorization strategy.
 # The crumb is bound to the HTTP SESSION, so the crumb request and the POST must
-# share a cookie jar — fetching a crumb with a bare curl and posting with
+# share a cookie jar: fetching a crumb with a bare curl and posting with
 # another one yields a crumb issued for a different session, and a 403.
 JENKINS_COOKIES="${TMP_DIR}/jenkins-cookies.txt"
 jenkins_post() {  # $1 = path ; remaining args passed to curl
@@ -171,7 +171,7 @@ curl -fsS "${JENKINS_URL}/job/${JOB}/lastBuild/consoleText" > "${TMP_DIR}/consol
 
 ART="${JENKINS_URL}/job/${JOB}/lastBuild/artifact"
 
-# J0 — the documented invocation is `capture --output target/traces.json --
+# J0: the documented invocation is `capture --output target/traces.json --
 # mvn verify`, and docs/ci-templates/jenkinsfile.groovy sets
 # PERF_SENTINEL_TRACES to that same path. A CI workspace starts clean, so
 # target/ does not exist yet: Maven is what creates it, and Maven has not run.
@@ -188,7 +188,7 @@ else
   assert_fail "J0" "the documented one-liner fails on a clean workspace (rc=${J0_RC}, wrapped command ran: ${RAN}): $(printf '%s' "${J0_OUT}" | grep -o 'Capture error: [^\"]*' | head -1)"
 fi
 
-# J1 — capture produced a file from the forked Maven test JVM.
+# J1: capture produced a file from the forked Maven test JVM.
 step "J1: the documented recipe ran and capture wrote a trace file"
 curl -fsS "${ART}/target/traces.json" -o "${TMP_DIR}/traces.json" 2>/dev/null
 SPANS=0
@@ -218,7 +218,7 @@ else
   assert_fail "J1" "build=${BUILD_RESULT}, spans=${SPANS} (expected ${EXPECTED_SPANS}): $(grep -iE 'error|fail' "${TMP_DIR}/console.txt" | tail -2)"
 fi
 
-# J2 — the trace file is analyzable and carries the planted anti-pattern.
+# J2: the trace file is analyzable and carries the planted anti-pattern.
 step "J2: analyze finds the planted n_plus_one_sql"
 curl -fsS "${ART}/perf-sentinel-report.json" -o "${TMP_DIR}/findings.json" 2>/dev/null
 OCC=0; TYPES=""
@@ -238,7 +238,6 @@ else
   assert_fail "J2" "occurrences=${OCC} (expected ${ITEMS}), types=[${TYPES}]"
 fi
 
-# J3 — Jenkins published the dashboard.
 step "J3: report.html is published by Jenkins"
 HTTP_HTML="$(curl -sS -o "${TMP_DIR}/report.html" -w '%{http_code}' "${ART}/report.html" 2>/dev/null)"
 HTML_BYTES=$(wc -c < "${TMP_DIR}/report.html" 2>/dev/null | tr -d ' ')
@@ -248,7 +247,6 @@ else
   assert_fail "J3" "http=${HTTP_HTML}, bytes=${HTML_BYTES}"
 fi
 
-# J4 — the headline. Fetched through Jenkins, under Jenkins' own CSP.
 step "J4: through Jenkins under its default CSP, the dashboard is blank"
 JENKINS_CSP="$(curl -sS -D - -o /dev/null "${ART}/report.html" 2>/dev/null \
   | tr -d '\r' | awk 'tolower($1) == "content-security-policy:" {sub(/^[^:]*: */,""); print}' | head -1)"
@@ -265,7 +263,7 @@ else
   assert_pass "J4" "${J4} — the dashboard now renders under Jenkins' default CSP. The limitation described in docs/CI.md:374-425 appears LIFTED; that doc section and this leg both need revisiting. CSP served: [${JENKINS_CSP:-none}]"
 fi
 
-# J5 — the remedy docs/CI.md prescribes, applied exactly as prescribed.
+# J5: the remedy docs/CI.md prescribes, applied exactly as prescribed.
 step "J5: with the documented Script Console remedy, it renders"
 RELAXED="sandbox allow-scripts; default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';"
 jenkins_post "/scriptText" --data-urlencode \
@@ -283,7 +281,7 @@ else
   assert_fail "J5" "the documented remedy did not restore rendering: ${J5}"
 fi
 
-# J8 — 0.9.25's answer to what this scenario reported: the report now opens with
+# J8: 0.9.25's answer to what this scenario reported: the report now opens with
 # a plain unstyled notice naming both causes of a blank page, and a script right
 # after it removes the notice during parsing. So the notice must be PRESENT
 # exactly when the page failed to render and ABSENT when it rendered. Read off
@@ -303,7 +301,7 @@ else
   assert_fail "J8" "notice under CSP=${J8_BLOCKED} (want present), notice when rendered=${J8_RENDERED} (want absent)"
 fi
 
-# J7 — measure the promise at docs/CI.md:423 instead of trusting it.
+# J7: measure the promise at docs/CI.md:423 instead of trusting it.
 step "J7: would 'CSS and JS in sibling files' survive that CSP? Measure it"
 PROBE="${TMP_DIR}/sibling"
 mkdir -p "${PROBE}"

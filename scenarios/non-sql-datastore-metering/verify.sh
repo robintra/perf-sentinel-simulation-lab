@@ -6,7 +6,7 @@
 #        perf_sentinel_otlp_spans_filtered_total{reason="non_sql_datastore"} >= 1250
 #        AND the /api/export/report zero-retention warning is ABSENT
 #        (0.9.2 excludes non_sql_datastore from the instrumentation-gap sum).
-#   2. Internal-only fleet (1250 not_io spans) — the negative control:
+#   2. Internal-only fleet (1250 not_io spans), the negative control:
 #        the zero-retention warning is PRESENT (not_io still counts toward the
 #        gap, so a genuine instrumentation gap is still surfaced).
 #
@@ -126,7 +126,6 @@ run_case() {  # $1 = fixture, $2 = expected warning yes/no
     || die "${fixture}: zero-retention warning=${CASE_WARN}, expected ${expect} (non_sql=${CASE_NON_SQL} not_io=${CASE_NOT_IO})"
 }
 
-# --- 1. redis-only: counter rises, NO warning -------------------------------
 step "Redis-only fleet: non_sql_datastore counter rises, zero-retention warning absent"
 run_case redis-only.pb no
 [ "${CASE_NON_SQL}" -ge 1250 ] || die "non_sql_datastore=${CASE_NON_SQL}, expected >=1250"

@@ -27,7 +27,7 @@ otel:
 
 # Self-loop base URL: the HTTP-side faults call back into this same
 # service's business endpoints, so the URL points at localhost. The
-# application.properties default already points here; the env var
+# application.properties default already points here. The env var
 # below is the override hook for ad-hoc routing during debugging.
 selfBaseUrl: "http://localhost:8083"
 

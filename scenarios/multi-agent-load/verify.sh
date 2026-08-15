@@ -21,7 +21,7 @@ DURATION="${DURATION:-60s}"
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 RSS_LIMIT_BYTES="${RSS_LIMIT_BYTES:-524288000}"
 # The daemon at the lab's default CPU limit (200m) does not process
-# OTLP at telemetrygen's full burst rate; drops are a pass-through
+# OTLP at telemetrygen's full burst rate. Drops are a pass-through
 # property of the lab environment, not a daemon regression. The smoke
 # verdict is therefore "daemon survives + ingestion non-zero", not a
 # throughput ratio. Real throughput benchmarking is upstream.

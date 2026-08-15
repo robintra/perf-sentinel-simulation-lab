@@ -14,7 +14,7 @@ TMP="$(mktemp -d)"
 DPID=""
 
 # Free our loopback ports: the port lives in the TOML, not the argv, so a
-# port-pattern pkill never matches; kill by the unique config path and by
+# port-pattern pkill never matches. Kill by the unique config path and by
 # whoever holds the ports (a SIGKILLed prior run).
 free_ports() {
   pkill -f "perf-sentinel watch.*${TMP}/d.toml" 2>/dev/null || true
@@ -62,7 +62,7 @@ docker run -d --name ddbridge-collector --add-host=host.docker.internal:host-gat
   "${IMG}" --config=/cfg/config.yaml >/dev/null 2>&1 || { echo "collector start failed"; exit 1; }
 # Gate on the collector's real "all components started" banner (emitted at info
 # level, which collector.yaml now sets). It short-circuits as soon as the
-# receiver is up — not a fixed wait — and the in-loop crash check fails fast.
+# receiver is up: not a fixed wait, and the in-loop crash check fails fast.
 # A bare TCP probe of the host-mapped :8126 is unreliable on Docker Desktop:
 # the port proxy accepts before the receiver inside the container binds.
 ready=0

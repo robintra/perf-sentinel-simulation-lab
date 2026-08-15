@@ -11,7 +11,7 @@ exporters:
 service:
   telemetry:
     logs:
-      # info (not warn) so the "Everything is ready" startup banner is emitted —
+      # info (not warn) so the "Everything is ready" startup banner is emitted, and
       # run-live.sh gates readiness on it (a real signal, short-circuits early).
       level: info
   pipelines:

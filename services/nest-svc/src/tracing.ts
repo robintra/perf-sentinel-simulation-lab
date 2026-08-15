@@ -1,7 +1,7 @@
 // Must be imported BEFORE any NestJS or Prisma import. Sets up the
 // global OTel NodeSDK with HTTP + Prisma instrumentations. Spans from
 // @opentelemetry/instrumentation-http cover both server-side (Express)
-// and client-side (axios via Node http module) — perf-sentinel sees
+// and client-side (axios via Node http module), perf-sentinel sees
 // SERVER and CLIENT spans. @prisma/instrumentation adds the `prisma`
 // tracer scope on every Prisma query, which is the ORM marker the
 // strict classifier consumes.
@@ -34,7 +34,7 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
-// Flush pending spans on SIGTERM but do NOT call process.exit —
+// Flush pending spans on SIGTERM but do NOT call process.exit.
 // NestJS enableShutdownHooks handles the lifecycle (onModuleDestroy
 // on PgPoolService + PrismaService) and drains in-flight requests
 // before exiting. Calling process.exit here would race with NestJS

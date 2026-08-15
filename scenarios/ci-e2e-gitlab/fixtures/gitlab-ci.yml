@@ -1,5 +1,5 @@
 # Shaped after docs/ci-templates/gitlab-ci.yml with the integration-test job and
-# the `perf-sentinel-pages-simple` job UNCOMMENTED — both ship commented out, so
+# the `perf-sentinel-pages-simple` job UNCOMMENTED, both ship commented out, so
 # this is the documented opt-in path and the one this scenario exercises.
 #
 # Departures from the published template, all about the lab rather than the

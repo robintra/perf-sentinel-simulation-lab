@@ -18,8 +18,8 @@
 # service.name and table so the positive and negative controls never
 # alias in the shared NDJSON archive.
 #
-# This script is provenance/documentation only. verify.sh never runs it;
-# it replays the committed .pb files with curl. Regenerating needs the
+# This script is provenance/documentation only. verify.sh never runs it.
+# It replays the committed .pb files with curl. Regenerating needs the
 # `opentelemetry-proto` package (pip install opentelemetry-proto); the
 # span timestamps are irrelevant to detection because the daemon keys its
 # streaming-window TTL on span ARRIVAL time, not on the span clock.
@@ -32,7 +32,7 @@ from opentelemetry.proto.trace.v1 import trace_pb2 as trace
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # Fixed base timestamp (2026-06-07T12:00:00Z in unix nanos). Detection is
-# clock-independent; a constant keeps the .pb bytes reproducible.
+# clock-independent. A constant keeps the .pb bytes reproducible.
 BASE_NS = 1_749_297_600_000_000_000
 
 

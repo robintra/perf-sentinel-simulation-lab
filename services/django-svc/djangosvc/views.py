@@ -270,7 +270,7 @@ def fanout(request):
     width = int(request.GET.get("width", "40") or "40")
     start = time.monotonic()
     # Capture the current OTel context (holds the SERVER span) so
-    # worker threads can attach it — without this, the CLIENT spans
+    # worker threads can attach it, without this, the CLIENT spans
     # from _get() are orphans and the daemon cannot correlate the N
     # children with the parent request.
     parent_ctx = otel_context.get_current()

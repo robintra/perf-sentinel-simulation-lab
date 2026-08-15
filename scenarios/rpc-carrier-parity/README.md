@@ -42,11 +42,11 @@ it.
 make verify-rpc-carrier-parity
 ```
 
-Needs only the committed `prod-topology-replay` fixture, python3 and a
-local release binary at product 0.9.8 or later (an older binary
-drops every rpc.* span as not-I/O; the gate dies with a rebuild hint
-instead of failing parity). Variants are generated in
-`/tmp/rpc-carrier-parity/`; nothing new is committed. Report at
+Needs only the committed `prod-topology-replay` fixture, python3
+and a local release binary at product 0.9.8 or later (an older
+binary drops every rpc.* span as not-I/O. The gate dies with a
+rebuild hint instead of failing parity). Variants are generated in
+`/tmp/rpc-carrier-parity/`. Nothing new is committed. Report at
 `/tmp/scenario-rpc-carrier-parity-report.md`.
 
 Reference tests for the admission contract live in the product tree:

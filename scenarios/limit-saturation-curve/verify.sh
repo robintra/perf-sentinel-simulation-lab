@@ -162,7 +162,7 @@ RESTARTS_DURING="$(daemon_restarts)"
 if [ "${RESTARTS_DURING}" != "${RESTARTS_BEFORE}" ]; then
   # The pod hit its hard ceiling: probe starvation under full CPU
   # saturation restarts the daemon before queue shedding engages. That
-  # IS the saturation limit for this pod size; record it instead of
+  # IS the saturation limit for this pod size. Record it instead of
   # failing the run.
   CEILING="restart (probe starvation) after $(( RESTARTS_DURING - RESTARTS_BEFORE )) restart(s)"
   GEN_REPORT="$(kubectl -n limit-testing logs job/tracegen-saturation --tail=1 2>/dev/null | tail -1)"

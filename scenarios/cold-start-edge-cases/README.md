@@ -20,9 +20,9 @@ After a `rollout restart`, immediately apply a Job parallelism=5 of
 telemetrygen at 200 sps for 30 s. Asserts:
 
 - `/api/status` answers,
-- `events_processed` delta > 1000 (5 pods x 200 sps x 30 s = 30000
-  expected; we use 1000 as a tolerant lower bound to account for
-  cold-pool sampling and ramp-up).
+- `events_processed` delta > 1000 (5 pods x 200 sps x 30 s =
+  30000 expected. We use 1000 as a tolerant lower bound to
+  account for cold-pool sampling and ramp-up).
 
 ### 6.C malformed TOML config (must fail-fast)
 
@@ -51,9 +51,9 @@ original token-equipped state.
 
 ## Inputs
 
-No tunable env vars; the script paces itself through the 4 sub-tests
-sequentially. Total wall clock 8-12 minutes depending on rollout
-latency on the runner.
+No tunable env vars. The script paces itself through the 4
+sub-tests sequentially. Total wall clock 8-12 minutes depending
+on rollout latency on the runner.
 
 ## Aggregate verdict
 

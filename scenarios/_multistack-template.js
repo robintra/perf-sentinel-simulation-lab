@@ -1,4 +1,4 @@
-// _multistack-template.js — composite k6 scenario template for the
+// _multistack-template.js: composite k6 scenario template for the
 // multistack lab expansion.
 //
 // Each multistack service (Quarkus, Helidon SE/MP, .NET, Rust+Diesel,
@@ -18,7 +18,7 @@
 //   2. Edit the STACK constant (e.g. 'quarkus').
 //   3. Edit the PORT constant to match the service-port mapping in
 //      docs/MULTISTACK.md (e.g. 8083 for quarkus-svc).
-//   4. Keep everything else identical — the 10 fault endpoints follow
+//   4. Keep everything else identical: the 10 fault endpoints follow
 //      the same /api/fault/<name> contract for every stack.
 //
 // Verify the contract first via docs/MULTISTACK.md if anything is

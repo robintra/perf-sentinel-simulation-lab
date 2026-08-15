@@ -2,19 +2,8 @@
 # broker-messaging-waste: gate the messaging ingestion and the broker energy
 # attribution added on top of 0.9.22 (product branch feature/async-support).
 #
-# Two coupled blocks, and the reason the lab has to see them at all:
-#
-#  1. Messaging ingestion. Broker spans (Kafka, RabbitMQ, Pulsar, SQS, NATS,
-#     JMS) used to be dropped as `not_io`; they become EventType::Messaging with
-#     two finding types (n_plus_one_messaging, slow_messaging) and a
-#     producer -> consumer edge resolved through OTel span links.
-#
-#  2. Broker energy attribution. No joules-per-message coefficient is derivable
-#     (broker power stops tracking throughput past ~20% of capacity), so the
-#     BROKER's energy is measured and split by a ratio the traces can produce,
-#     exactly like database_waste. Two sources: [green.alumet.broker] (cgroup
-#     measurement) and [green.broker_static] (declared provisioned cluster, the
-#     only option on a managed broker). Measurement wins over declaration.
+# The two coupled blocks it gates, messaging ingestion and broker energy
+# attribution, are described in README.md.
 #
 # The product ships 2333 green unit tests, and the two-source arbitration is
 # covered there against an INJECTED clock (take_broker_energy /
@@ -52,7 +41,7 @@
 #        on the banked-delivery branch too.
 #   B    disclosure v1.5: aggregate.messaging_waste with its three provenance
 #        buckets and the invariant measured + declared + estimated ==
-#        windows_with_figure; a broker_static-only period gives
+#        windows_with_figure. A broker_static-only period gives
 #        measured_windows = 0; and re-hashing a real archived pre-v1.5 report
 #        still yields its original content_hash (both new fields carry
 #        skip_serializing_if, so the byte shape must be unchanged).
@@ -164,7 +153,7 @@ command -v python3 >/dev/null 2>&1 || die "python3 is required"
 #
 # It is NOT enough for the recovery case. A real Alumet agent accumulates while
 # perf-sentinel cannot reach it and hands the whole gap over on the first
-# successful scrape after it comes back — that retroactive delta is the reason
+# successful scrape after it comes back: that retroactive delta is the reason
 # rule 4 exists. A constant file never catches up, so leg A4 would pass
 # vacuously. `set_broker_joules` therefore rewrites the served value: the
 # http.server re-reads the file per request, so one inflated value followed by a
@@ -174,7 +163,7 @@ set_broker_joules() {  # $1 = joules per energy_interval to serve
 }
 
 # Rename the label the broker row carries, so the endpoint keeps answering while
-# the configured series stops existing — a cgroup rename in production, and the
+# the configured series stops existing: a cgroup rename in production, and the
 # only way to make a series go stale without taking the endpoint down.
 set_broker_joules_label() {  # $1 = label to serve the row under
   set_broker_row "$1" "${BROKER_JOULES}"
@@ -548,8 +537,8 @@ fi
 # d7: the section-naming proof that goes through the validator broker and
 # database SHARE (`validate_workload_fields`), which is where a mix-up would
 # actually happen. An invalid region charset is one of the two things that
-# validator rejects; the other is a control char in label_value. Note that a
-# label_value with spaces or '!' is deliberately ACCEPTED — cgroup names carry
+# validator rejects. The other is a control char in label_value. Note that a
+# label_value with spaces or '!' is deliberately ACCEPTED, cgroup names carry
 # odd characters, so only length and control chars are bounded there.
 write_config d7.toml "${BROKER_LABEL}" "" ""
 sed -i.bak "s/^region = \"${REGION}\"$/region = \"eu west 3!!\"/" "${TMP_DIR}/d7.toml"
@@ -567,11 +556,11 @@ else
   D_FAILS=$((D_FAILS + 1))
 fi
 
-# d8: a control char in the broker label_value is refused — but by the TOML
+# d8: a control char in the broker label_value is refused, but by the TOML
 # parser, before the config validator runs, so the error cannot name the
 # section. `validate_workload_fields`' own control-char branch is therefore
 # unreachable from a config file and is defence-in-depth for programmatic
-# construction only. Asserting the rejection is truthful; asserting the section
+# construction only. Asserting the rejection is truthful. Asserting the section
 # name here would be asserting the TOML crate's message.
 write_config d8.toml "$(printf 'kafka\007cgroup')" "" ""
 if expect_config_reject d8.toml d8.log; then
@@ -707,7 +696,7 @@ if start_daemon a34.toml a34.log; then
   #
   # Serve the catch-up a real agent would hand over: the whole outage's joules
   # in ONE reading, then revert. Exactly one, tracked through the daemon's own
-  # success counter — a fixed sleep would let a second inflated scrape through
+  # success counter: a fixed sleep would let a second inflated scrape through
   # and the leg would then fail on the test's own excess, not the product's.
   A34_PRE_SUM="$(model_field "${TMP_DIR}/archive-a34.ndjson" alumet_rapl 2)"
   CATCHUP_JOULES="$(python3 -c "print(${BROKER_JOULES} * ${A34_OUTAGE_SECS} / ${SCRAPE_SECS})")"
@@ -840,14 +829,14 @@ fi
 # =============================================================================
 # The path A4 does not reach. A4 has a scoring window run while the catch-up
 # sample is fresh, so the measurement legitimately owns that window. Here NO
-# scoring window runs while it is fresh — which is what happens when traffic is
-# quiet or batches are shed — so the banked delta is still pending when the
+# scoring window runs while it is fresh, which is what happens when traffic is
+# quiet or batches are shed, so the banked delta is still pending when the
 # series goes stale again. The branch that delivers banked joules must consult
 # `billed_during_outage`: the declaration already paid for that wall clock.
 #
 # Step 5 ("no scoring window runs") is the hard part, and it is why this leg
 # stops the seeder rather than trusting timing: with no traces there is no batch,
-# so there is no scored window. Asserted, not assumed — the leg fails loudly if
+# so there is no scored window. Asserted, not assumed, the leg fails loudly if
 # windows kept appearing during the quiet stretch.
 step "A7: label returns for one inflated scrape while no window scores, then goes stale"
 start_mock >/dev/null 2>&1 || true

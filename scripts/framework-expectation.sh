@@ -24,7 +24,7 @@
 #    self-call child spans race the async flush), so they are matched on type+service
 #    only. n_plus_one_sql, n_plus_one_http and redundant_http tag deterministically,
 #    which already covers the required mapping (SQL N+1 + a non-SQL finding per svc).
-#  - Only the two PHP stacks are mapped; the mechanism generalises to ruby_active_record
+#  - Only the two PHP stacks are mapped. The mechanism generalises to ruby_active_record
 #    / java_jpa once their exact recommendation strings are confirmed against a live run.
 # `|` separates framework from the recommendation-substring list; `||` separates
 # acceptable substrings (any one match passes).

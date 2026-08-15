@@ -1,5 +1,5 @@
 // helidon-mp-svc multistack runner. Same dispatcher pattern as
-// scenarios/quarkus-svc-validation.js — driven by
+// scenarios/quarkus-svc-validation.js: driven by
 // scripts/run-multistack-scenario.sh via __ENV.ANTI_PATTERN.
 
 import http from 'k6/http';

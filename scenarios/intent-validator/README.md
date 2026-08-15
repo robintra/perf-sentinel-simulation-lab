@@ -12,8 +12,8 @@ required-field validation.
 1. **Internal G1 happy path** (exit 0).
    `disclose --intent internal --confidentiality internal` with the
    complete org-config and the above-coverage archive. Locks the
-   simplest successful disclosure path; no gates apply at this intent
-   level.
+   simplest successful disclosure path. No gates apply at this
+   intent level.
 
 2. **Official G2 happy path** (exit 0).
    `disclose --intent official --confidentiality public` with the
@@ -72,9 +72,10 @@ PERF_SENTINEL_VERSION=0.7.2 ./scenarios/intent-validator/verify.sh
 
 ## Coverage gaps tracked
 
-- **`intent=audited`** is not exercised. The CLI short-circuits with
-  exit code 2 in v0.7.x for `audited`; a future sub-test should lock
-  that contract once `audited` is genuinely implemented upstream.
+- **`intent=audited`** is not exercised. The CLI short-circuits
+  with exit code 2 in v0.7.x for `audited`. A future sub-test
+  should lock that contract once `audited` is genuinely implemented
+  upstream.
 - **G2 public payload shape** (per-service aggregate) is not asserted
   here, only the exit code. A future sub-test could parse the output
   JSON and check key invariants of the G2 aggregate.
@@ -85,7 +86,8 @@ PERF_SENTINEL_VERSION=0.7.2 ./scenarios/intent-validator/verify.sh
 reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
 GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
 
-It used to default to a hardcoded old tag, so the scenario ran green on every
-release without ever touching the version under validation — the gate reported a
-PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
-the eight image scenarios now share this resolution.
+It used to default to a hardcoded old tag, so the scenario ran
+green on every release without ever touching the version under
+validation. The gate reported a PASS for code it had not executed.
+The 0.9.25 round is what surfaced that, and the eight image
+scenarios now share this resolution.

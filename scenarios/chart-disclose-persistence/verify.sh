@@ -235,7 +235,6 @@ EOF
   return 0
 }
 
-# === 0. Preflight ===
 step "0. Preflight"
 command -v helm    >/dev/null 2>&1 || die "helm not on PATH"
 command -v kubectl >/dev/null 2>&1 || die "kubectl not on PATH"
@@ -370,7 +369,7 @@ esac
 # resolved chart rather than overriding it: the point is to exercise the
 # pairing a real user gets. `helm show` works identically on a path and an
 # oci:// ref. Parsed with python because the values file is YAML and several
-# blocks carry a two-space `repository:` key; matching the first one would bind
+# blocks carry a two-space `repository:` key. Matching the first one would bind
 # to whichever block happens to sort first.
 CHART_META="$(helm show chart "${CHART_REF}" --version "${CHART_PIN}" 2>"${TMP_DIR}/show-chart.log")"
 [ -n "${CHART_META}" ] || { cat "${TMP_DIR}/show-chart.log"; die "helm show chart failed for ${CHART_REF} --version ${CHART_PIN}"; }
@@ -435,7 +434,6 @@ kubectl label ns "${NS}" app.kubernetes.io/part-of=perf-sentinel-lab \
   pod-security.kubernetes.io/enforce=baseline --overwrite >/dev/null 2>&1
 kubectl apply -f "${REPO_ROOT}/manifests/network-policies.yaml" >/dev/null
 
-# === 1. helm install: StatefulSet + persistence ===
 step "1. helm install (workload.kind=StatefulSet, persistence.enabled=true) --wait"
 # --version is explicit even for the local path: the lab requires it on every
 # helm install (docs/SCENARIOS.md, "Supply chain pinning"). helm ignores it for
@@ -571,7 +569,7 @@ fi
 
 # === 2. live ConfigMap wiring check ===
 # The chart's data key is `perf-sentinel.toml` (templates/configmap.yaml),
-# not `config.toml`; the pod mounts it via subPath of the same name.
+# not `config.toml`. The pod mounts it via subPath of the same name.
 step "2. ConfigMap carries [daemon.ack]/[daemon.archive] pointed at the PVC mount"
 CM_TOML="$(kubectl -n "${NS}" get cm "${STS_NAME}-config" -o jsonpath='{.data.perf-sentinel\.toml}' 2>/dev/null)"
 if [ -z "${CM_TOML}" ]; then
@@ -584,7 +582,6 @@ else
   assert_fail "configmap-wiring" "ack/archive paths missing or not pointed at /var/lib/perf-sentinel"
 fi
 
-# === 3. inject N+1, wait for the trace to leave the window ===
 step "3. Inject the N+1 fixture and wait for the trace to finalize"
 INJECTED="no"
 if ! pf_start; then
@@ -598,8 +595,8 @@ else
     assert_fail "archive-write" "N+1 injection failed, HTTP ${HTTP_INJ:-000}"
   else
     ok "injected (HTTP 200), polling /api/status until active_traces reaches 0"
-    # active_traces hitting 0 only means the window was evicted for analysis;
-    # the archive writer buffers and flushes on the scale-down below. This
+    # active_traces hitting 0 only means the window was evicted for analysis.
+    # The archive writer buffers and flushes on the scale-down below. This
     # poll bounds the wait, the scale to 0 in step 4 is what persists.
     DEADLINE=$(( $(date +%s) + ARCHIVE_WAIT_TIMEOUT ))
     while [ "$(date +%s)" -lt "${DEADLINE}" ]; do
@@ -616,7 +613,6 @@ else
   fi
 fi
 
-# === 4. scale to 0 (flushes the writer), read archive (pre-restart) ===
 step "4. Scale to 0 (graceful drain flushes the archive), read it back"
 pf_stop
 PRE_LINES=0
@@ -643,7 +639,6 @@ else
   esac
 fi
 
-# === 5. scale to 1: ordinal 0 reattaches the same PVC ===
 step "5. Scale to 1 (ordinal 0 reattaches the same PVC)"
 RESTARTED="no"
 if [ "${PRE_OK}" != "yes" ]; then
@@ -657,7 +652,6 @@ else
   ok "pod back, /health answers"
 fi
 
-# === 6. scale to 0 again, re-read and compare ===
 step "6. Scale to 0 again, re-read the archive and compare"
 if [ "${RESTARTED}" = "yes" ]; then
   pf_stop
@@ -720,7 +714,7 @@ else
     --org-config /data/org-config.toml >"${TMP_DIR}/disclose.log" 2>&1; then
     # Assert the archive actually contributed. schema_version and aggregate
     # are non-optional fields of PeriodicReport, so checking their presence
-    # would pass for any report the binary can emit; the window count and the
+    # would pass for any report the binary can emit. The window count and the
     # anti-pattern count are what tie the output to the persisted N+1.
     DISCLOSE_STATS="$(python3 -c '
 import json, sys
@@ -747,7 +741,6 @@ print(w, a.get("anti_patterns_detected_count", 0), d.get("schema_version", "?"))
   fi
 fi
 
-# === Summary ===
 step "Summary"
 {
   echo "# ${SCENARIO}"

@@ -5,7 +5,7 @@
 #
 # What is genuinely different from ci-e2e-jenkins: on GitHub the display risk is
 # LOW by construction. Job artifacts are zip downloads that GitHub never renders,
-# and GitHub Pages serves HTML without a restrictive Content-Security-Policy —
+# and GitHub Pages serves HTML without a restrictive Content-Security-Policy,
 # unlike Jenkins, which serves build artifacts through DirectoryBrowserSupport
 # under a CSP that blanks the dashboard. So the value here is the chain, not the
 # CSP: the workflow really runs, capture really writes the file, and what lands
@@ -96,7 +96,7 @@ cp "${SCRIPT_DIR}/fixtures/workflow.yml" "${WORKDIR}/.github/workflows/perf-sent
 cp -R "${JAVA_FIXTURES}" "${WORKDIR}/project"
 rm -rf "${WORKDIR}/project/target"
 
-# The released image is FROM scratch with a single static binary; taking the
+# The released image is FROM scratch with a single static binary. Taking the
 # binary from there is both the artifact a user installs and the only way to get
 # a Linux binary from a macOS host.
 docker rm -f ghe2e-extract >/dev/null 2>&1 || true
@@ -115,8 +115,8 @@ ok "repository assembled at ${WORKDIR}"
 
 # ── run the workflow ────────────────────────────────────────────────────────
 # --bind mounts the working directory instead of copying it into the runner:
-# without it act's copy stays inside the container and the workflow's outputs —
-# the trace file, the report, the Pages directory — never reach the host.
+# without it act's copy stays inside the container and the workflow's outputs
+# (the trace file, the report, the Pages directory) never reach the host.
 step "act: run the workflow (first run pulls the runner image, allow time)"
 ACT_RC=0
 ( cd "${WORKDIR}" && act push \
@@ -126,7 +126,6 @@ ACT_RC=0
     --bind \
     ) > "${TMP_DIR}/act.log" 2>&1 || ACT_RC=$?
 
-# H1 — the workflow ran end to end.
 step "H1: act ran the workflow to completion"
 JOB_OK=0
 grep -qE "Job succeeded" "${TMP_DIR}/act.log" && JOB_OK=1
@@ -136,7 +135,7 @@ else
   assert_fail "H1" "act rc=${ACT_RC}: $(grep -iE '❌|error|failure' "${TMP_DIR}/act.log" | tail -2 | tr '\n' ' ')"
 fi
 
-# H2 — capture wrote a usable trace file and it carries the anti-pattern.
+# H2: capture wrote a usable trace file and it carries the anti-pattern.
 step "H2: capture wrote the trace file and analyze finds the planted N+1"
 SPANS=0
 if [ -s "${WORKDIR}/target/traces.json" ]; then
@@ -178,7 +177,7 @@ else
   assert_fail "H2" "spans=${SPANS} (expected ${EXPECTED_SPANS}), occurrences=${OCC} (expected ${ITEMS})"
 fi
 
-# H3 — the dashboard was produced and published where the workflow puts it.
+# H3: the dashboard was produced and published where the workflow puts it.
 step "H3: report.html lands in the Pages directory"
 PAGES="${WORKDIR}/public/index.html"
 BYTES=0
@@ -189,7 +188,7 @@ else
   assert_fail "H3" "public/index.html is ${BYTES} bytes"
 fi
 
-# H4 — GitHub Pages serves without a restrictive CSP, so the dashboard should
+# H4: GitHub Pages serves without a restrictive CSP, so the dashboard should
 # render. Measured rather than assumed: that is the whole point of the family.
 step "H4: served the way GitHub Pages serves it, the dashboard renders"
 if [ "${BYTES}" -gt 0 ]; then

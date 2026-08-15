@@ -16,7 +16,7 @@
 #   T2  every manifest finding class is present (recall on real
 #       production topology; classes were stamped at curation time)
 #   T3  total findings equal the stamped count - replay is
-#       deterministic, so any drift forces a human look; restamping is
+#       deterministic, so any drift forces a human look. Restamping is
 #       a deliberate act (rerun fetch.sh, see README)
 #   T4  structural guard: fixture line count equals the manifest's
 #       trace count (one ExportTraceServiceRequest per trace)

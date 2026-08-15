@@ -10,9 +10,9 @@
 # tiny analysis queue (cap=1) and a small trace window (20) is flooded with a
 # committed OTLP payload of 300 distinct N+1 traces (fixtures/shed-load.pb),
 # replayed concurrently. Every request overflows the window into a ~280-trace
-# eviction batch; the batches arrive faster than the single worker drains the
+# eviction batch. The batches arrive faster than the single worker drains the
 # CPU-heavy detect+score, so whole batches are shed. This needs NO CPU
-# throttling -- the worker stays at its committed 500m limit; it is the small
+# throttling -- the worker stays at its committed 500m limit. It is the small
 # queue plus the realistic (not trivial) traces that back it up.
 #
 # Asserts:
@@ -29,7 +29,7 @@
 #     (0 is rejected, naming the field) via the local 0.8.6 binary.
 #
 # Fail-loud on worker death (DaemonError::AnalysisWorkerStopped, non-zero exit)
-# is covered by upstream unit tests; the lab has no safe lever to panic a
+# is covered by upstream unit tests. The lab has no safe lever to panic a
 # detector mid-flight, so that path is asserted statically (see README).
 
 set -euo pipefail

@@ -6,11 +6,11 @@ use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\Context\Context;
 
-// Outbound HTTP helper that emits its OWN CLIENT span carrying `url.full` — the
+// Outbound HTTP helper that emits its OWN CLIENT span carrying `url.full`, the
 // attribute perf-sentinel's ingest needs to classify a span as HTTP I/O. We do
 // NOT rely on guzzle/curl auto-instrumentation (its CLIENT spans omit url.full).
 // W3C traceparent is injected so the self-call's child SERVER span (and its SQL
-// span, for pool-saturation) parent onto our CLIENT span and stay in one trace —
+// span, for pool-saturation) parent onto our CLIENT span and stay in one trace,
 // which is what carries the app-wide io.opentelemetry.contrib.php.laravel scope
 // down the leaf-to-root chain the daemon walks.
 class Http

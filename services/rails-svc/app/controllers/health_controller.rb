@@ -1,5 +1,5 @@
 class HealthController < ApplicationController
-  # Liveness: cheap, no DB — the process is up.
+  # Liveness: cheap, no DB, the process is up.
   def live
     render json: { status: "UP" }
   end

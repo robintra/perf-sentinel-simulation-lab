@@ -9,7 +9,7 @@ panic.
 > drain) now **drains** the in-flight streaming window through detection, so
 > the "may be lost (graceful drop)" wording below applies specifically to an
 > ungraceful `SIGKILL` / over-grace-period kill. The drain itself is proven by
-> [`daemon-sigterm-drain`](../daemon-sigterm-drain/); this scenario keeps its
+> [`daemon-sigterm-drain`](../daemon-sigterm-drain/). This scenario keeps its
 > narrower contract (recovery, no panic, ingestion resumes) which holds on
 > every version.
 

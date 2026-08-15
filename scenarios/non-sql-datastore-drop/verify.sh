@@ -2,11 +2,6 @@
 # non-sql-datastore-drop: validate the 0.9.2 ingest drop of non-SQL datastore
 # spans, coherently across the three ingestion paths.
 #
-# Each fixture is ONE trace mixing a real PostgreSQL N+1 (must survive) with
-# Redis spans and an Elasticsearch span carrying db.statement AND url.full
-# (must be dropped on db.system alone, before any tokenizer, and NOT
-# reclassified as an HTTP finding).
-#
 #   Batch  : Jaeger + Zipkin fixtures fed to the local `analyze` binary
 #            (these formats carry db.system in their tags).
 #   Daemon : OTLP/protobuf POST to /v1/traces (the 3rd path + the
@@ -99,7 +94,7 @@ print(tpl)
 }
 
 # =============================================================================
-# Part A — batch Jaeger + Zipkin (local binary)
+# Part A: batch Jaeger + Zipkin (local binary)
 # =============================================================================
 for fmt in jaeger zipkin; do
   step "Batch ${fmt}: redis/elasticsearch dropped, only PostgreSQL N+1 survives"
@@ -114,7 +109,7 @@ for fmt in jaeger zipkin; do
 done
 
 # =============================================================================
-# Part B — OTLP daemon leg (throwaway local daemon)
+# Part B: OTLP daemon leg (throwaway local daemon)
 # =============================================================================
 step "OTLP daemon leg: drop + non_sql_datastore metric + elasticsearch not HTTP"
 start_local_daemon || die "local daemon did not become ready on ${DAEMON_URL}: $(tail -3 "${TMP_DIR}/daemon.log")"

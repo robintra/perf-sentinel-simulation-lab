@@ -59,7 +59,6 @@ EXPECTED='{
   "serialized_calls": ["8.10"]
 }'
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v docker >/dev/null || die "docker not on PATH"
 command -v jq >/dev/null || die "jq not on PATH"
@@ -70,7 +69,6 @@ cp "${TRACES}" "${TMP_DIR}/traces.json"
 cp "${ORG_CONFIG}" "${TMP_DIR}/org-config.toml"
 ok "image + fixtures OK (${IMAGE})"
 
-# === 1. analyze -> window -> disclose internal ===
 step "1. analyze -> archived window -> disclose --intent internal"
 in_image analyze --input /workdir/traces.json --format json > "${TMP_DIR}/analyze.json" 2>/dev/null \
   || die "analyze failed"
@@ -113,7 +111,6 @@ else
   record "slow-omitted" "FAIL" "${SLOW_LEAK} leaked"
 fi
 
-# === Summary ===
 step "Summary"
 pass=0; failc=0; skip=0
 { echo "# ${SCENARIO}"; echo; } > "${REPORT}"

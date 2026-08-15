@@ -6,7 +6,7 @@ name: weekly drift soak
 # belong in the per-release validation path.
 #
 # Runner budget: a GitHub-hosted job is hard-capped at 6h (360 min) on every
-# plan. A 5h soak plus ~15 min bootstrap fits; timeout-minutes 350 leaves a
+# plan. A 5h soak plus ~15 min bootstrap fits. timeout-minutes 350 leaves a
 # guard margin and produces a clean timeout before the hard kill. For a longer
 # soak (e.g. 24h) a self-hosted runner is required (5-day job cap).
 

@@ -54,7 +54,6 @@ declare -a NAMES=() VERDICTS=() NOTES=()
 record() { NAMES+=("$1"); VERDICTS+=("$2"); NOTES+=("$3"); }
 in_image() { docker run --rm -u "$(id -u):$(id -g)" -v "${TMP_DIR}:/workdir" "${IMAGE}" "$@"; }
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v docker >/dev/null || die "docker not on PATH"
 command -v jq >/dev/null || die "jq not on PATH"
@@ -65,7 +64,6 @@ cp "${TRACES}" "${TMP_DIR}/traces.json"
 cp "${ORG_CONFIG}" "${TMP_DIR}/org-config.toml"
 ok "image + fixtures OK (${IMAGE})"
 
-# === 1. disclose an internal report ===
 step "1. analyze -> archived window -> disclose --intent internal"
 in_image analyze --input /workdir/traces.json --format json > "${TMP_DIR}/analyze.json" 2>/dev/null || die "analyze failed"
 jq -c '{report: ., ts: "2026-05-15T12:00:00Z"}' "${TMP_DIR}/analyze.json" > "${TMP_DIR}/windows.ndjson"
@@ -79,7 +77,7 @@ ok "disclosed /workdir/report.json"
 # A FLOOR, not an equality. The disclosure schema is additive by contract and
 # this leg's intent is "at least the version that introduced the crosswalk",
 # which is v1.3. Pinning the exact string made the scenario fail the moment the
-# product bumped — a lab staleness rather than a product defect, and the same
+# product bumped: a lab staleness rather than a product defect, and the same
 # correction alumet-db-waste already carries.
 step "2. schema_version >= perf-sentinel-report/v1.3"
 SV="$(jq -r '.schema_version' "${TMP_DIR}/report.json")"
@@ -90,7 +88,6 @@ sys.exit(0 if m and (int(m.group(1)), int(m.group(2))) >= (1, 3) else 1)"; then
   ok "${SV} (floor v1.3)"; record "schema-floor" "PASS" "${SV} >= v1.3"
 else fail "schema_version=${SV}, below the v1.3 floor"; record "schema-floor" "FAIL" "${SV}"; fi
 
-# === 3. standard_crosswalk ESRS E1 ===
 step "3. methodology.standard_crosswalk references ESRS E1 / E1-5 / Scope 2 / Scope 3 / market-based"
 CW="$(jq -c '.methodology.standard_crosswalk' "${TMP_DIR}/report.json")"
 cw_ok=1
@@ -104,15 +101,13 @@ echo "${CW}" | jq -e '([.mappings[].note] + (.caveats // [])) | any(strings | te
 if [ "${cw_ok}" -eq 1 ]; then ok "ESRS E1 + E1-5 + Scope 2 + Scope 3 + market-based all present"; record "esrs-crosswalk" "PASS" "ESRS E1 / E1-5 / Scope 2 / Scope 3 / market-based"
 else record "esrs-crosswalk" "FAIL" "see log"; fi
 
-# === 4. disclaimers ESRS line ===
 step "4. notes.disclaimers carries the ESRS mapping-aid line"
-# `standard_crosswalk` is unique to the ESRS disclaimer line; matching on it alone
+# `standard_crosswalk` is unique to the ESRS disclaimer line. Matching on it alone
 # is robust to null elements and to the wording being split across lines.
 if jq -e '[.notes.disclaimers[]?] | any(strings | test("standard_crosswalk"))' "${TMP_DIR}/report.json" >/dev/null; then
   ok "ESRS disclaimer present"; record "esrs-disclaimer" "PASS" "standard_crosswalk mapping aid line"
 else fail "ESRS disclaimer missing"; record "esrs-disclaimer" "FAIL" "line absent"; fi
 
-# === 5. integrity: hash-bake -> verify-hash PARTIAL + tamper FAIL ===
 step "5. hash-bake -> verify-hash (PARTIAL/exit2 + [OK] Content hash), tamper -> [FAIL]/exit1"
 in_image hash-bake --report /workdir/report.json --output /workdir/baked.json >/dev/null 2>&1 || die "hash-bake failed"
 set +e
@@ -128,7 +123,6 @@ int_ok=1
 if [ "${int_ok}" -eq 1 ]; then ok "unsigned=PARTIAL/exit2 [OK] Content hash; tampered=UNTRUSTED/exit1 [FAIL] Content hash"; record "hash-integrity" "PASS" "PARTIAL + tamper-detected"
 else record "hash-integrity" "FAIL" "see log"; fi
 
-# === 6. retro-compat: v1.2 example validates against the v1.3 schema ===
 step "6. retro-compat: frozen v1.2 example validates against the v1.3 JSON Schema"
 EXAMPLE="${PERF_SENTINEL_REPO_PATH}/docs/schemas/examples/example-internal-G1.json"
 if command -v check-jsonschema >/dev/null && [ -f "${SCHEMA}" ] && [ -f "${EXAMPLE}" ]; then
@@ -140,7 +134,6 @@ else
   ok "check-jsonschema or schema/example absent -> SKIP"; record "retro-compat" "SKIP" "validator or fixture missing"
 fi
 
-# === Summary ===
 step "Summary"
 pass=0; failc=0; skip=0
 { echo "# ${SCENARIO}"; echo; } > "${REPORT}"

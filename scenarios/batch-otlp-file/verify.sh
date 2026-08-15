@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# batch-otlp-file: validate perf-sentinel 0.9.5's OTLP/JSON batch ingestion —
+# batch-otlp-file: validate perf-sentinel 0.9.5's OTLP/JSON batch ingestion,
 # the Collector `file` exporter NDJSON dump fed straight to `analyze`/`report`,
 # no Tempo/Jaeger backend. The headline path is dd-trace -> datadogreceiver ->
 # file exporter -> analyze (docker collector, tee'd to a loopback daemon for
@@ -18,7 +18,7 @@
 #       "truncated trailing OTLP JSON document" warning, complete lines kept.
 #   A5  negatives: a half-line-only file and mid-stream garbage both exit 1.
 #   A6  detection non-regression: a Jaeger UI export stays Jaeger even with a
-#       "resourceSpans" tag value; an OTLP dump with an attribute named/valued
+#       "resourceSpans" tag value. An OTLP dump with an attribute named/valued
 #       "data" stays OTLP (single pretty-printed object form).
 #   A7  report --input <dump> renders a usable dashboard.
 #   A8  the real opentelemetry-java stdout-exporter shape ingests: an attribute
@@ -193,7 +193,6 @@ done
 ok "dump has ${LINES} NDJSON lines (one ExportTraceServiceRequest per intake)"
 cp "${DUMP}" "${TMP_DIR}/dd-dump.ndjson"
 
-# ── A1: analyze on the raw NDJSON dump ──────────────────────────────────────
 step "A1: analyze --input <NDJSON dump> (strict)"
 if run_analyze "${TMP_DIR}/dd-dump.ndjson"; then
   TA="$(traces_analyzed)"
@@ -208,7 +207,6 @@ else
   assert_fail "A1" "analyze exited non-zero on the NDJSON dump: $(tail -2 "${TMP_DIR}/err.txt")"
 fi
 
-# ── A2: coherence with the daemon on the same tee'd traffic ─────────────────
 step "A2: batch findings vs daemon /api/findings on the SAME traffic"
 sleep 4    # let the daemon's rolling window close on the tee'd traces
 if curl -fsS "${DAEMON_URL}/api/findings" > "${TMP_DIR}/daemon-findings.json" 2>/dev/null; then
@@ -227,7 +225,6 @@ else
   assert_fail "A2" "daemon /api/findings unreachable"
 fi
 
-# ── A3: native OTel traffic through the CLUSTER collector ───────────────────
 step "A3: native OTel -> cluster collector file exporter (overlay)"
 if kubectl -n observability get ds >/dev/null 2>&1; then
   # fsGroup does not apply to hostPath volumes: pre-create the dump dir
@@ -283,7 +280,6 @@ else
   record "A3" "SKIP — cluster unreachable"
 fi
 
-# ── A4: truncated trailing line is tolerated with a warning ─────────────────
 step "A4: truncated trailing line -> exit 0 + warning + complete lines analyzed"
 TOTAL=$(wc -c < "${TMP_DIR}/dd-dump.ndjson")
 LAST=$(tail -1 "${TMP_DIR}/dd-dump.ndjson" | wc -c)
@@ -299,7 +295,7 @@ else
   assert_fail "A4" "truncated tail should be tolerated but analyze exited non-zero: $(tail -2 "${TMP_DIR}/err.txt")"
 fi
 
-# ── A5: negatives — nothing complete, or garbage mid-stream ─────────────────
+# ── A5: negatives, nothing complete, or garbage mid-stream ─────────────────
 step "A5: half-line-only file and mid-stream garbage both exit 1"
 head -c 200 "${TMP_DIR}/dd-dump.ndjson" > "${TMP_DIR}/half-line.ndjson"
 NEG1_RC=0; run_analyze "${TMP_DIR}/half-line.ndjson" || NEG1_RC=$?
@@ -324,7 +320,7 @@ PY
 # Baseline trace counts from the PRISTINE files parsed by their correct parser.
 # Asserting the trap yields the SAME count (not merely >0) catches a lenient
 # misroute: if the trap were parsed by the wrong parser it would fail outright
-# OR analyze to a different count — a bare traces>0 check would miss the latter.
+# OR analyze to a different count: a bare traces>0 check would miss the latter.
 run_analyze "${JAEGER_FIXTURE}" || die "A6: pristine Jaeger fixture failed to analyze"
 JAEGER_BASE="$(traces_analyzed)"
 head -1 "${TMP_DIR}/dd-dump.ndjson" > "${TMP_DIR}/otlp-base.json"
@@ -345,7 +341,7 @@ PY
 OTLP_RC=0; run_analyze "${TMP_DIR}/otlp-trap.json" || OTLP_RC=$?
 OTLP_TA=0; [ "${OTLP_RC}" = "0" ] && OTLP_TA="$(traces_analyzed)"
 # Each trap must exit 0 AND analyze to the same count as its pristine baseline
-# (>0) — proving it was routed to the correct parser, not leniently mis-parsed.
+# (>0): proving it was routed to the correct parser, not leniently mis-parsed.
 if [ "${JAEGER_RC}" = "0" ] && [ "${JAEGER_TA}" -gt 0 ] && [ "${JAEGER_TA}" = "${JAEGER_BASE}" ] \
    && [ "${OTLP_RC}" = "0" ] && [ "${OTLP_TA}" -gt 0 ] && [ "${OTLP_TA}" = "${OTLP_BASE}" ]; then
   assert_pass "A6" "jaeger-trap analyzed as Jaeger (traces=${JAEGER_TA}=${JAEGER_BASE}), otlp-trap as OTLP (traces=${OTLP_TA}=${OTLP_BASE})"
@@ -353,7 +349,6 @@ else
   assert_fail "A6" "jaeger rc=${JAEGER_RC}/traces=${JAEGER_TA}(base ${JAEGER_BASE}), otlp rc=${OTLP_RC}/traces=${OTLP_TA}(base ${OTLP_BASE})"
 fi
 
-# ── A7: report on the dump ──────────────────────────────────────────────────
 step "A7: report --input <dump> renders a usable dashboard"
 if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TMP_DIR}/dd-dump.ndjson" \
      --output "${TMP_DIR}/r.html" > /dev/null 2> "${TMP_DIR}/err.txt" \

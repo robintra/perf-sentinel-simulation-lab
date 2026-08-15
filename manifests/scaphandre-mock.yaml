@@ -46,7 +46,7 @@ data:
     # fictional process whose
     # exe matches the runtime path their container would bake. Temurin
     # (eclipse-temurin:25-jdk-alpine) is the BUILD stage only, never
-    # the runtime — the Java exe paths here are OpenJDK distroless.
+    # the runtime, and the Java exe paths here are OpenJDK distroless.
     # cmdline values are concatenated without separators, mirroring the
     # real Scaphandre behaviour documented in docs/CONFIGURATION.md
     # "Why both exe_contains and cmdline_contains".

@@ -12,20 +12,11 @@
 # that blind spot, and it covers HTTP as well so neither transport is traded
 # for the other.
 #
-#   A  gRPC   gzip (exporter default)  collector -> under test   ingested
-#   B  gRPC   gzip (exporter default)  collector -> BASELINE     refused, Unimplemented
-#   C  gRPC   none                     collector -> under test   ingested
-#   D  HTTP   gzip (exporter default)  collector -> under test   ingested
-#   E  HTTP   none                     collector -> under test   ingested
-#   F  HTTP   deflate                  tracegen  -> under test   ingested (new in 0.9.28)
-#   F' HTTP   deflate                  tracegen  -> BASELINE     refused
-#   G  gRPC   deflate                  tracegen  -> under test   ingested (new in 0.9.28)
-#   H  gRPC   zstd, snappy             collector -> under test   refused, Unimplemented
-#   I  gRPC   gzip (exporter default)  CLUSTER collector         findings on a real burst
+# The full leg matrix is the table in README.md.
 #
 # Legs A-H are self-contained: Docker only, no cluster, no local binary (the
 # A/B needs a published image, not a build). Leg I overlays the real cluster
-# collector onto :14317 and reverts on exit; it SKIPs cleanly with no cluster.
+# collector onto :14317 and reverts on exit. It SKIPs cleanly with no cluster.
 #
 # Deflate over gRPC is unreachable from the Collector's exporter (gzip, snappy
 # and zstd only), so legs F/G go through tracegen's native client instead.
@@ -198,7 +189,7 @@ except Exception:
     print(0); raise SystemExit
 items = d if isinstance(d, list) else d.get("findings", [])
 def u(it): return it.get("finding", it) if isinstance(it, dict) else {}
-# The daemon spells it "type" under a "finding" envelope; keep the
+# The daemon spells it "type" under a "finding" envelope. Keep the
 # finding_type fallback so a rename upstream degrades to 0, not to a crash.
 def t(it): return u(it).get("type", u(it).get("finding_type"))
 print(sum(1 for it in items if not want or t(it) == want))' "${1:-}" 2>/dev/null || echo 0

@@ -5,7 +5,7 @@
 # `alumet-wire-conformance` by replaying its steps, then goes further with the
 # legs only a deterministic wire file allows: summed-label energy math, desync
 # scaling, precedence over Scaphandre, warn latches, /api/energy shape.
-# Self-contained: local release binary; Docker is needed only for the live
+# Self-contained: local release binary. Docker is needed only for the live
 # legs (A/B/C) and they SKIP cleanly without it. No cluster.
 #
 # Assertions (see README.md):
@@ -267,13 +267,13 @@ fi
 [ "${HAVE_AGENT}" = "1" ] || skip "live legs will SKIP: ${AGENT_SKIP_REASON}"
 
 # =============================================================================
-# A + B — live wire capture and shape (real agent in docker)
+# A + B: live wire capture and shape (real agent in docker)
 # =============================================================================
 LIVE_METRIC=""
 if [ "${HAVE_AGENT}" = "1" ]; then
   step "Live agent: capture (A) + wire shape and discovery (B)"
   docker rm -f alumet-wire >/dev/null 2>&1 || true
-  # Caps: the packaged binary carries file capabilities; without them exec
+  # Caps: the packaged binary carries file capabilities, without them exec
   # fails EPERM inside docker. Fresh ALUMET_CONFIG = a clean generated config;
   # an absent prometheus-exporter section is backfilled from defaults anyway.
   docker run -d --name alumet-wire --cpus=2 \
@@ -340,7 +340,7 @@ else
 fi
 
 # =============================================================================
-# C — daemon e2e against the live agent (CI end-to-end parity, 4 ticks at 5s)
+# C: daemon e2e against the live agent (CI end-to-end parity, 4 ticks at 5s)
 # =============================================================================
 if [ "${HAVE_AGENT}" = "1" ] && [ -n "${LIVE_METRIC}" ]; then
   step "Daemon e2e vs live agent (C): 22s watch, no warns, counters move"
@@ -426,7 +426,6 @@ else
   assert_fail "D-rows" "fixture carries only ${ROWS} process row(s); the summed-series leg needs >=2"
 fi
 
-# ── D + F (+ G3): summed math, precedence over Scaphandre, /api/energy ──────
 step "Daemon (frozen): summed-label math (D) + precedence (F) + /api/energy (G3)"
 {
   daemon_header green
@@ -483,7 +482,7 @@ else
 fi
 stop_daemon
 
-# ── E: desync scaling — energy_interval_secs=5.0 must divide by exactly 5 ───
+# ── E: desync scaling, energy_interval_secs=5.0 must divide by exactly 5 ───
 step "Daemon (frozen): desync x5 (E) — energy_interval_secs=5.0 vs 1.0"
 {
   daemon_header green
@@ -529,7 +528,7 @@ else
 fi
 stop_daemon
 
-# ── G1: mistyped mapping — no-match warn latches once, scraping stays green ─
+# ── G1: mistyped mapping, no-match warn latches once, scraping stays green ─
 step "Daemon (frozen): mistyped mapping (G1) — 1s ticks, warn latches at tick 3"
 {
   daemon_header
@@ -564,7 +563,6 @@ else
   assert_fail "G1-healthy" "scrape counters off: success=${G1_SUCC} (want >=3), failed=${G1_FAIL} (want 0)"
 fi
 
-# ── G2: empty service_mappings — one startup warn, never recurring ──────────
 step "Daemon (frozen): empty service_mappings (G2) — startup warn once"
 {
   daemon_header

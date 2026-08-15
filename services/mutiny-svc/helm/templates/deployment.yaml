@@ -94,7 +94,7 @@ spec:
             # reclassifies via the ORM scope marker. mutiny-svc uses
             # the Vert.x reactive PG client directly without an ORM,
             # so the marker is absent and the n_plus_one_sql detector
-            # cannot promote the sanitized batch back to n+1 — it
+            # cannot promote the sanitized batch back to n+1, it
             # surfaces as redundant_sql instead. That is a real
             # follow-up for perf-sentinel detection on bare-driver
             # stacks (Vert.x SQL client, pgx, asyncpg, ...).

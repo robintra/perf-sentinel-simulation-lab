@@ -11,7 +11,7 @@
 # pulls a ~200 MB image, and only emits synthetic readings on a lab
 # without RAPL. Keep `make up-cni` light for daily development.
 #
-# Image is amd64-only on quay; k3d nodes are amd64 containers so the
+# Image is amd64-only on quay. k3d nodes are amd64 containers so the
 # pod runs natively inside them, transparently emulated on the Apple
 # Silicon host by Docker Desktop.
 apiVersion: v1
@@ -206,7 +206,7 @@ spec:
 ---
 # Symmetric ingress on the exporter pod, locked down to the
 # perf-sentinel daemon in observability. Co-located with the
-# Namespace it targets so applying the harness creates both at once;
+# Namespace it targets so applying the harness creates both at once.
 # manifests/network-policies.yaml only carries the observability-side
 # egress (namespaceSelector tolerates the kepler namespace being
 # absent on default labs).

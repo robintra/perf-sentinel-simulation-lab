@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # alumet-db-waste: validate perf-sentinel's database-waste feature, the DB cgroup
-# energy attributed to the SQL-only avoidable share — measured (0.9.13) and the
+# energy attributed to the SQL-only avoidable share, measured (0.9.13) and the
 # 0.9.14 estimated fallback + disclosure v1.4 publication.
 #
 # 0.9.13 added, on top of the 0.9.12 Alumet backend (see alumet-conformance):
@@ -14,7 +14,7 @@
 #
 # 0.9.14 keeps that measured path byte-for-byte and adds:
 #   - an ESTIMATED fallback on every run with no [green.alumet.database] (every
-#     batch `analyze`), model="estimated" — a re-presented SHARE of the report
+#     batch `analyze`), model="estimated": a re-presented SHARE of the report
 #     totals (a subset of energy_kwh/co2), never additional energy.
 #   - the figure on all three surfaces: text report (`analyze`), `query monitor`
 #     Energy tab, and the HTML dashboard.
@@ -31,7 +31,7 @@
 # Legs (see README.md):
 #   B   measured database_waste end to end: present, energy_kwh>0, waste_kwh ==
 #       energy_kwh * sql_waste_ratio, ratio == avoidable_sql/total_sql, gco2>0,
-#       excluded from the top-level totals; and PUBLISHED in `disclose` as
+#       excluded from the top-level totals, and PUBLISHED in `disclose` as
 #       aggregate.database_waste (models=[alumet_rapl]) yet still outside the
 #       period totals (they do not move vs a database-stripped archive).
 #   C   sticky live cell: no flap between scrapes, then ages out after the scraper
@@ -112,7 +112,7 @@ record_skip() { skip "$2"; record "$1" "SKIP — $2"; }
 # The disclosure schema is additive by contract, so leg H's intent is "at least
 # the version that introduced the database block", never "exactly that version".
 # Pinning the exact string made this scenario fail the moment the product bumped
-# to v1.5, which is a lab staleness rather than a product defect — the release
+# to v1.5, which is a lab staleness rather than a product defect, the release
 # gate caught it on the messaging lot.
 schema_at_least() {  # $1 = schema_version string, $2 = floor like 1.4
   python3 - "$1" "$2" <<'PY'
@@ -186,7 +186,7 @@ post_traces() {
     -H 'Content-Type: application/x-protobuf' --data-binary @"${DD_FIX}/dd-bridge-nplusone.pb"
 }
 
-# 300-N+1-trace payload (borrowed from daemon-analysis-shedding) — big eviction
+# 300-N+1-trace payload (borrowed from daemon-analysis-shedding), big eviction
 # batches that overrun a small trace window + 1-deep analysis queue -> shedding.
 post_shed() {
   curl -sS -o /dev/null --max-time 10 -X POST "${DAEMON_URL}/v1/traces" \
@@ -213,7 +213,7 @@ sys.exit(0 if ((d.get("green_summary") or {}).get("database_waste")) else 1)'
 }
 
 # POST the N+1 fixture up to N times (8s spacing keeps one batch per 5s scrape)
-# and poll until green_summary.database_waste is present; writes the report JSON
+# and poll until green_summary.database_waste is present. Writes the report JSON
 # to $1 on success.
 seed_until_db_waste() {  # $1 = out file
   for _ in $(seq 1 8); do
@@ -249,7 +249,7 @@ PY
 
 # Copy an NDJSON archive with the per-window database blocks removed
 # (disclosure_waste.database + green_summary.database_waste), so disclose over
-# it produces no aggregate.database_waste — the stripped baseline for the
+# it produces no aggregate.database_waste: the stripped baseline for the
 # "totals unmoved" exclusion invariant. Also tolerant of torn lines.
 strip_db_archive() {  # $1 = in ndjson ; $2 = out ndjson
   python3 - "$1" "$2" <<'PY'
@@ -511,7 +511,7 @@ EOF
   # line, then disclose it. 0.9.14 (schema v1.4) PUBLISHES the measured figure as
   # aggregate.database_waste, so the old "absent from disclose" assertion is gone.
   # The invariant now: the block is PRESENT (tagged the measured model) yet still
-  # OUTSIDE every total — proven by disclosing the archive twice, once with the
+  # OUTSIDE every total: proven by disclosing the archive twice, once with the
   # per-window database block and once with it stripped, and asserting the period
   # totals do not move.
   for _ in 1 2 3 4; do
@@ -519,8 +519,8 @@ EOF
     [ "$(count_db_windows "${TMP_DIR}/archive-b.ndjson")" -gt 0 ] && break
   done
   # Freeze a snapshot: the leg-B daemon is still writing archive-b.ndjson (leg F
-  # reuses it), so disclose the FROZEN copy — full and stripped from the SAME
-  # snapshot — else the two discloses could cover different window sets and the
+  # reuses it), so disclose the FROZEN copy: full and stripped from the SAME
+  # snapshot, else the two discloses could cover different window sets and the
   # totals-unmoved compare would flake on a late service-energy window.
   cp "${TMP_DIR}/archive-b.ndjson" "${TMP_DIR}/archive-b-frozen.ndjson" 2>/dev/null
   arch_dw="$(count_db_windows "${TMP_DIR}/archive-b-frozen.ndjson")"
@@ -594,7 +594,7 @@ else
   assert_fail "F-dataplane" "report snapshot missing database_waste render fields"
 fi
 # Best-effort: drive the TUI headless in a pty against the still-running leg-B
-# daemon (whose live cell still carries database_waste) — no fresh daemon/reseed.
+# daemon (whose live cell still carries database_waste), no fresh daemon/reseed.
 if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
   MON_OUT="${TMP_DIR}/monitor.txt"
   ( script -q /dev/null "${PERF_SENTINEL_LOCAL_BIN}" query --daemon-url "${DAEMON_URL}" monitor --refresh 1 ) \
@@ -615,12 +615,12 @@ fi
 stop_daemon
 
 # =============================================================================
-# Leg C: sticky live cell — no flap, then age-out after the scraper dies
+# Leg C: sticky live cell, no flap, then age-out after the scraper dies
 # =============================================================================
 step "C: sticky database_waste — no flap between scrapes, ages out after scraper death"
 write_config c.toml "${REGION}" "" "${DB_LABEL}"
 if start_daemon c.toml c.log && seed_until_db_waste "${TMP_DIR}/c-report.json"; then
-  # No flap: poll faster than the 5s scrape for ~12s while re-seeding; every
+  # No flap: poll faster than the 5s scrape for ~12s while re-seeding. Every
   # poll must carry database_waste (never null on a between-scrape batch).
   flaps=0; polls=0
   for _ in $(seq 1 6); do
@@ -677,7 +677,7 @@ disown "${MOCK_PID}" 2>/dev/null || true
 for _ in $(seq 1 20); do curl -fsS "http://127.0.0.1:${MOCK_PORT}/alumet-db.prom" >/dev/null 2>&1 && break; sleep 0.5; done
 
 # =============================================================================
-# Leg D: carry-over under shedding — DB energy conserved across archived windows
+# Leg D: carry-over under shedding, DB energy conserved across archived windows
 # =============================================================================
 step "D: carry-over under shedding — energy conserved across archived NDJSON windows, no OOM"
 # cap=1 analysis queue + a tiny 20-trace window: each 300-trace POST overflows
@@ -698,14 +698,14 @@ elif start_daemon d.toml d.log; then
   # the end == the energy banked, in per-scrape units. That is the ground truth
   # the archived DB energy is checked against.
   # Flood: concurrent injectors replaying the 300-N+1-trace payload to overrun
-  # the queue. --max-time bounds each POST; a straggler reap avoids a hung wait.
+  # the queue. --max-time bounds each POST. A straggler reap avoids a hung wait.
   for _ in $(seq 1 8); do
     for _ in $(seq 1 4); do post_shed & done
     sleep 2
   done
   sleep 4
   pkill -f "curl.*${DAEMON_HTTP_PORT}/v1/traces" 2>/dev/null || true
-  # Quiesce: stop the flood so the 1-deep queue drains and shedding subsides; the
+  # Quiesce: stop the flood so the 1-deep queue drains and shedding subsides. The
   # scraper keeps banking DB energy (unconsumed) through this idle window.
   sleep 16
   # Controlled consume: with the daemon idle and the scraper fresh, the FIRST
@@ -795,7 +795,7 @@ PY
   fi
 
   # G-text: the default text report carries a "Database waste:" line tagged
-  # `model estimated` with the `[within the report totals]` scope — inverted vs
+  # `model estimated` with the `[within the report totals]` scope, inverted vs
   # the measured `[excluded from totals]` scope (color is off on a non-tty).
   "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${SQL_TRACES}" --config "${GREEN_CFG}" \
     > "${TMP_DIR}/g-report.txt" 2>/dev/null || true
@@ -813,8 +813,8 @@ PY
   # The dashboard is a JS SPA: it ships a greenCard("Database waste", ...) builder
   # whose subtitle picks the scope from the embedded report's model. Assert the
   # card builder AND the estimated-scope branch are co-located (within ~600 chars,
-  # not merely somewhere in the document — a far-away legend must not satisfy it).
-  # This is a static surface presence check; the actual RENDERED scope is
+  # not merely somewhere in the document: a far-away legend must not satisfy it).
+  # This is a static surface presence check. The actual RENDERED scope is
   # data-driven and proven by G-json (model=="estimated") + G-text.
   if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${SQL_TRACES}" --config "${GREEN_CFG}" \
        --output "${TMP_DIR}/g-report.html" >/dev/null 2>"${TMP_DIR}/g-html.err" \
@@ -837,11 +837,11 @@ else
 fi
 
 # =============================================================================
-# Leg H: disclose v1.4 round-trip — provenance split over measured + estimated
+# Leg H: disclose v1.4 round-trip, provenance split over measured + estimated
 # =============================================================================
 step "H: disclose >= v1.4 — aggregate.database_waste provenance (measured + estimated), hash, additive"
 # Estimated archived windows: a fresh daemon with green enabled but NO
-# [green.alumet.database] and no Alumet — the estimated fallback path, which
+# [green.alumet.database] and no Alumet: the estimated fallback path, which
 # still writes disclosure_waste.database (model estimated) per scored window.
 cat > "${TMP_DIR}/h-est.toml" <<EOF
 [green]
@@ -875,7 +875,7 @@ if start_daemon h-est.toml h-est.log; then
 fi
 # archive-b's MEASURED windows are the other half of the mix. Leg B can record a
 # benign SKIP (no measured database window archived) while leaving archive-b
-# non-empty, so gate leg H on measured windows actually being present — a
+# non-empty, so gate leg H on measured windows actually being present, a
 # missing-measured condition then SKIPs here too rather than hard-failing the
 # both-models / measured>0 assertions on a condition leg B itself excused.
 b_meas="$(count_db_windows "${TMP_DIR}/archive-b.ndjson")"
@@ -936,7 +936,7 @@ else
 fi
 
 # H-schema-intent + H-additive + H-hash on a pre-v1.4 archive with NO database
-# fields (reports-thr5, binary 0.8.2) — the official intent must accept the v1.4
+# fields (reports-thr5, binary 0.8.2): the official intent must accept the v1.4
 # schema, the block must stay absent (skip_serializing_if), and the content hash
 # round-trips fail-closed.
 PREV_PERIOD=(--period-type calendar-quarter --from 2026-04-01 --to 2026-06-30)
@@ -954,7 +954,7 @@ if [ -s "${PREV14_ARCHIVE}" ] && "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent 
   else
     assert_fail "H-additive" "pre-v1.4 archive produced a spurious aggregate.database_waste block"
   fi
-  # Capture verify-hash output first (|| true), THEN parse — verify-hash exits
+  # Capture verify-hash output first (|| true), THEN parse, verify-hash exits
   # non-zero (2 = PARTIAL under --no-identity-check), which would trip pipefail
   # and append the fallback if the status were extracted inside the same pipe.
   vh="$("${PERF_SENTINEL_LOCAL_BIN}" verify-hash --report "${TMP_DIR}/h-official.json" --no-identity-check --format json 2>/dev/null || true)"
@@ -1004,15 +1004,15 @@ else
   record_skip "I-tag" "no estimated archive from leg H to check the tag"
 fi
 # I-undelivered: [green.alumet.database] declared but the labelled cgroup is never
-# delivered by the scraper — the daemon must emit NO database_waste (energy carries
+# delivered by the scraper: the daemon must emit NO database_waste (energy carries
 # over; there is no estimated fallback when a database IS declared). The leg-D mock
 # is still bound and serves only the real pg-cgroup label.
 if [ -n "${MOCK_PID}" ] || lsof -ti "tcp:${MOCK_PORT}" >/dev/null 2>&1; then
   write_config i.toml "${REGION}" "" "undelivered-cgroup"
   if start_daemon i.toml i.log; then
     # Watch as long as leg B needs to first observe the figure (~60s) so a
-    # slowly-appearing leaked fallback cannot slip past a short window; and
-    # require at least one SUCCESSFUL absent fetch (rc==1) — treating rc==2
+    # slowly-appearing leaked fallback cannot slip past a short window, and
+    # require at least one SUCCESSFUL absent fetch (rc==1), treating rc==2
     # (fetch/parse flake) as confirmed-absence would PASS on a broken export.
     leaked=0; seen_absent=0
     for _ in $(seq 1 12); do

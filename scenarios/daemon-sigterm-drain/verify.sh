@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # daemon-sigterm-drain: prove the v0.8.5 graceful-drain-on-SIGTERM contract.
 #
-# v0.8.5 routes the daemon event loop through crate::shutdown::shutdown_signal(),
-# which resolves on SIGINT AND (on Unix) SIGTERM, so a normal Kubernetes pod
-# termination (rolling update, scale-down, node drain -- all SIGTERM) now flushes
-# the in-flight streaming window through detection instead of dropping it. Only an
-# ungraceful kill (SIGKILL after the grace period, OOM) still loses the window.
-# Before 0.8.5 only SIGINT drained, so a SIGTERM lost the current window.
-#
 # This scenario closes the coverage gap left by failure-mode-daemon-restart, whose
 # "may be lost (graceful drop)" wording encodes the OLD contract. We use a genuine
 # before/after test with a positive and a negative control so a PASS means "the
@@ -89,7 +82,7 @@ trap cleanup EXIT
 # --- helpers -----------------------------------------------------------------
 
 pf_restart() {
-  # Re-establish the daemon port-forward after a rollout/scale; the previous one
+  # Re-establish the daemon port-forward after a rollout/scale. The previous one
   # is a zombie pointing at an endpoint that no longer exists (same handling as
   # failure-mode-daemon-restart).
   pkill -f "kubectl.*port-forward.*${DEPLOY}" 2>/dev/null || true
@@ -231,7 +224,7 @@ EOF
 
 # True SIGKILL of the daemon process via its k3d node's containerd. A K8s-level
 # delete (even --grace-period=0 --force) still routes through the kubelet's SIGTERM,
-# which the fast drain completes before SIGKILL lands; killing the PID directly is
+# which the fast drain completes before SIGKILL lands. Killing the PID directly is
 # the only signal that bypasses the drain, modelling an OOM / over-grace kill.
 sigkill_daemon_pid() {
   local pod node cid pid
@@ -364,7 +357,7 @@ inject_fixture "n-plus-one-negative.pb" "negative" || die "negative injection Jo
 ok "injected probe_negative (in-flight)"
 sigkill_daemon_pid > "${TMP_DIR}/sigkill.log" 2>&1 || die "could not SIGKILL the daemon process on its node"
 cat "${TMP_DIR}/sigkill.log" | sed 's/^/    /'
-# The kubelet restarts the container in place; scale to 0 so the PVC frees for the
+# The kubelet restarts the container in place. Scale to 0 so the PVC frees for the
 # reader. The restarted container's window never held probe_negative.
 sleep 2
 scale_daemon 0

@@ -48,7 +48,6 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 
 verdict="UNKNOWN"
 
-# === Step 1: fetch ===
 step "1. Fetch upstream jenkinsfile.groovy at v${UPSTREAM_VERSION}"
 
 if [ -n "${UPSTREAM_PATH:-}" ] && [ -f "${UPSTREAM_PATH}" ]; then
@@ -66,7 +65,6 @@ fi
 UPSTREAM_BYTES=$(wc -c < "${TMP_DIR}/Jenkinsfile")
 ok "template size: ${UPSTREAM_BYTES} bytes"
 
-# === Step 2: structural lint ===
 step "2. Structural invariants"
 
 # Skeleton check: declarative pipeline.
@@ -99,7 +97,6 @@ fi
 STRUCTURAL_VERDICT="PASS"
 ok "structural invariants PASS (pipeline, stages, analyze, --ci, sarif)"
 
-# === Step 3: best-effort runtime ===
 step "3. Best-effort runtime via jenkinsfile-runner"
 
 if [ "${SKIP_RUNTIME:-0}" = "1" ]; then
@@ -158,10 +155,9 @@ else
   fi
 fi
 
-# === Verdict ===
 step "4. Verdict"
 
-# Structural is the hard gate. Runtime SKIPPED is acceptable; runtime
+# Structural is the hard gate. Runtime SKIPPED is acceptable. Runtime
 # FAIL is treated as PARTIAL (template is syntactically/structurally OK,
 # environment cannot run it).
 case "${STRUCTURAL_VERDICT}/${RUNTIME_VERDICT}" in

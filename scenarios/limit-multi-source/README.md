@@ -1,10 +1,10 @@
 # limit-multi-source
 
-All live ingestion paths under concurrent load, on a scoped daemon in its
-own namespace: OTLP gRPC (Job, prefix `g-`), OTLP HTTP (Job, prefix `h-`),
-Unix NDJSON socket (tracegen sidecar sharing an emptyDir, prefix `n-`),
-plus the host running `perf-sentinel tempo` against the lab Tempo as the
-concurrent batch reader.
+All live ingestion paths under concurrent load, on a scoped daemon in
+its own namespace. Those paths are OTLP gRPC (Job, prefix `g-`), OTLP
+HTTP (Job, prefix `h-`), and the Unix NDJSON socket (tracegen sidecar
+sharing an emptyDir, prefix `n-`). The host runs `perf-sentinel tempo`
+against the lab Tempo as the concurrent batch reader.
 
 ## Run
 

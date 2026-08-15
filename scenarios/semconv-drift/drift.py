@@ -56,7 +56,7 @@ def parsed_lines(path):
                 continue
             if not isinstance(doc, dict):
                 # A bare scalar (null/number) from a rotated dump is valid JSON
-                # but not an ExportTraceServiceRequest; skip rather than crash.
+                # but not an ExportTraceServiceRequest. Skip rather than crash.
                 print(f"warn: skipping non-object line {lineno}", file=sys.stderr)
                 continue
             yield doc

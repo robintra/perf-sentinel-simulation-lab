@@ -56,7 +56,7 @@ ANTI_PATTERNS=(
 
 declare -a RESULTS
 
-# PHP framework/recommendation expectations — single source of truth, shared with
+# PHP framework/recommendation expectations, single source of truth, shared with
 # scripts/run-multistack-scenario.sh (defines framework_expectation()).
 . "${REPO_ROOT}/scripts/framework-expectation.sh"
 

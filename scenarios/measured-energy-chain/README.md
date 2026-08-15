@@ -69,7 +69,7 @@ return zero samples and the scenario will FAIL at 7.A.
 
 The pre-v0.10 legacy name `kepler_container_joules_total` lives in
 `manifests/kepler-mock-legacy.yaml` as an opt-in negative fixture
-for the daemon's zero-sample safety net; not exercised by this
+for the daemon's zero-sample safety net. Not exercised by this
 scenario.
 
 The Redfish `power_path` is left at the default
@@ -82,8 +82,9 @@ The Redfish `power_path` is left at the default
   blocks pointing at `kepler-mock.observability.svc.cluster.local`
   and `redfish-mock.observability.svc.cluster.local` respectively.
 - Both mocks are deployed and Ready. `make up-cni` already applies
-  them via `scripts/bootstrap.sh:deploy_measured_energy_mocks`;
-  otherwise run `make seed-kepler-mock seed-redfish-mock` manually.
+  them via `scripts/bootstrap.sh:deploy_measured_energy_mocks`.
+  Otherwise run `make seed-kepler-mock seed-redfish-mock`
+  manually.
 - NetworkPolicy rules `perf-sentinel-daemon-kepler-egress`,
   `kepler-mock-allow-daemon`,
   `perf-sentinel-daemon-redfish-egress`,

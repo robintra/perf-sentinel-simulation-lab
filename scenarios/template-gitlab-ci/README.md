@@ -58,9 +58,9 @@ Report at `/tmp/scenario-template-gitlab-ci-report.md`.
 
 ## Limitations
 
-- The lab fixture pins an older version (currently 0.5.14, may drift).
-  This scenario does not auto-bump the fixture; that stays a deliberate
-  decision.
+- The lab fixture pins an older version (currently 0.5.14, may
+  drift). This scenario does not auto-bump the fixture. That
+  stays a deliberate decision.
 - `verify-gitlab-perf-sentinel.sh` requires `make up-gitlab && make
   seed-gitlab-project` to have run beforehand. If the fixture project
   doesn't exist yet, the E2E step skips with a clear message.

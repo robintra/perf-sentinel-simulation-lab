@@ -177,7 +177,7 @@ def build_shapes():
     ]))
 
     # d-handler: the work sits one level below an intermediate handler that is
-    # itself the receive's sibling — the shape the Java agent emits around a
+    # itself the receive's sibling: the shape the Java agent emits around a
     # @Transactional boundary.
     trace, root = f"{14:032x}", f"{14:016x}"
     handler = f"{51:016x}"
@@ -191,8 +191,8 @@ def build_shapes():
     ]))
 
     # e-early-handler: the handler starts BEFORE the delivery, its I/O child
-    # after it. The guard must judge the node whose subtree is attributed — the
-    # handler — not the leaf, so a handler already running when the message
+    # after it. The guard must judge the node whose subtree is attributed, the
+    # handler, not the leaf, so a handler already running when the message
     # landed shields everything below it however late its own I/O fires.
     trace, root = f"{15:032x}", f"{15:016x}"
     handler = f"{61:016x}"
@@ -208,7 +208,7 @@ def build_shapes():
 
     # f-two-receives: a consumer loop handling two deliveries under one parent.
     # The work belongs to the LAST message that arrived before it, so the second
-    # receive's producer wins — and which one wins must not depend on the order
+    # receive's producer wins, and which one wins must not depend on the order
     # the exporter serialised them in (see the `reversed` mode).
     trace, root = f"{16:032x}", f"{16:016x}"
     out.append(request("accounting-f-two-receives", [
@@ -234,7 +234,7 @@ def main():
     else:
         payload = build_shapes()
         if sys.argv[1] == "shapes-reversed":
-            # Same spans, same ids, same trace ids — only the order the exporter
+            # Same spans, same ids, same trace ids: only the order the exporter
             # serialised them in. Every resolved link must be identical to the
             # forward corpus: which receive explains a span is a question about
             # start times, and payload order must not answer it.

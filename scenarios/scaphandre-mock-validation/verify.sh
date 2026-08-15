@@ -40,7 +40,7 @@ SCRAPE_INTERVAL_SEC="${SCRAPE_INTERVAL_SEC:-5}"
 # Must exceed the mock's terminationGracePeriodSeconds (30s on
 # scaphandre-mock) plus at least one scrape_interval. The Python stdlib
 # HTTP server ignores SIGTERM, so it keeps answering until the SIGKILL
-# at the end of the grace period — sampling earlier than 35s would
+# at the end of the grace period: sampling earlier than 35s would
 # capture the pod still responding, not a truly-dead endpoint.
 DEGRADE_WAIT_SEC="${DEGRADE_WAIT_SEC:-45}"
 
@@ -230,7 +230,7 @@ fi
 #######################################
 # Either reason is a valid classification of "service has no endpoints"
 # depending on the cluster network stack: Cilium drops silently → timeout
-# at the daemon's reqwest layer; kube-proxy iptables rejects with ICMP
+# at the daemon's reqwest layer. kube-proxy iptables rejects with ICMP
 # → unreachable. Asserting on the union still rules out the 5 other reasons
 # (http_error, body_read_error, body_too_large, request_error, invalid_utf8)
 # which would all be upstream bugs in this fault model.

@@ -17,7 +17,7 @@
 #       error, NULL/\N schema rendered as absent, ANSI escape sequences in a
 #       trapped export never reach the terminal (normal AND error paths).
 #   B6  report --mysql-stat: mysql_stat tab + 4 ranking chips + digest data in
-#       the HTML; --mysql-stat-top 0/10001/orphan rejected.
+#       the HTML, --mysql-stat-top 0/10001/orphan rejected.
 #   B7  demo --html: the demo dashboard ships a populated mysql_stat tab.
 set -uo pipefail
 
@@ -33,7 +33,7 @@ mkdir -p "${TMP_DIR}"
 
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
 PERF_SENTINEL_LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel}"
-# 9.7 is the current MySQL LTS line; digests_size must be small enough to
+# 9.7 is the current MySQL LTS line. digests_size must be small enough to
 # force the NULL catch-all row in the saturation leg.
 MYSQL_IMAGE="${MYSQL_IMAGE:-mysql:9.7}"
 DB_MAIN="mysqlstat-db"
@@ -96,8 +96,8 @@ export_digests_json() {  # $1 = container ; $2 = output file
     || die "digest JSON export is not valid JSON"
 }
 
-# CSV twin of the JSON export (client-side conversion with real quoting —
-# DIGEST_TEXT carries commas and parentheses). NULL -> empty field.
+# CSV twin of the JSON export (client-side conversion with real quoting,
+# because DIGEST_TEXT carries commas and parentheses). NULL -> empty field.
 json_to_csv() {  # $1 = json in ; $2 = csv out
   python3 - "$1" "$2" <<'PY'
 import csv, json, sys
@@ -174,7 +174,7 @@ json_to_csv "${TMP_DIR}/digests.json" "${TMP_DIR}/digests.csv"
 grep -q 'WHERE `id` = ?' "${TMP_DIR}/digests.csv" \
   || die "expected backticked point-lookup digest missing from the export (workload not captured?)"
 
-# ── B1: text output — ranking order, plausible ms, schema column ────────────
+# ── B1: text output, ranking order, plausible ms, schema column ────────────
 step "B1: mysql-stat text output"
 if run_ms --input "${TMP_DIR}/digests.csv"; then
   ORDER_OK="$(python3 - "${TMP_DIR}/out.txt" <<'PY'
@@ -198,7 +198,7 @@ else
   assert_fail "B1-order" "mysql-stat exited non-zero on the real CSV export: $(tail -2 "${TMP_DIR}/err.txt")"
 fi
 # Millisecond plausibility from the JSON view of the SAME export: our whole
-# workload is a few hundred sub-ms queries — total per digest must land in
+# workload is a few hundred sub-ms queries: total per digest must land in
 # (0, 60000) ms. A ps->ms slip (x1e9) can't fit that window.
 run_ms --input "${TMP_DIR}/digests.csv" --format json || die "mysql-stat --format json failed"
 MS_CHECK="$(python3 - "${TMP_DIR}/out.txt" <<'PY'
@@ -215,7 +215,6 @@ else
   assert_fail "B1-ms" "top total_exec_time_ms out of the plausible window: ${MS_CHECK}"
 fi
 
-# ── B2: JSON ranking labels ─────────────────────────────────────────────────
 step "B2: --format json ranking labels"
 # Self-contained: run our own --format json rather than depending on the JSON
 # residue B1-ms happens to leave in out.txt (which would silently break if B1
@@ -254,8 +253,8 @@ fi
 # ── B4: --traces cross-reference on a real digest ───────────────────────────
 step "B4: [seen in traces] via canonicalized matching on genuine DIGEST_TEXT"
 if run_ms --input "${TMP_DIR}/digests.csv" --traces "${TRACES}"; then
-  # The dd-trace fixture templates carry no backticks and tight spacing; the
-  # MySQL digests are backticked and spaced — a marker on one of the three
+  # The dd-trace fixture templates carry no backticks and tight spacing. The
+  # MySQL digests are backticked and spaced: a marker on one of the three
   # N+1 templates proves the canonicalization, on real data on both sides.
   if grep 'seen in traces' "${TMP_DIR}/out.txt" | grep -Eq 'orders|line_items|users'; then
     assert_pass "B4" "[seen in traces] set on a real backticked digest matching the lab trace templates"
@@ -349,7 +348,7 @@ else
 fi
 
 step "B5: NULL / \\N schema rendered as absent"
-# \N is how mysql batch mode spells NULL — a real-world CSV artifact.
+# \N is how mysql batch mode spells NULL: a real-world CSV artifact.
 python3 - "${TMP_DIR}/digests.csv" "${TMP_DIR}/schema-null.csv" <<'PY'
 import csv, sys
 rows = list(csv.reader(open(sys.argv[1])))
@@ -396,7 +395,6 @@ else
   assert_fail "B5-ansi" "ANSI handling: normal rc=${NORMAL_RC} clean=${NORMAL_CLEAN}, error rc=${ERR_RC} clean=${ERR_CLEAN}"
 fi
 
-# ── B6: report --mysql-stat dashboard + flag validation ─────────────────────
 step "B6: report --mysql-stat HTML tab + flag validation"
 if "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TRACES}" \
      --mysql-stat "${TMP_DIR}/digests.csv" --output "${TMP_DIR}/r.html" \
@@ -439,7 +437,7 @@ if "${PERF_SENTINEL_LOCAL_BIN}" demo --html "${TMP_DIR}/demo.html" >/dev/null 2>
    && grep -q "top by rows_examined" "${TMP_DIR}/demo.html" \
    && grep -q 'rows_examined":' "${TMP_DIR}/demo.html"; then
   # `rows_examined":` is the mysql_stat entry JSON field (MySQL-only; pg_stat
-  # uses rows/shared_blks) present on every data row — absent from the empty
+  # uses rows/shared_blks) present on every data row, absent from the empty
   # scaffold and from the `top by rows_examined` chip label (no colon there).
   assert_pass "B7" "demo dashboard mysql_stat tab present and populated (real digest rows)"
 else

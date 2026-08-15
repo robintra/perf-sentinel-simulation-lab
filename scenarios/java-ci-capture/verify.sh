@@ -4,7 +4,7 @@
 # (Maven Failsafe)", Option 1.
 #
 # History: the recipe first named `otlp_file` + OTEL_EXPORTER_OTLP_FILE_PATH,
-# which exist nowhere in OpenTelemetry; then `experimental-otlp/stdout`, which a
+# which exist nowhere in OpenTelemetry, then `experimental-otlp/stdout`, which a
 # forked Failsafe cannot hand back, because the agent captures the fork's command
 # channel in premain (this scenario is what measured that). `capture` receives
 # OTLP over the network instead, so the fork stays untouched.
@@ -100,7 +100,6 @@ for p in "${CAPTURE_GRPC}" "${CAPTURE_HTTP}"; do
     && die "port ${p} is already in use; capture needs it (the documented endpoint targets it)"
 done
 
-# ── throwaway PostgreSQL ────────────────────────────────────────────────────
 step "Throwaway PostgreSQL on :${PG_PORT}"
 docker rm -f "${PG_CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${PG_CONTAINER}" \
@@ -153,7 +152,7 @@ import json, sys
 from collections import Counter
 # Count the spans of the REQUEST trace, not every span in the file. The test
 # creates its own schema before opening the request span, and those statements
-# are instrumented too — they just land in their own single-span traces. Taking
+# are instrumented too: they just land in their own single-span traces. Taking
 # the largest trace is what "every span of the request arrived" actually means.
 traces = Counter()
 for line in open(sys.argv[1]):
@@ -192,7 +191,7 @@ CAP_RC=$?
 REPORTS="${PROJECT}/target/failsafe-reports"
 CAP_SPANS="$(span_count "${CAP_OUT}")"
 
-# D0 — the published recipe exports at all. Round 2 measured 0 spans here: the
+# D0: the published recipe exports at all. Round 2 measured 0 spans here: the
 # endpoint named :4317 while the agent defaulted to http/protobuf.
 if [ "${CAP_SPANS}" -gt 0 ]; then
   assert_pass "D0" "the published POM captured ${CAP_SPANS} span(s) with protocol ${DOC_PROTOCOL} on ${DOC_ENDPOINT}"
@@ -201,7 +200,7 @@ else
   assert_fail "D0" "the published POM captured nothing (capture rc=${CAP_RC}): $(grep -o 'Capture: [^.]*' "${TMP_DIR}/stderr.log" | tail -1)${PROTO_WARN:+; agent warned: ${PROTO_WARN}}"
 fi
 
-# D1 — the fork survives: this is the whole point of moving off stdout.
+# D1: the fork survives: this is the whole point of moving off stdout.
 CORRUPT=$(grep -rci "Corrupted channel\|Corrupted STDOUT" "${REPORTS}" "${TMP_DIR}/stdout.log" "${TMP_DIR}/stderr.log" 2>/dev/null | awk -F: '{s+=$NF} END{print s+0}')
 DUMPSTREAMS=$(ls "${REPORTS}"/*.dumpstream 2>/dev/null | wc -l | tr -d ' ')
 TESTS_RUN="$(grep -ho "Tests run: [0-9]*, Failures: [0-9]*, Errors: [0-9]*" "${TMP_DIR}/stdout.log" | tail -1)"
@@ -211,7 +210,7 @@ else
   assert_fail "D1" "capture rc=${CAP_RC}, corrupted=${CORRUPT}, dumpstreams=${DUMPSTREAMS}, tests=[${TESTS_RUN:-none}]"
 fi
 
-# D2 — stdout belongs to the wrapped command.
+# D2: stdout belongs to the wrapped command.
 MAVEN_MARKERS=$(grep -cE "^\[INFO\]|BUILD SUCCESS" "${TMP_DIR}/stdout.log")
 PS_ON_STDOUT=$(grep -ciE "^Capture:|perf-sentinel" "${TMP_DIR}/stdout.log")
 if [ "${MAVEN_MARKERS}" -gt 0 ] && [ "${PS_ON_STDOUT}" = "0" ]; then
@@ -220,7 +219,7 @@ else
   assert_fail "D2" "maven lines=${MAVEN_MARKERS}, perf-sentinel lines on stdout=${PS_ON_STDOUT}: $(grep -iE '^Capture:|perf-sentinel' "${TMP_DIR}/stdout.log" | head -1)"
 fi
 
-# D6 — no batch lost at JVM shutdown: ITEMS JDBC spans plus one SERVER parent.
+# D6: no batch lost at JVM shutdown: ITEMS JDBC spans plus one SERVER parent.
 EXPECTED_SPANS=$((ITEMS + 1))
 if [ "${CAP_SPANS}" = "${EXPECTED_SPANS}" ]; then
   assert_pass "D6" "${CAP_SPANS} spans captured = ${ITEMS} JDBC + 1 SERVER, nothing lost at shutdown"
@@ -228,7 +227,6 @@ else
   assert_fail "D6" "captured ${CAP_SPANS} spans, expected ${EXPECTED_SPANS} (a short fall points at --grace-ms, default 2000, not at the ingest)"
 fi
 
-# ── the D3 reference: same test, Collector file exporter ────────────────────
 step "D3 reference: the same IT exported to a Collector file exporter"
 docker rm -f "${COLLECTOR_CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${COLLECTOR_CONTAINER}" \
@@ -255,7 +253,7 @@ REF_CENSUS="$(census "${TMP_DIR}/ref-findings.json")"
 echo "${REF_CENSUS}" | grep -q 'n_plus_one_sql' \
   || die "the Collector reference itself has no n_plus_one_sql — the payload is wrong, not the capture"
 
-# D3 — parity, not mere presence.
+# D3: parity, not mere presence.
 step "D3: capture census == Collector census"
 analyze_json "${CAP_OUT}" "${TMP_DIR}/cap-findings.json"
 CAP_CENSUS="$(census "${TMP_DIR}/cap-findings.json")"
@@ -267,7 +265,6 @@ else
   assert_fail "D3" "capture: ${CAP_OCC} occurrences / Collector reference: ${REF_OCC} (expected ${ITEMS}); census equal: $([ "${CAP_CENSUS}" = "${REF_CENSUS}" ] && echo yes || echo no)"
 fi
 
-# ── D4: a failing test stays a failing job ──────────────────────────────────
 step "D4: a failing test surfaces as Maven's exit code through the wrapper"
 "${PERF_SENTINEL_LOCAL_BIN}" capture --output "${TMP_DIR}/d4-traces.json" \
   --listen-port-grpc "${CAPTURE_GRPC}" --listen-port-http "${CAPTURE_HTTP}" \
@@ -325,7 +322,7 @@ gen() {  # telemetrygen from a neighbouring container, reaching the host listene
 # A missing directory used to land here. Since 0.9.25 it is created (F7), so the
 # refusal has to be probed with a path that creating a directory cannot fix: a
 # parent that is a regular file. The refusal itself must stay, and it must stay
-# BEFORE the wrapped command starts — a capture that cannot listen must never
+# BEFORE the wrapped command starts: a capture that cannot listen must never
 # leave a test suite running detached.
 step "F3: --output under a parent that is a regular file"
 rm -f "${TMP_DIR}/f3-witness"
@@ -340,7 +337,7 @@ else
   assert_fail "F3" "rc=${F3_RC} (want 1), witness present=$([ -f "${TMP_DIR}/f3-witness" ] && echo yes || echo no)"
 fi
 
-# F7 — the defect this scenario reported from a real Jenkins controller: on a
+# F7: the defect this scenario reported from a real Jenkins controller: on a
 # clean CI workspace `target/` does not exist yet, because Maven is what creates
 # it and Maven is the command being wrapped. 0.9.24 refused to start, so the
 # integration suite never ran at all. A fresh copy of the fixtures is used
@@ -365,8 +362,8 @@ else
   assert_fail "F7" "rc=${F7_RC}, spans=${F7_SPANS}, failsafe reports=${F7_TESTS}: $(grep -o 'Capture error: .*' "${TMP_DIR}/f7-stderr.log" | head -1 | cut -c1-90)"
 fi
 
-# F8 — the other half of the same fix. `mvn clean` deletes target/ AFTER capture
-# opened the file in it; on Unix the writer keeps filling an unlinked inode, so
+# F8: the other half of the same fix. `mvn clean` deletes target/ AFTER capture
+# opened the file in it. On Unix the writer keeps filling an unlinked inode, so
 # every counter stays real while the path holds nothing. 0.9.24 printed a span
 # count and exited 0, sending the next step to a file that never existed.
 # Reusing F7's workspace on purpose: target/ is now populated, which is what a
@@ -420,7 +417,7 @@ docker run -d --name jcc-gen --add-host=host.docker.internal:host-gateway "${GEN
   --duration 300s --workers 20 --child-spans 25 >/dev/null 2>&1
 # Throughput from a container to the host is machine-dependent, so wait for the
 # cap rather than for a fixed time, and SKIP instead of failing if it never
-# arrives — a slow host must not read as a broken size guard.
+# arrives: a slow host must not read as a broken size guard.
 F1_CAPPED=0
 for _ in $(seq 1 "${F1_WAIT_S:-240}"); do
   grep -qi "size limit reached" "${TMP_DIR}/f1-stderr.log" && { F1_CAPPED=1; break; }
@@ -438,7 +435,7 @@ else
   assert_fail "F1" "rc=${F1_RC} (want 2), message: $(grep -o 'Capture: .*' "${TMP_DIR}/f1-stderr.log" | tail -1 | cut -c1-90)"
 fi
 
-# F2 — the two rejection causes must be told apart. Round 2 found them sharing
+# F2: the two rejection causes must be told apart. Round 2 found them sharing
 # one counter, so a misconfigured exporter was reported as writer backpressure.
 # Both causes still exit 2 (the file is incomplete either way); what must differ
 # is the diagnosis the user acts on.
@@ -487,7 +484,7 @@ for _ in $(seq 1 30); do lsof -ti "tcp:${CAPTURE_GRPC}" >/dev/null 2>&1 && break
 gen --traces 10 --workers 2
 # The grandchild is what a Failsafe fork would be. Probed by PID: a witness file
 # written after the sleep is absent whether the process lives or not, so it
-# proves nothing — the round-2 leg had exactly that hole.
+# proves nothing: the round-2 leg had exactly that hole.
 GRANDCHILD="$(pgrep -f '^sleep 90' | head -1)"
 [ -n "${GRANDCHILD}" ] || die "F4: no grandchild to probe, the wrapped command never started"
 kill -TERM "${CAPTURE_PID}" 2>/dev/null; wait "${CAPTURE_PID}" 2>/dev/null; F4_RC=$?
@@ -504,7 +501,7 @@ else
   assert_fail "F4" "grandchild ${GRANDCHILD} alive=${ALIVE} (orphaned, reparented to init), file re-readable=${F4_VALID}, capture rc=${F4_RC}"
 fi
 
-# F6 — genuine writer saturation, measurable only now that the two rejection
+# F6: genuine writer saturation, measurable only now that the two rejection
 # causes are separate counters. The exporter cannot be made fast enough from a
 # container (~1 req/s), so the writer is blocked instead: the output is a FIFO
 # whose reader holds it open and reads nothing, which stalls the writer while the

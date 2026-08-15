@@ -12,25 +12,27 @@ together:
 - **`disclose` / `disclose-temporal`** lock the report schema and
   aggregation logic, hermetically, against committed NDJSON fixtures. They
   never touch the chart or a cluster.
-- **`chart-prometheusrule-pdb`** is the only other scenario that renders and
-  installs the real chart (`charts/perf-sentinel/` in the perf-sentinel
-  repo, which the lab does not vendor: the shared observability daemon ships
-  via `manifests/perf-sentinel-daemon.yaml`), but it locks Phase A only
-  (`PrometheusRule` + `PodDisruptionBudget`), not persistence.
-- **`daemon-ack-workflow`** proves PVC-backed persistence survives a rollout
-  restart, but against the lab's own hand-written manifest, never through
-  the chart's `StatefulSet` template or the auto-injection in
-  `templates/configmap.yaml` that points `[daemon.ack] storage_path` and
-  `[daemon.archive] path` at the mounted PVC.
+- **`chart-prometheusrule-pdb`** is the only other scenario that renders
+  and installs the real chart, `charts/perf-sentinel/` in the
+  perf-sentinel repo. The lab does not vendor it, and the shared
+  observability daemon ships via `manifests/perf-sentinel-daemon.yaml`.
+  That scenario locks Phase A only, `PrometheusRule` +
+  `PodDisruptionBudget`, not persistence.
+- **`daemon-ack-workflow`** proves PVC-backed persistence survives a
+  rollout restart, but against the lab's own hand-written manifest. It
+  never goes through the chart's `StatefulSet` template, nor through the
+  auto-injection in `templates/configmap.yaml` that points
+  `[daemon.ack] storage_path` and `[daemon.archive] path` at the mounted
+  PVC.
 
-So the chart's render-time guards are unit-tested
-(`scripts/test/chart-render-guards-test.sh` in the perf-sentinel repo) and
+So the chart's render-time guards are unit-tested by
+`scripts/test/chart-render-guards-test.sh` in the perf-sentinel repo, and
 `StatefulSet`+persistence is schema-validated by `helm-ci.yml`'s
-`template-matrix` leg, but nobody installs it and proves the archive comes
+`template-matrix` leg. But nobody installs it and proves the archive comes
 back after a pod is rescheduled. Chart `0.2.57` shipped exactly that class
-of bug once already: the PVC was mounted at `/var/lib/perf-sentinel` but
-nothing pointed at it, so the ack store fell back to a non-writable default
-and disclose archiving stayed silently inert despite
+of bug once already. The PVC was mounted at `/var/lib/perf-sentinel` but
+nothing pointed at it, so the ack store fell back to a non-writable
+default and disclose archiving stayed silently inert despite
 `persistence.enabled=true`. This scenario is the live regression net.
 
 ## Two constraints worth knowing before reading `verify.sh`
@@ -49,7 +51,7 @@ mistaken for a legitimately empty archive, the same guard
 buffers into a `BufWriter` and only flushes on rotation (`max_size_mb`,
 100 MB) or the graceful `SIGTERM` drain. A trace leaving the correlation
 window (`active_traces` back to 0) therefore does *not* mean its window is
-on disk yet; the scale-down is what persists it.
+on disk yet. The scale-down is what persists it.
 
 ## Which chart gets installed
 
@@ -65,17 +67,19 @@ docs/SCENARIOS.md "Supply chain pinning"):
 | `oci`            | force the newest published chart                                                     |                                                                |
 | `local`          | force `PERF_SENTINEL_CHART`                                                          |                                                                |
 
-`CHART_VERSION=X.Y.Z` pins explicitly and genuinely skips registry resolution,
-so it is the escape hatch when the tag list is unreachable. In `local` mode it
-is only accepted when it matches `Chart.yaml`: helm resolves a directory chart
-by path and ignores `--version` outright, so honouring a different value would
-make the report name a version that was never installed.
+`CHART_VERSION=X.Y.Z` pins explicitly and genuinely skips registry
+resolution, so it is the escape hatch when the tag list is unreachable. In
+`local` mode it is only accepted when it matches `Chart.yaml`. Helm
+resolves a directory chart by path and ignores `--version` outright, so
+honouring a different value would make the report name a version that was
+never installed.
 
-`auto` deliberately does **not** fall back to the local chart when the registry
-is unreachable. That fallback would let a stale checkout be installed, PASSed
-and written into the release-gate ledger as if it were the published chart,
-with the cosign leg silently skipped on top. An unreachable registry makes a
-run inconclusive, not green, so it stops and tells you to choose explicitly.
+`auto` deliberately does **not** fall back to the local chart when the
+registry is unreachable. That fallback would let a stale checkout be
+installed, PASSed and written into the release-gate ledger as if it were
+the published chart. The cosign leg would be silently skipped on top. An
+unreachable registry makes a run inconclusive, not green, so it stops and
+tells you to choose explicitly.
 
 The newest published version comes from the anonymous GHCR Registry v2 tag
 list, the same shape as the product's `scripts/release-chart.sh`
@@ -89,15 +93,16 @@ In `oci` mode the scenario needs **no perf-sentinel checkout at all**, which is
 what makes it runnable where the product source is absent, unlike
 `chart-prometheusrule-pdb`.
 
-The daemon image defaults to what the chart itself selects (`image.repository`
-with `image.tag` falling back to `appVersion`), so the run exercises the
-chart/daemon pairing a real user gets rather than a combination nobody deploys.
+The daemon image defaults to what the chart itself selects:
+`image.repository`, with `image.tag` falling back to `appVersion`. The run
+therefore exercises the chart/daemon pairing a real user gets, rather than
+a combination nobody deploys.
 
 `DAEMON_IMAGE=repo:tag` overrides it. That is required for a genuine
-release-candidate run: a locally bumped chart names an `appVersion` whose image
-is only pushed at tag time, so without an override the pod sits in
-ImagePullBackOff and the install times out. Build and import one first with
-`scripts/seed-daemon-local.sh`.
+release-candidate run. A locally bumped chart names an `appVersion` whose
+image is only pushed at tag time, so without an override the pod sits in
+ImagePullBackOff and the install times out. Build and import one first
+with `scripts/seed-daemon-local.sh`.
 
 ## Sequence
 
@@ -137,8 +142,8 @@ and names the chart source and version the run certifies.
 
 `disclose-roundtrip` deliberately asserts the aggregate's window count and
 anti-pattern count rather than the presence of `schema_version` /
-`aggregate`: those two are non-optional fields of `PeriodicReport`, so
-checking for them would pass for any report the binary can emit and prove
+`aggregate`. Those two are non-optional fields of `PeriodicReport`, so
+checking for them would pass for any report the binary can emit, and prove
 nothing about the persisted archive having been read.
 
 ## Inputs
@@ -158,21 +163,21 @@ nothing about the persisted archive having been read.
 ## Runtime prerequisites
 
 - A cluster. The full lab (`make up-cni`) works, but so does a bare
-  `k3d cluster create <name> --servers 1 --agents 0`: the scenario creates its
-  own namespace and references neither `observability`, nor Cilium, nor any
-  seeded service, so it does not need `make seed-services` nor the 8-10 minute
-  Cilium bootstrap. `--agents 0` also sidesteps node affinity on the
-  ReadWriteOnce PVC.
+  `k3d cluster create <name> --servers 1 --agents 0`. The scenario creates
+  its own namespace and references neither `observability`, nor Cilium,
+  nor any seeded service. It does not need `make seed-services`, and it
+  does not need the 8-10 minute Cilium bootstrap. `--agents 0` also
+  sidesteps node affinity on the ReadWriteOnce PVC.
 - The shared N+1 OTLP fixture at
   `scenarios/daemon-sigterm-drain/fixtures/n-plus-one-positive.pb`
   (regenerate with that scenario's `fixtures/generate.py` if missing).
 - The image reachable from the **host** docker daemon for the `disclose`
-  step. A successful `helm install` does not imply this: k3d nodes pull into
-  the node container's containerd, and `k3d image import` side-loads there
-  too, neither of which populates the host store. The scenario resolves the
-  image up front (`docker image inspect`, then `docker pull`) and SKIPs the
-  disclose step with a warning rather than failing it when the host cannot
-  get the image.
+  step. A successful `helm install` does not imply this: k3d nodes pull
+  into the node container's containerd, and `k3d image import` side-loads
+  there too, neither of which populates the host store. The scenario
+  resolves the image up front with `docker image inspect`, then
+  `docker pull`. When the host cannot get the image it SKIPs the disclose
+  step with a warning rather than failing it.
 - A default StorageClass with dynamic provisioning (already relied on by
   `daemon-ack-workflow`'s `perf-sentinel-acks` PVC).
 
@@ -186,22 +191,22 @@ and that gap already exists for `daemon-ack-workflow`.
 
 ## On `cosign-verify`
 
-Optional, and it needs **cosign 3.x**. Published charts are signed with the
-Sigstore bundle format attached as an OCI 1.1 *referrer*, not as a legacy
-`sha256-<digest>.sig` tag, so cosign 2.x answers `no signatures found` on a
-chart that is perfectly signed.
+Optional, and it needs **cosign 3.x**. Published charts are signed with
+the Sigstore bundle format attached as an OCI 1.1 *referrer*, not as a
+legacy `sha256-<digest>.sig` tag. cosign 2.x therefore answers
+`no signatures found` on a chart that is perfectly signed.
 
 That message alone cannot tell "verifier too old" from "artifact genuinely
-unsigned", so the branch also checks the installed major version: below 3 it
-SKIPs naming the version, at 3 or above the same message is treated as a real
-supply-chain regression and FAILs. Downgrading it to SKIP unconditionally would
-let the gate certify an unsigned chart while printing a line claiming it is
-signed.
+unsigned", so the branch also checks the installed major version. Below 3
+it SKIPs, naming the version. At 3 or above the same message is treated as
+a real supply-chain regression and FAILs. Downgrading it to SKIP
+unconditionally would let the gate certify an unsigned chart while
+printing a line claiming it is signed.
 
-The identity regex also uses `[.]` instead of `\.`: Git Bash rewrites backslash
-escapes inside arguments, so the documented `\.` form arrives as `/.` and fails
-with a misleading `no matching CertificateIdentity`. `[.]` is equivalent and
-survives every shell.
+The identity regex also uses `[.]` instead of `\.`. Git Bash rewrites
+backslash escapes inside arguments, so the documented `\.` form arrives as
+`/.` and fails with a misleading `no matching CertificateIdentity`. `[.]`
+is equivalent and survives every shell.
 
 Verified on chart 0.9.21 with cosign v3.1.2: identity
 `helm-release.yml@refs/tags/chart-v0.9.21`, transparency-log entry checked.

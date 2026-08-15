@@ -113,7 +113,7 @@ spec:
     - { name: otlp-http, port: 14318, targetPort: 14318 }
     - { name: otlp-grpc, port: 14317, targetPort: 14317 }
 ---
-# Same-namespace Jobs reach the daemon; DNS via kube-system.
+# Same-namespace Jobs reach the daemon. DNS via kube-system.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

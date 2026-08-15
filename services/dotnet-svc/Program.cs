@@ -5,16 +5,16 @@ using Microsoft.EntityFrameworkCore;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-// dotnet-svc — .NET 10 LTS multistack member. Minimal API, EF Core 10
+// dotnet-svc: .NET 10 LTS multistack member. Minimal API, EF Core 10
 // + Npgsql (with the OpenTelemetry EF Core ActivitySource that emits
 // the `OpenTelemetry.Instrumentation.EntityFrameworkCore` scope used
 // by perf-sentinel's strict classifier as the ORM marker).
 //
 // Env overrides:
-//   HTTP_PORT          — overrides Service:Port from appsettings
-//   SELF_BASE_URL      — overrides Service:SelfBaseUrl
-//   ConnectionStrings__Default — overrides the DB connection string
-//   OTEL_*             — standard OTel env vars consumed by the OTel SDK
+//   HTTP_PORT: overrides Service:Port from appsettings
+//   SELF_BASE_URL: overrides Service:SelfBaseUrl
+//   ConnectionStrings__Default: overrides the DB connection string
+//   OTEL_*: standard OTel env vars consumed by the OTel SDK
 var builder = WebApplication.CreateBuilder(args);
 
 int httpPort = EnvOrInt("HTTP_PORT", builder.Configuration.GetValue<int?>("Service:Port") ?? 8087);

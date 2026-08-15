@@ -61,9 +61,9 @@ Generates ~17 MiB of valid TOML (above the 16 MiB cap from
 
 ### 6.D. Sanity gate
 
-Runs `analyze --ci` against the clean baseline as a smoke check on the
-CLI plumbing. Logged informationally; on long-lived clusters the gate
-may fail on residue findings, which is acceptable.
+Runs `analyze --ci` against the clean baseline as a smoke check on
+the CLI plumbing. Logged informationally. On long-lived clusters
+the gate may fail on residue findings, which is acceptable.
 
 ## Limitations
 
@@ -86,7 +86,8 @@ may fail on residue findings, which is acceptable.
 reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
 GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
 
-It used to default to a hardcoded old tag, so the scenario ran green on every
-release without ever touching the version under validation — the gate reported a
-PASS for code it had not executed. The 0.9.25 round is what surfaced that, and
-the eight image scenarios now share this resolution.
+It used to default to a hardcoded old tag, so the scenario ran
+green on every release without ever touching the version under
+validation. The gate reported a PASS for code it had not executed.
+The 0.9.25 round is what surfaced that, and the eight image
+scenarios now share this resolution.

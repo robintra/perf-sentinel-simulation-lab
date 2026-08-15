@@ -14,7 +14,7 @@
 #      present.
 # 3. Best-effort runtime via `nektos/act --list` to confirm act parses
 #    the workflow. Full execution would require gh-pages, secrets,
-#    network, and a working Linux amd64 binary URL; SKIP gracefully.
+#    network, and a working Linux amd64 binary URL. SKIP gracefully.
 #
 # Optional knobs:
 #   UPSTREAM_VERSION    override version (default 0.13.1)
@@ -49,7 +49,6 @@ die()  { color_red   "    error: $*"; cat "${REPORT}" 2>/dev/null || true; exit 
 
 verdict="UNKNOWN"
 
-# === Step 1: fetch ===
 step "1. Fetch upstream github-actions.yml at v${UPSTREAM_VERSION}"
 
 if [ -n "${UPSTREAM_PATH:-}" ] && [ -f "${UPSTREAM_PATH}" ]; then
@@ -67,7 +66,6 @@ fi
 UPSTREAM_BYTES=$(wc -c < "${TMP_DIR}/github-actions.yml")
 ok "template size: ${UPSTREAM_BYTES} bytes"
 
-# === Step 2: structural lint ===
 step "2. Structural invariants"
 
 # YAML parse via python (use full_load for tolerance to unknown tags).
@@ -150,7 +148,6 @@ fi
 
 STRUCTURAL_VERDICT="PASS"
 
-# === Step 3: schema lint via actionlint ===
 step "3. actionlint (GHA-aware schema + expression validator)"
 
 if [ "${SKIP_RUNTIME:-0}" = "1" ]; then
@@ -188,7 +185,6 @@ else
   fi
 fi
 
-# === Verdict ===
 step "4. Verdict"
 
 case "${STRUCTURAL_VERDICT}/${RUNTIME_VERDICT}" in

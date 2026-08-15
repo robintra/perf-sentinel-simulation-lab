@@ -21,7 +21,7 @@
 #   2. INPUT_ERROR on missing report. Locks exit 3 distinct from exit 1, so
 #      a wrapper script reacts differently to a wrong path than to tamper.
 #
-#   3. NETWORK_ERROR on `--url http://...`. HTTPS-only hardening; locks
+#   3. NETWORK_ERROR on `--url http://...`. HTTPS-only hardening. Locks
 #      exit 4 distinct from exit 3.
 #
 #   4. UNTRUSTED with the v0.7.0 identity-required error when the report
@@ -42,7 +42,7 @@
 #   - exit 2 PARTIAL on hash-valid + signature-absent
 # Both require recomputing the canonical content hash, which is an
 # in-process Rust call (`compute_content_hash`) without a CLI surface.
-# Tracked as follow-up; a `hash-bake` CLI helper would unlock them.
+# Tracked as follow-up. A `hash-bake` CLI helper would unlock them.
 
 set -euo pipefail
 
@@ -76,7 +76,6 @@ else
   DOCKER_NET_FLAGS=(--add-host=host.docker.internal:host-gateway)
 fi
 
-# === Pre-flight ===
 step "0. Pre-flight"
 
 command -v docker >/dev/null || die "docker not on PATH"
@@ -138,7 +137,6 @@ record() {
   SUBTEST_NOTES+=("$3")
 }
 
-# === Sub-test 1: placeholder hash -> UNTRUSTED, exit 1 ===
 step "1. Placeholder hash detection (exit 1, [FAIL] Content hash)"
 run_verify --report /workdir/g2.json
 if [ "${RUN_EXIT}" -eq 1 ] && [[ "${RUN_OUT}" == *"[FAIL] Content hash"* ]]; then
@@ -149,7 +147,6 @@ else
   record "1. placeholder hash" FAIL "exit=${RUN_EXIT}, output snippet: $(echo "${RUN_OUT}" | head -1)"
 fi
 
-# === Sub-test 2: missing report -> INPUT_ERROR, exit 3 ===
 step "2. Missing report INPUT_ERROR (exit 3)"
 run_verify --report /workdir/does-not-exist.json
 if [ "${RUN_EXIT}" -eq 3 ]; then
@@ -193,7 +190,6 @@ else
   record "5. half-pair rejection" FAIL "exit=${RUN_EXIT}, snippet: $(echo "${RUN_OUT}" | grep -i together | head -1 || echo none)"
 fi
 
-# === Sub-test 6: hash-bake roundtrip on unsigned -> PARTIAL (exit 2) ===
 step "6. hash-bake roundtrip on unsigned report (verify-hash exit 2 PARTIAL)"
 run_bake --report /workdir/g2.json --output /workdir/baked-g2.json
 if [ "${RUN_EXIT}" -ne 0 ]; then
@@ -210,7 +206,6 @@ else
   fi
 fi
 
-# === Sub-test 7: hash-bake refusal on signed report without --allow-signed ===
 step "7. hash-bake refuses signed report without --allow-signed (exit 1), accepts with flag (exit 0)"
 run_bake --report /workdir/g2-signed.json --output /workdir/baked-signed.json
 if [ "${RUN_EXIT}" -ne 1 ]; then

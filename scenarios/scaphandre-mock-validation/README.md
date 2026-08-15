@@ -56,18 +56,20 @@ prior `kubectl port-forward` on 9100.
    time between scrapes). Fails when both samples drift above the
    interval (scraper hung) or when the gauge is absent (build
    without the Scaphandre module).
-6. Mock degradation: `kubectl scale deployment/scaphandre-mock
-   --replicas=0`, sleep `DEGRADE_WAIT_SEC`, assert daemon
-   `/api/status` still answers and the union
+6. Mock degradation:
+   `kubectl scale deployment/scaphandre-mock --replicas=0`, sleep
+   `DEGRADE_WAIT_SEC`, assert daemon `/api/status` still answers
+   and the union
    `scrape_failed_total{reason="unreachable"} + scrape_failed_total{reason="timeout"}`
-   shows a positive delta. Either reason is a valid classification of
-   "service has no endpoints" depending on the network stack (Cilium
-   drops silently → `timeout` at the reqwest layer; kube-proxy iptables
-   rejects with ICMP → `unreachable`). Asserting on the union still
-   rules out the 5 other reasons (`http_error`, `body_read_error`,
-   `body_too_large`, `request_error`, `invalid_utf8`), which would all
-   be upstream bugs in this fault model. The trap restores
-   `--replicas=1` on exit, even on interruption.
+   shows a positive delta. Either reason is a valid classification
+   of "service has no endpoints" depending on the network stack
+   (Cilium drops silently → `timeout` at the reqwest layer.
+   kube-proxy iptables rejects with ICMP → `unreachable`).
+   Asserting on the union still rules out the 5 other reasons
+   (`http_error`, `body_read_error`, `body_too_large`,
+   `request_error`, `invalid_utf8`), which would all be upstream
+   bugs in this fault model. The trap restores `--replicas=1` on
+   exit, even on interruption.
 
 ## How to run
 

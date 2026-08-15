@@ -68,12 +68,13 @@ Concretely:
   daemon (upstream chart wraps choices we override anyway), PostgreSQL
   (single StatefulSet, init via ConfigMap is enough), namespaces,
   Grafana dashboards (loaded as ConfigMap).
-- **Helm chart**: kube-prometheus-stack (CRDs + operator + several
-  workloads), OTel Collector contrib (config rendering and DaemonSet
-  template are non-trivial), the three Java services (Deployment +
-  Service + Secret + ServiceMonitor each, authored locally because the
-  brief targets parity with enterprise Spring Boot deployments where
-  per-service charts are the convention).
+- **Helm chart**: kube-prometheus-stack, for its CRDs, operator
+  and several workloads. OTel Collector contrib, whose config
+  rendering and DaemonSet template are non-trivial. The three
+  Java services, one Deployment + Service + Secret +
+  ServiceMonitor each. Those three are authored locally, because
+  the brief targets parity with enterprise Spring Boot
+  deployments, where per-service charts are the convention.
 
 When a chart switches status (e.g. Tempo Operator gets a maintained
 chart, or kube-prometheus-stack splits), revisit this split.
@@ -82,12 +83,13 @@ chart, or kube-prometheus-stack splits), revisit this split.
 
 ### Tempo single-binary (direct manifest)
 
-Tempo 3.0.0 is deployed via `manifests/tempo.yaml` in single-binary
-mode (`-target=all`). No Helm chart: both official Grafana charts
-(`grafana/tempo` and `grafana/tempo-distributed`) are flagged
-`deprecated: true` and Grafana points to the Tempo Operator, which
-does not yet have an officially maintained Helm chart. The direct
-manifest sidesteps that friction and reads more clearly.
+Tempo 3.0.0 is deployed via `manifests/tempo.yaml` in
+single-binary mode (`-target=all`). No Helm chart is used. Both
+official Grafana charts (`grafana/tempo` and
+`grafana/tempo-distributed`) are flagged `deprecated: true`, and
+Grafana points to the Tempo Operator, which does not yet have an
+officially maintained Helm chart. The direct manifest sidesteps
+that friction and reads more clearly.
 
 Single-binary instead of microservices (distributed) because the
 distributed variant requires 5 to 9 Tempo pods plus an object store
@@ -280,20 +282,22 @@ The daemon's `trace_ttl_ms` is set to 5 seconds (instead of the
 default 60 seconds) so findings emerge quickly enough for the 15s
 wait to suffice. Production deployments would use the longer TTL.
 
-The OTel Collector exporter that targets the daemon leaves `compression`
-unset, so the OTel default (gzip) applies: the daemon's `/v1/traces`
-handler has decompressed request bodies since 0.5.5, and the lab's old
-`compression: none` workaround was removed then (see
-`docs/TROUBLESHOOTING.md`, "gzip on the daemon exporter").
+The OTel Collector exporter that targets the daemon leaves
+`compression` unset, so the OTel default (gzip) applies. The
+daemon's `/v1/traces` handler has decompressed request bodies
+since 0.5.5, and the lab's old `compression: none` workaround was
+removed then (see `docs/TROUBLESHOOTING.md`, "gzip on the daemon
+exporter").
 
-The exporter is `otlphttp/perf_sentinel` on `:14318`, so the nominal lab
-path is OTLP **HTTP**. The daemon's gRPC listener on `:14317` is covered
-by the `otlp-compression-matrix` scenario, which runs the full transport
-× encoding matrix against a throwaway daemon and, in its cluster leg,
-temporarily switches this collector to `otlp/perf_sentinel` on `:14317`
-before reverting. That separation is deliberate: a single collector
-exporting to both ports would ingest every span twice and skew every
-finding count in the suite.
+The exporter is `otlphttp/perf_sentinel` on `:14318`, so the
+nominal lab path is OTLP **HTTP**. The daemon's gRPC listener on
+`:14317` is covered by the `otlp-compression-matrix` scenario.
+That scenario runs the full transport × encoding matrix against a
+throwaway daemon. In its cluster leg it temporarily switches this
+collector to `otlp/perf_sentinel` on `:14317`, then reverts. That
+separation is deliberate: a single collector exporting to both
+ports would ingest every span twice and skew every finding count
+in the suite.
 
 ## Network segmentation
 

@@ -1,13 +1,13 @@
-// go-svc — Go 1.26 multistack member for perf-sentinel-simulation-lab.
+// go-svc: Go 1.26 multistack member for perf-sentinel-simulation-lab.
 // chi router wrapped by otelhttp, pgx pool wrapped by otelpgx.
 //
 // Env overrides:
 //
-//	HTTP_PORT      — overrides the default port 8093.
-//	SELF_BASE_URL  — overrides the self-loop base URL.
-//	DB_DSN         — Postgres connection string (Postgres URL or
+//	HTTP_PORT: overrides the default port 8093.
+//	SELF_BASE_URL: overrides the self-loop base URL.
+//	DB_DSN: Postgres connection string (Postgres URL or
 //	                 key=value form parseable by pgxpool).
-//	OTEL_*         — standard OTel env vars consumed by the SDK.
+//	OTEL_*: standard OTel env vars consumed by the SDK.
 package main
 
 import (

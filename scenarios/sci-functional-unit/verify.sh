@@ -67,7 +67,7 @@ assert_sci() {
   # summed, and 0.9.25 always counts network transport, so it reads
   # `sci_v1_numerator+transport` on any run with cross-region traffic. What this
   # leg asserts is the SCI numerator family, not which optional terms landed in
-  # it — pinning the bare string turned a documented behaviour change into a
+  # it: pinning the bare string turned a documented behaviour change into a
   # lab failure the moment the scenario stopped running on its old pinned image.
   case "$(jq -r '.green_summary.co2.total.methodology' "$f")" in
     sci_v1_numerator|sci_v1_numerator+*) : ;;
@@ -80,7 +80,6 @@ assert_sci() {
   return 0
 }
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v docker >/dev/null || die "docker not on PATH"
 command -v jq >/dev/null || die "jq not on PATH"
@@ -91,7 +90,6 @@ cp "${TRACES}" "${TMP_DIR}/traces.json"
 cp "${FIXTURES_DIR}/green.toml" "${TMP_DIR}/green.toml"
 ok "image + fixtures OK (${IMAGE})"
 
-# === 1. batch ===
 step "1. batch: analyze --format json with [green] default_region"
 in_image analyze --input /workdir/traces.json --config /workdir/green.toml --format json \
   > "${TMP_DIR}/out.json" 2>"${TMP_DIR}/analyze-err.txt" || die "analyze failed: $(tail -2 "${TMP_DIR}/analyze-err.txt")"
@@ -99,7 +97,6 @@ jq -e '.green_summary.co2' "${TMP_DIR}/out.json" >/dev/null || die "no green_sum
 if assert_sci "${TMP_DIR}/out.json" "batch"; then record "batch-sci" "PASS" "fields + invariant"
 else record "batch-sci" "FAIL" "see log"; fi
 
-# === 2. daemon ===
 step "2. daemon: GET /api/export/report carries sci_per_trace + functional_unit"
 if curl -fsS --max-time 5 "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
   # Combine fetch + non-empty body so a 200 with an empty body still records a
@@ -128,7 +125,7 @@ else
 fi
 
 # === 3. SQL split (0.9.13): green_summary.{total,avoidable}_sql_io_ops ===
-# The docker legs above run the released image; this leg exercises the RC under
+# The docker legs above run the released image. This leg exercises the RC under
 # test through the local release binary on three protocol mixes. SKIPs cleanly
 # when no local checkout is present (steady-state CI without the product repo).
 step "3. SQL split: green_summary sql_io_ops (local binary, RC under test)"
@@ -177,7 +174,6 @@ else
   record "split" "SKIP" "no local binary at ${LOCAL_BIN}"
 fi
 
-# === Summary ===
 step "Summary"
 pass=0; failc=0; skip=0
 { echo "# ${SCENARIO}"; echo; } > "${REPORT}"

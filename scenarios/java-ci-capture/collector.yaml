@@ -12,7 +12,7 @@ exporters:
 service:
   telemetry:
     logs:
-      # info so the "Everything is ready" startup banner is emitted —
+      # info so the "Everything is ready" startup banner is emitted, and
       # verify.sh gates readiness on it (same trick as batch-otlp-file).
       level: info
   pipelines:

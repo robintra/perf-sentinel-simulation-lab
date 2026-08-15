@@ -97,7 +97,7 @@ run_analyze "${DEGRADED}" base || die "analyze failed on the untransformed degra
 BASE_TA="$(traces_analyzed base)"
 BASE_COUNTS="$(class_counts base)"
 [ "${BASE_TA}" -gt 0 ] || die "baseline analyzed zero traces"
-# D1-D3 assert equality against BASE_COUNTS; a zero-finding baseline makes
+# D1-D3 assert equality against BASE_COUNTS. A zero-finding baseline makes
 # every check compare ""=="" and pass vacuously, so floor the baseline here.
 [ -n "${BASE_COUNTS}" ] || die "baseline produced zero findings - the equality gate would be vacuous (fixture or detector regression)"
 ok "baseline: traces_analyzed=${BASE_TA}, findings [${BASE_COUNTS:-none}], events=$(events_processed base)"

@@ -1,7 +1,7 @@
 # ack-lifecycle-warning
 
 The full life of a CI acknowledgment on real artefacts: created, matched,
-fixed, not exercised — and replayed.
+fixed, not exercised, and replayed.
 
 ## Why it exists
 
@@ -17,12 +17,13 @@ using the run's per-endpoint I/O counts:
 | entry without the two fields | *either fixed … or the scenario that produced it did not run (add service and source_endpoint to the entry to tell the two apart)* |
 
 The half that actually needs a lab is the **guard**. The warning must be
-derived only from a fresh analysis of traces. A pre-computed report — a daemon
-`/api/export/report` snapshot, or a report JSON replayed through
-`report --input` — is *already ack-filtered*, so every entry still doing its
-job looks unmatched there. Without the guard the tool advises deleting exactly
-the acknowledgments that are working, and nothing errors out: the operator just
-removes a useful entry and the finding comes back at the next release.
+derived only from a fresh analysis of traces. A pre-computed report is
+*already ack-filtered*, whether it is a daemon `/api/export/report`
+snapshot or a report JSON replayed through `report --input`. Every entry
+still doing its job therefore looks unmatched there. Without the guard the
+tool advises deleting exactly the acknowledgments that are working, and
+nothing errors out: the operator just removes a useful entry and the
+finding comes back at the next release.
 
 Unit tests can pin the message strings. What they cannot do is take a real
 daemon export, a real acks file and the real CLI, and check that the advice
@@ -42,11 +43,12 @@ never appears on the replayed path.
 | A2.3 | `report --input <daemon snapshot>` advises nothing (committed fixture, plus a live daemon when reachable) |
 | A3 | `diff` carries the after run's warnings in text and in `warning_details`, and `.new_findings` stays readable for the lab's existing `jq` consumer |
 
-A2.1 is not decoration. Both guard assertions are *silence* checks, and silence
-is free on any version that never emits the warning — every release before
-0.9.28 included. The control turns "nothing appeared" into evidence. Run
-against a 0.9.26 binary this scenario fails five legs, A2.1 among them, and its
-message says precisely that the guard checks would have passed vacuously.
+A2.1 is not decoration. Both guard assertions are *silence* checks, and
+silence is free on any version that never emits the warning, every release
+before 0.9.28 included. The control turns "nothing appeared" into evidence.
+Run against a 0.9.26 binary this scenario fails five legs, A2.1 among them,
+and its message says precisely that the guard checks would have passed
+vacuously.
 
 A1.4 keeps the service busy on *other* endpoints on purpose: a check that keyed
 on the service alone rather than on the (service, endpoint) pair would wrongly
@@ -73,22 +75,24 @@ Report: `/tmp/scenario-ack-lifecycle-warning-report.md`.
 Three native trace files sharing one service and one endpoint, so the same
 acknowledgment travels all three:
 
-- `nplusone.native.json` — 8 sibling SELECTs on `/api/orders` (the finding)
-- `fixed.native.json` — the same endpoint, one batched query (I/O, no finding)
-- `elsewhere.native.json` — traffic on other endpoints of the same service only
+- `nplusone.native.json`: 8 sibling SELECTs on `/api/orders` (the finding)
+- `fixed.native.json`: the same endpoint, one batched query (I/O, no
+  finding)
+- `elsewhere.native.json`: traffic on other endpoints of the same service
+  only
 
-Each carries a background of 30 single-query traces on other endpoints, which
-keeps `io_waste_ratio` realistic — a run that is 100 % N+1 fails the quality
-gate on the ratio alone and would mask what these legs are testing.
+Each carries a background of 30 single-query traces on other endpoints,
+which keeps `io_waste_ratio` realistic. A run that is 100 % N+1 fails the
+quality gate on the ratio alone and would mask what these legs are testing.
 
 `daemon-snapshot.json` is a real `/api/export/report` capture (8 findings) so
 the guard leg runs without a cluster.
 
 ## Notes
 
-The acks file is the documented `.perf-sentinel-acknowledgments.toml`, whose
-root key is `[[acknowledged]]` (not `acknowledgments`) and whose
-`acknowledged_at` is mandatory. A file with the wrong root key parses fine and
-silently acknowledges nothing — there is no `deny_unknown_fields` on that
-struct, which is what lets the two new optional fields be ignored everywhere
-else.
+The acks file is the documented `.perf-sentinel-acknowledgments.toml`,
+whose root key is `[[acknowledged]]` (not `acknowledgments`) and whose
+`acknowledged_at` is mandatory. A file with the wrong root key parses fine
+and silently acknowledges nothing. There is no `deny_unknown_fields` on
+that struct, which is what lets the two new optional fields be ignored
+everywhere else.

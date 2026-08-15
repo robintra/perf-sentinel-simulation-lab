@@ -59,7 +59,6 @@ curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/status" >/dev/null \
   || die "daemon unreachable on localhost:${DAEMON_LOCAL_PORT}, run ./scripts/port-forward.sh start"
 ok "daemon reachable"
 
-# Sub-test 6.A: zero-traffic cold-start
 step "6.A: zero-traffic cold-start"
 kubectl -n observability rollout restart deployment/perf-sentinel-daemon >/dev/null
 kubectl -n observability rollout status deployment/perf-sentinel-daemon --timeout=120s >/dev/null

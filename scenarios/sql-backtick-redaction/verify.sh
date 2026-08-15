@@ -12,7 +12,7 @@
 #      output. `[` is deliberately NOT a special identifier state, so the
 #      `'...'` string path masks the contents.
 #
-# Both fixtures are committed native SpanEvent JSON; fixtures/generate.py
+# Both fixtures are committed native SpanEvent JSON. fixtures/generate.py
 # regenerates them (stdlib-only). Uses the local release binary built from
 # the perf-sentinel checkout under test.
 set -euo pipefail
@@ -40,7 +40,6 @@ BIN_VERSION="$("${PERF_SENTINEL_LOCAL_BIN}" --version | awk '{print $2}')"
 BT_TEMPLATE=""
 AR_TEMPLATE=""
 
-# --- 1. backtick ------------------------------------------------------------
 step "Backtick identifiers preserved (incl. numeric \`2024\`), N+1 grouped"
 "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${FIX}/backtick.native.json" --format json \
   > "${TMP_DIR}/backtick.json" 2>"${TMP_DIR}/backtick.err" \
@@ -90,7 +89,7 @@ ok "template: ${AR_TEMPLATE}  (no secret/pii/ssn leak)"
 # report ALSO embeds a raw example span (`target` = captured db.statement) as
 # an exemplar. That raw exemplar is rendered verbatim and is OUTSIDE the three
 # commits under test (normalize/sql.rs only; the report renderer is untouched).
-# So we assert the masked template renders, and we OBSERVE — non-fatally —
+# So we assert the masked template renders, and we OBSERVE, non-fatally,
 # whether the raw exemplar surfaces literals from un-sanitized input.
 step "HTML report: masked template renders; raw exemplar surface observed"
 "${PERF_SENTINEL_LOCAL_BIN}" report --input "${FIX}/array-redaction.native.json" \

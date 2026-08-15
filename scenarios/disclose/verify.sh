@@ -27,7 +27,7 @@
 #   3. official intent + verify-hash round-trip: `disclose --intent official`
 #      passes the validator (exit 0) and `verify-hash` recomputes the
 #      content_hash to OK (the disclose->verify round-trip fixed in v0.8.2 via
-#      serde_json float_roundtrip; the gap verify-hash-roundtrip could not
+#      serde_json float_roundtrip. The gap verify-hash-roundtrip could not
 #      close). A tampered copy must verify as FAIL.
 #   4. anti-gaming invariant: over reports-thr50, canonical threshold stays 2
 #      (UNCHANGED) while operational threshold is 50 and the canonical
@@ -36,9 +36,9 @@
 #   5. transport bracket: `transport_kgco2eq_low`/`_high` are published on an
 #      archive every window of which declares the fixed coefficient, and
 #      WITHHELD as soon as one window contributed transport without declaring
-#      it — which is every window archived before 0.9.25.
+#      it, which is every window archived before 0.9.25.
 #   6. canonical-disclosure migration: a mixed current/legacy period succeeds
-#      with a counted warning; a 100% legacy official period remains refused.
+#      with a counted warning. A 100% legacy official period remains refused.
 #
 # Fixtures under fixtures/:
 #   - reports-thr5.ndjson, reports-thr50.ndjson, org-config.toml
@@ -73,7 +73,6 @@ die()  { color_red   "    error: $*"; exit 1; }
 
 PERIOD_ARGS=(--period-type calendar-quarter --from 2026-04-01 --to 2026-06-30)
 
-# === Pre-flight ===
 step "0. Pre-flight"
 command -v docker >/dev/null || die "docker not on PATH"
 command -v python3 >/dev/null || die "python3 not on PATH"
@@ -156,7 +155,6 @@ else
   record "2. flat-field aliasing" FAIL "${note:-no out-thr5.json}"
 fi
 
-# === Sub-test 3: official intent + verify-hash round-trip ===
 step "3. official intent validates + verify-hash content_hash round-trips"
 t3="FAIL"; t3note=""
 if in_image disclose --intent official --confidentiality public "${PERIOD_ARGS[@]}" \
@@ -218,7 +216,7 @@ fi
 # 0.9.25 publishes `transport_kgco2eq` on every run, plus a sourced
 # 0.001-0.059 kWh/GB bracket around it. That bracket frames the FIXED
 # coefficient only, so it must be withheld whenever a window that contributed
-# transport was scored under something else — including under a coefficient the
+# transport was scored under something else, including under a coefficient the
 # reader cannot see, which is every window archived before 0.9.25.
 #
 # The first shipped guard could never fire: it looked for a coefficient entry in

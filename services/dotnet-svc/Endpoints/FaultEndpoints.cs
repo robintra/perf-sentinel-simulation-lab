@@ -14,12 +14,12 @@ namespace DotnetSvc.Endpoints;
 ///
 /// SQL faults go through EF Core 10. The OTel EF Core instrumentation
 /// emits an ActivitySource named `OpenTelemetry.Instrumentation.EntityFrameworkCore`
-/// on every DbContext command — this is the ORM marker the strict
+/// on every DbContext command: this is the ORM marker the strict
 /// perf-sentinel classifier consumes to keep the n+1_sql verdict
 /// (equivalent of Java's `io.opentelemetry.hibernate-6.0`).
 ///
 /// HTTP faults go through a named HttpClient ("self") whose handler
-/// is wrapped by OpenTelemetry.Instrumentation.Http — produces CLIENT
+/// is wrapped by OpenTelemetry.Instrumentation.Http, produces CLIENT
 /// spans the daemon needs for the HTTP-side classifiers.
 /// </summary>
 internal static class FaultEndpoints
@@ -110,13 +110,13 @@ internal static class FaultEndpoints
         {
             int n = items ?? 15;
             int total = 0;
-            // EF Core LINQ — one parameterised query per loop iteration.
+            // EF Core LINQ: one parameterised query per loop iteration.
             // The OTel EF Core ActivitySource attaches the
             // `OpenTelemetry.Instrumentation.EntityFrameworkCore` scope
             // to each command span, which the perf-sentinel strict
             // classifier needs to keep the n+1 verdict (otherwise the
             // sanitiser collapses N executes to one template and the
-            // verdict falls back to redundant_sql — see Gap #20).
+            // verdict falls back to redundant_sql, see Gap #20).
             for (int orderId = 1; orderId <= n; orderId++)
             {
                 int id = orderId;
@@ -159,7 +159,7 @@ internal static class FaultEndpoints
             {
                 // ExecuteSqlRawAsync with literal interpolation. Locale-pinned
                 // to invariant so French/German locales don't emit `0,6`
-                // for `0.6`. Lab-intentional — the slow_sql detector keys
+                // for `0.6`. Lab-intentional: the slow_sql detector keys
                 // off span duration, not query text shape.
                 string sql = string.Format(
                         CultureInfo.InvariantCulture,

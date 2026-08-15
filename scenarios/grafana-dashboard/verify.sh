@@ -20,7 +20,7 @@
 #    daemon-only panels live in the upstream dashboard, no overlap.
 # 5. Alert rules. Applies 5 PrometheusRules and polls the operator
 #    until they are loaded. Triggers PerfSentinelDaemonDown end-to-end
-#    by scaling the daemon Deployment to 0; restores it via a trap so
+#    by scaling the daemon Deployment to 0. Restores it via a trap so
 #    a Ctrl+C never leaves the cluster in a degraded state.
 # 6. postgres-exporter. Deploys the v0.17 image with credentials
 #    sourced from the lab's `postgres-credentials` Secret, asserts

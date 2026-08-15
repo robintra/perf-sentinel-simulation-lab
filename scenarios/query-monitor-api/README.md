@@ -1,10 +1,11 @@
 # query-monitor-api
 
 Validates the read-only daemon data plane that backs the
-`perf-sentinel query monitor` operator TUI introduced in 0.8.8. The TUI
-is a client-side terminal app (Advisor / Energy / Trends / Scrapers /
-Config tabs); it is not driven headless here. This scenario asserts the
-daemon endpoints it polls, all read-only and loopback-facing.
+`perf-sentinel query monitor` operator TUI introduced in 0.8.8. The
+TUI is a client-side terminal app (Advisor / Energy / Trends /
+Scrapers / Config tabs). It is not driven headless here. This
+scenario asserts the daemon endpoints it polls, all read-only and
+loopback-facing.
 
 ## What it covers
 

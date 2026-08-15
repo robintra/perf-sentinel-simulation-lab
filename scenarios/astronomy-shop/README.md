@@ -2,13 +2,14 @@
 
 Validates perf-sentinel against the **OpenTelemetry Astronomy Shop demo**
 ([open-telemetry/opentelemetry-demo](https://github.com/open-telemetry/opentelemetry-demo)):
-`analyze --input` / `report --input` replayed over committed NDJSON slices of
-Collector file-exporter output. This covers the two things the lab cannot
-produce with its own services: **foreign instrumentation** (canonical,
-community-maintained OTel auto-instrumentation across languages, spans we did
-not author) and a **false-positive budget on realistic mixed traffic** (the
-only prior negative fixture, `scenarios/clean-load.js`, is two endpoints on
-one controller).
+`analyze --input` / `report --input` replayed over committed NDJSON slices
+of Collector file-exporter output. This covers the two things the lab
+cannot produce with its own services. The first is **foreign
+instrumentation**: canonical, community-maintained OTel
+auto-instrumentation across languages, spans we did not author. The second
+is a **false-positive budget on realistic mixed traffic**, where the only
+prior negative fixture, `scenarios/clean-load.js`, is two endpoints on one
+controller.
 
 ## What it asserts
 
@@ -24,11 +25,12 @@ one controller).
 Capture once, replay forever - the demo is ~15-20 services and is never
 deployed into the lab k3d cluster:
 
-- `capture.sh` (one-off) shallow-clones the demo at the pinned tag, injects a
-  `file` exporter through the demo's own `otelcol-config-extras.yml` extension
-  hook (the exporter list is restated `[otlp, debug, spanmetrics, file/traces]`
-  because the collector config merge replaces arrays), and bind-mounts the
-  dump dir into the collector via a compose override.
+- `capture.sh` (one-off) shallow-clones the demo at the pinned tag, then
+  injects a `file` exporter through the demo's own
+  `otelcol-config-extras.yml` extension hook. The exporter list is restated
+  `[otlp, debug, spanmetrics, file/traces]` because the collector config
+  merge replaces arrays. It finally bind-mounts the dump dir into the
+  collector via a compose override.
 - Two phases produce two separate dumps in gitignored
   `artifacts/astronomy-shop/`: a **clean** phase (all flagd flags off, the
   demo's normal load-generator profile - the false-positive corpus) and a
@@ -39,12 +41,13 @@ deployed into the lab k3d cluster:
   (traces fully inside the window minus an edge guard, ordered by start time)
   and re-emits them as valid `ExportTraceServiceRequest` NDJSON. Only the
   slices and the manifest are committed - full dumps run to hundreds of MB.
-- `fixtures/fixture-manifest.json` is the contract: `flags_enabled` drives the
-  capture; `demo_version`, `otel_demo_commit` and `fp_budget` are stamped back
-  by capture.sh. `fp_budget` is the **exact observed finding count** on the
-  curated clean slice - replay is deterministic (fixed input, deterministic
-  binary), so any later binary exceeding it fails F1 by design and forces a
-  human look; restamping is a deliberate, reviewable act (rerun capture.sh).
+- `fixtures/fixture-manifest.json` is the contract: `flags_enabled` drives
+  the capture. `demo_version`, `otel_demo_commit` and `fp_budget` are
+  stamped back by capture.sh. `fp_budget` is the **exact observed finding
+  count** on the curated clean slice - replay is deterministic (fixed
+  input, deterministic binary), so any later binary exceeding it fails F1
+  by design and forces a human look. Restamping is a deliberate, reviewable
+  act (rerun capture.sh).
 - R1 and F1 run under the same default detection config: the FP budget is
   only meaningful measured under the config that produced the recall.
 

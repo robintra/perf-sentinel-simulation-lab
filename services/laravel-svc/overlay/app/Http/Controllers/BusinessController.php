@@ -11,7 +11,7 @@ class BusinessController extends Controller
 {
     use Common;
 
-    // GET /api/external/mock — the inert target the HTTP faults call back into.
+    // GET /api/external/mock: the inert target the HTTP faults call back into.
     public function mock(Request $r)
     {
         $delay = $this->intParam($r, 'delayMs', 0);
@@ -39,7 +39,7 @@ class BusinessController extends Controller
         return response()->json(['channel' => $channel, 'dispatched' => true, 'delayMs' => $delay]);
     }
 
-    // GET /api/payments/history — a real Eloquent read (php.laravel + php.pdo).
+    // GET /api/payments/history: a real Eloquent read (php.laravel + php.pdo).
     // ?hold=1 briefly holds the connection (pg_sleep) so the pool-saturation
     // fan-out produces genuinely overlapping DB spans across workers.
     public function paymentsHistory(Request $r)

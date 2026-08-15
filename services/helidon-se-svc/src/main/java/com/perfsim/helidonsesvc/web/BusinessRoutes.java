@@ -99,7 +99,7 @@ public final class BusinessRoutes implements HttpService {
                 }
             }
         } catch (Exception e) {
-            // Do not echo e.getMessage() — Postgres errors include the
+            // Do not echo e.getMessage(): Postgres errors include the
             // role name and auth state, which would leak through to
             // the k6 logs and perf-sentinel artefacts.
             res.status(500).send("payments query failed");

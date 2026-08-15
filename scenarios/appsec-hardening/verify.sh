@@ -3,10 +3,10 @@
 #
 #   A. Ingest redaction: query string, fragment and userinfo are stripped from
 #      source_endpoint (and therefore the ack signature) when the endpoint
-#      comes from a raw URL; '@' in a path and route templates are untouched.
+#      comes from a raw URL, '@' in a path and route templates are untouched.
 #      (0.9.14 leaks "user:pass@...?token=SECRET#frag" verbatim.)
 #   B. Ack API key: GET /api/acks returns 401 without X-API-Key when a key is
-#      configured, 200 with it; PERF_SENTINEL_ACK_API_KEY overrides the TOML
+#      configured, 200 with it. PERF_SENTINEL_ACK_API_KEY overrides the TOML
 #      key. (0.9.14 served GET without any key.)
 #   C. /api/export/report evaluates the real quality gate: three rules are
 #      always present (0.9.14 hardcoded passed:true, rules:[]), and a critical
