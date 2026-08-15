@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate the upstream jenkinsfile.groovy template at v0.11.2.
+# Validate the upstream jenkinsfile.groovy template at v0.13.1.
 #
 # Note on filename: upstream ships `jenkinsfile.groovy` (lowercase, .groovy),
 # NOT `Jenkinsfile`. The Jenkins Multibranch Pipeline plugin accepts the
@@ -7,7 +7,7 @@
 #
 # 3 steps:
 #
-# 1. Fetch upstream `docs/ci-templates/jenkinsfile.groovy` at v0.11.2.
+# 1. Fetch upstream `docs/ci-templates/jenkinsfile.groovy` at v0.13.1.
 # 2. Structural lint: assert the declarative pipeline skeleton
 #    (`pipeline { agent ... stages { ... } }`), the perf-sentinel install
 #    + analyze stages, and the `--ci` quality-gate enforcement step.
@@ -18,7 +18,7 @@
 #    clear note.
 #
 # Optional knobs:
-#   UPSTREAM_VERSION    override the version tag (default 0.11.2).
+#   UPSTREAM_VERSION    override the version tag (default 0.13.1).
 #   UPSTREAM_PATH       use a local copy of the template.
 #   SKIP_RUNTIME=1      skip step 3 (lint + structural only).
 
@@ -30,7 +30,7 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 
-UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.11.2}"
+UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.13.1}"
 UPSTREAM_URL="https://raw.githubusercontent.com/robintra/perf-sentinel/v${UPSTREAM_VERSION}/docs/ci-templates/jenkinsfile.groovy"
 # jenkinsfile-runner has no recent stable tag on Docker Hub, only :latest carries a digest.
 # Pinning the digest of latest gives immutability even though the tag pointer is mutable.
