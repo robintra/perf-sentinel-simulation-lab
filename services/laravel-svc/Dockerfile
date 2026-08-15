@@ -1,4 +1,4 @@
-# laravel-svc: Laravel 11 + Eloquent multistack member for perf-sentinel-simulation-lab.
+# laravel-svc: Laravel 13 + Eloquent multistack member for perf-sentinel-simulation-lab.
 #
 # The point of this service is the native OpenTelemetry PHP auto-instrumentation:
 # `opentelemetry-auto-laravel` tags the HTTP kernel + Eloquent spans with the
@@ -27,8 +27,8 @@ RUN apt-get update \
 # this only raises limits for the fault endpoints).
 COPY docker/php.ini /usr/local/etc/php/conf.d/zz-laravel-svc.ini
 
-# Composer. Disable the advisory-block policy: it refuses every Laravel 11.x
-# release flagged in the advisory DB, which would fail the resolve. This is a lab
+# Composer. Disable the advisory-block policy: it refuses every Laravel release
+# flagged in the advisory DB, which would fail the resolve. This is a lab
 # member validating perf-sentinel, not a shipped app, so ignoring advisories is
 # acceptable (ponytail: bypass, not a security regression here).
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
@@ -41,10 +41,10 @@ RUN composer config --global policy.advisories.block false \
  && composer config --global --no-plugins allow-plugins.tbachert/spi true
 
 WORKDIR /app
-# Lay down the Laravel 11 skeleton without resolving dependencies, then replace
+# Lay down the Laravel 13 skeleton without resolving dependencies, then replace
 # its metadata with the committed dependency graph. The framework selector is
-# intentionally still a range; composer.lock makes the installed graph stable.
-RUN composer create-project laravel/laravel:^11.0 /app --no-scripts --prefer-dist --no-install
+# intentionally still a range, and composer.lock makes the installed graph stable.
+RUN composer create-project laravel/laravel:^13.0 /app --no-scripts --prefer-dist --no-install
 COPY composer.json composer.lock /app/
 RUN composer validate --strict --no-check-all \
  && composer install --no-scripts --prefer-dist
