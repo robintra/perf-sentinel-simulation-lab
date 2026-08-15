@@ -7,7 +7,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.2",
-        "guzzlehttp/psr7": "^2.13",
+        "guzzlehttp/psr7": "^3.0",
         "laravel/framework": "^11.31",
         "laravel/tinker": "^2.9",
         "open-telemetry/exporter-otlp": "^1.4",

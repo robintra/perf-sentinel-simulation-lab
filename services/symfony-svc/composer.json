@@ -11,7 +11,7 @@
         "ext-iconv": "*",
         "doctrine/doctrine-bundle": "^3.3",
         "doctrine/orm": "^3.6",
-        "guzzlehttp/psr7": "^2.13",
+        "guzzlehttp/psr7": "^3.0",
         "open-telemetry/exporter-otlp": "^1.4",
         "open-telemetry/opentelemetry-auto-doctrine": "^0.5.0",
         "open-telemetry/opentelemetry-auto-pdo": "^0.5.0",
