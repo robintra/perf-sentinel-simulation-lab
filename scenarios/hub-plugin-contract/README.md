@@ -24,10 +24,21 @@ repository at:
 src/test/resources/hub-contract/lab-order-service.json
 ```
 
-Refreshing it is a deliberate act: run this scenario, review the diff, commit
-it. The capture is pretty-printed with sorted keys so the diff is readable.
+Verifying is read-only. The capture always lands in
+`/tmp/hub-plugin-contract/`, and installing it over the plugin's committed
+fixture takes `HUB_CONTRACT_INSTALL_FIXTURE=yes`:
 
-Point it elsewhere with `PERF_SENTINEL_PLUGIN_REPO_PATH`.
+```bash
+HUB_CONTRACT_INSTALL_FIXTURE=yes make verify-hub-plugin-contract
+```
+
+That separation matters because this scenario runs inside
+`make verify-all-scenarios`: attesting a release must not leave another
+repository dirty under an operator who never asked for a refresh. Refreshing
+stays a deliberate act, run it, review the diff, commit it. The capture is
+pretty-printed with sorted keys so the diff is readable.
+
+Point the plugin checkout elsewhere with `PERF_SENTINEL_PLUGIN_REPO_PATH`.
 
 ## The other half, in the plugin repository
 

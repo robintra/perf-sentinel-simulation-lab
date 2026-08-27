@@ -338,7 +338,9 @@ PUSHPY
 
 # === 1: a reachable source reads ok ===
 step "2. a reachable source reads ok"
-SEED_CODE="$(push_finding seed)"
+# `|| true`: curl exits non-zero on a refused connection, and set -e would
+# abort here before the HTTP-code check below could name the reason.
+SEED_CODE="$(push_finding seed)" || true
 [ "${SEED_CODE}" = "200" ] || die "the seed push failed with HTTP ${SEED_CODE}"
 # PollWorker polls at boot and then every POLL_SECS; give it room to succeed.
 BEFORE="no-source"
@@ -373,7 +375,7 @@ fi
 
 # === 3: a push during the partition does not clear the marker ===
 step "4. a push during the partition lands its finding without clearing the marker"
-PUSH_CODE="$(push_finding partitioned)"
+PUSH_CODE="$(push_finding partitioned)" || true
 sleep 2
 AFTER_PUSH="$(source_status)"
 PUSHED="$(curl -sf "http://127.0.0.1:${LOCAL_PORT}/api/findings?service=reach-svc&limit=100" \

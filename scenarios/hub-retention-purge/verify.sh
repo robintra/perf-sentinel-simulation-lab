@@ -225,7 +225,13 @@ kubectl apply -f "${TMP_DIR}/hub.yaml" >/dev/null
 kubectl -n "${NS}" rollout status deploy/hub --timeout=180s >/dev/null \
   || die "the isolated Hub did not become ready: $(kubectl -n "${NS}" logs deploy/hub --tail=20 2>&1)"
 
-forward_hub() {  # $1 = deployment/service name, $2 = local port; sets the pid in $3
+# $1 = service name, $2 = local port. Echoes the pid, so the caller reads it
+# from a command substitution. That is why it must NOT die on failure: die
+# writes to stdout, which inside $( ) lands in the caller's variable instead
+# of on screen, and the assignment never happens, so the trap has no pid to
+# kill and the disowned port-forward outlives the run holding the port. It
+# echoes the pid either way and reports the failure through the exit status.
+forward_hub() {
   kubectl -n "${NS}" port-forward "svc/$1" "$2:8080" >"${TMP_DIR}/pf-$1.log" 2>&1 &
   local pid=$!
   disown "${pid}" 2>/dev/null || true
@@ -233,10 +239,12 @@ forward_hub() {  # $1 = deployment/service name, $2 = local port; sets the pid i
     curl -sf "http://127.0.0.1:$2/health/ready" >/dev/null 2>&1 && break
     sleep 0.5
   done
-  curl -sf "http://127.0.0.1:$2/health/ready" >/dev/null || die "$1 not reachable on $2"
   printf '%s' "${pid}"
+  curl -sf "http://127.0.0.1:$2/health/ready" >/dev/null 2>&1
 }
-PF_PID="$(forward_hub hub "${HUB_PORT}")"
+PF_PID="$(forward_hub hub "${HUB_PORT}")" || true
+curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null \
+  || die "hub not reachable on ${HUB_PORT}: $(tail -3 "${TMP_DIR}/pf-hub.log" 2>&1)"
 ok "isolated Hub ready on ${HUB_PORT}"
 
 # Two forged findings sharing service, type and endpoint, differing only by
@@ -325,7 +333,9 @@ kubectl -n "${NS}" rollout restart deploy/hub >/dev/null
 kubectl -n "${NS}" rollout status deploy/hub --timeout=180s >/dev/null \
   || die "the Hub did not come back after the restart"
 kill "${PF_PID}" 2>/dev/null || true
-PF_PID="$(forward_hub hub "${HUB_PORT}")"
+PF_PID="$(forward_hub hub "${HUB_PORT}")" || true
+curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null \
+  || die "hub not reachable on ${HUB_PORT}: $(tail -3 "${TMP_DIR}/pf-hub.log" 2>&1)"
 fetch_findings "${HUB_PORT}" "${TMP_DIR}/after-purge.json" || die "the Hub refused to serve after the purge"
 SURVIVOR="$(envelope_field "${TMP_DIR}/after-purge.json" "${SIG_NEW}" first_seen_ms)"
 PURGED="$(envelope_field "${TMP_DIR}/after-purge.json" "${SIG_OLD}" first_seen_ms)"
@@ -403,7 +413,9 @@ EOF
 if kubectl -n "${NS}" wait --for=condition=complete job/hub-backup --timeout=120s >/dev/null 2>&1; then
   kubectl apply -f "${TMP_DIR}/hub.yaml.restored" >/dev/null
   if kubectl -n "${NS}" rollout status deploy/hub-restored --timeout=180s >/dev/null 2>&1; then
-    PF_RESTORED_PID="$(forward_hub hub-restored "${RESTORED_PORT}")"
+    PF_RESTORED_PID="$(forward_hub hub-restored "${RESTORED_PORT}")" || true
+curl -sf "http://127.0.0.1:${RESTORED_PORT}/health/ready" >/dev/null \
+  || die "hub-restored not reachable on ${RESTORED_PORT}: $(tail -3 "${TMP_DIR}/pf-hub-restored.log" 2>&1)"
     fetch_findings "${RESTORED_PORT}" "${TMP_DIR}/restored.json" || true
     RESTORED_ORIGIN="$(envelope_field "${TMP_DIR}/restored.json" "${SIG_NEW}" lineage.original_first_seen 2>/dev/null || true)"
   else

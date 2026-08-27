@@ -133,20 +133,31 @@ else
   record "parser contract satisfied" FAIL "missing required field"
 fi
 
-# === 3: the capture lands in the plugin repository ===
-step "3. the fixture is written into the plugin repository"
-if [ -d "${PLUGIN_REPO}" ]; then
-  FIXTURE="${PLUGIN_REPO}/${FIXTURE_REL}"
-  mkdir -p "$(dirname "${FIXTURE}")"
-  # Pretty-printed with sorted keys: the fixture is reviewed as a diff, and a
-  # one-line capture would make every refresh unreadable.
-  python3 -c '
+# === 3: the capture is produced, and installed only when asked ===
+step "3. the fixture is captured"
+# Always written here, so verifying is read-only. Refreshing the plugin's
+# committed fixture is a deliberate act, not a side effect of a gate run:
+# `make verify-all-scenarios` must not leave another repository dirty under
+# an operator who was only attesting a release.
+CAPTURED="${TMP_DIR}/lab-order-service.json"
+# Pretty-printed with sorted keys: the fixture is reviewed as a diff, and a
+# one-line capture would make every refresh unreadable.
+python3 -c '
 import json, sys
 json.dump(json.load(open(sys.argv[1])), open(sys.argv[2], "w"), indent=2, sort_keys=True)
 open(sys.argv[2], "a").write("\n")
-' "${PAYLOAD}" "${FIXTURE}"
-  ok "captured to ${FIXTURE_REL} ($(wc -c < "${FIXTURE}" | tr -d ' ') bytes)"
-  record "fixture captured" PASS "${FIXTURE_REL}"
+' "${PAYLOAD}" "${CAPTURED}"
+ok "captured to ${CAPTURED} ($(wc -c < "${CAPTURED}" | tr -d ' ') bytes)"
+
+if [ "${HUB_CONTRACT_INSTALL_FIXTURE:-no}" != "yes" ]; then
+  ok "not installed: set HUB_CONTRACT_INSTALL_FIXTURE=yes to refresh ${FIXTURE_REL}"
+  record "fixture captured" PASS "captured, not installed"
+elif [ -d "${PLUGIN_REPO}" ]; then
+  FIXTURE="${PLUGIN_REPO}/${FIXTURE_REL}"
+  mkdir -p "$(dirname "${FIXTURE}")"
+  cp "${CAPTURED}" "${FIXTURE}"
+  ok "installed to ${FIXTURE_REL}, review the diff before committing it"
+  record "fixture captured" PASS "installed to ${FIXTURE_REL}"
 else
   fail "no plugin checkout at ${PLUGIN_REPO}; set PERF_SENTINEL_PLUGIN_REPO_PATH"
   record "fixture captured" FAIL "no plugin checkout"

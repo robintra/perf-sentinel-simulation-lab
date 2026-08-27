@@ -60,16 +60,26 @@ ok "the Hub is running"
 
 # The Hub's API is closed to the cluster except for the daemon's push, so read
 # it through the kubelet proxy like every other scenario does.
-kubectl -n observability port-forward svc/perf-sentinel-hub "${HUB_PORT}:8080" \
-  >"${TMP_DIR}/pf.log" 2>&1 &
-PF_HUB_PID=$!
-for _ in $(seq 1 40); do
-  curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null 2>&1 && break
-  sleep 0.5
-done
-curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null \
-  || die "the Hub's /health/ready never answered through the port-forward"
-ok "port-forward up, /health/ready answers"
+#
+# `scripts/port-forward.sh` already owns this port and keeps a forward alive
+# across the whole run. Starting a second one on top would fail to bind while
+# the probe below still passed, served by the first: the scenario would look
+# healthy with its own forward dead, and cleanup would kill a process that
+# never served anything. Reuse the existing forward when it answers.
+if curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null 2>&1; then
+  ok "reusing the port-forward already listening on ${HUB_PORT}"
+else
+  kubectl -n observability port-forward svc/perf-sentinel-hub "${HUB_PORT}:8080" \
+    >"${TMP_DIR}/pf.log" 2>&1 &
+  PF_HUB_PID=$!
+  for _ in $(seq 1 40); do
+    curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+  curl -sf "http://127.0.0.1:${HUB_PORT}/health/ready" >/dev/null \
+    || die "the Hub's /health/ready never answered through the port-forward: $(tail -3 "${TMP_DIR}/pf.log" 2>&1)"
+  ok "port-forward up, /health/ready answers"
+fi
 
 # Drive traffic so there is something to collect, unless findings already exist.
 step "1. the Hub serves findings the daemon produced"

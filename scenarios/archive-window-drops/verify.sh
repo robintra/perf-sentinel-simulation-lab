@@ -71,11 +71,14 @@ die()  { color_red   "    error: $*"; exit 1; }
 DAEMON_PID=""
 SEED_PID=""
 cleanup() {
-  [ -n "${SEED_PID}" ] && kill "${SEED_PID}" 2>/dev/null
+  [ -n "${SEED_PID}" ] && kill "${SEED_PID}" 2>/dev/null || true
   # SIGKILL, not SIGTERM: a graceful shutdown drains the archive channel, and
   # in leg B that means writing hundreds of queued windows into a FIFO nobody
   # reads, which never returns.
-  [ -n "${DAEMON_PID}" ] && kill -9 "${DAEMON_PID}" 2>/dev/null
+  # `|| true` on both: an EXIT trap's status becomes the script's, so a kill
+  # on an already-dead daemon (leg B kills it itself) would turn a passing
+  # run into exit 1.
+  [ -n "${DAEMON_PID}" ] && kill -9 "${DAEMON_PID}" 2>/dev/null || true
 }
 trap cleanup EXIT
 

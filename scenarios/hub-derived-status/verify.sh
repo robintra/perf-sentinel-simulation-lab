@@ -78,6 +78,13 @@ ok "reusing the Hub image under validation: ${HUB_IMAGE}"
 IMPORT_KEY="$(head -c 48 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
 step "1. an isolated Hub with a seconds-scale ResolutionGrace"
+# Cleanup deletes with --wait=false, so a rerun can land while the previous
+# namespace is still terminating. Creating into one is Forbidden, not a retry.
+for _ in $(seq 1 60); do
+  kubectl get namespace "${NS}" >/dev/null 2>&1 || break
+  [ "$(kubectl get namespace "${NS}" -o jsonpath='{.status.phase}' 2>/dev/null)" != "Terminating" ] && break
+  sleep 2
+done
 kubectl create namespace "${NS}" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 kubectl -n "${NS}" create secret generic hub-import-key \
   --from-literal=import-key="${IMPORT_KEY}" \
