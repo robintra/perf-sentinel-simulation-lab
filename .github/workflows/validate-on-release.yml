@@ -15,7 +15,9 @@ on:
 
 permissions:
   contents: read
-  issues: write
+# `issues: write` is NOT granted here. Only notify-on-failure opens an issue
+# and it declares the permission on itself, so granting it workflow-wide gave
+# every other job a write token it never uses.
 
 concurrency:
   group: lab-validation
