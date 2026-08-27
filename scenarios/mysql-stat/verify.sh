@@ -291,20 +291,30 @@ if run_ms --input "${TMP_DIR}/digests.csv" --traces "${TMP_DIR}/grouping-traces.
 import json, sys
 
 report = json.load(open(sys.argv[1]))
-matches = [entry for ranking in report["rankings"] for entry in ranking["entries"]
-           if any(table in entry["normalized_template"] for table in ("orders", "line_items", "users"))]
-assert matches, "no orders/line_items/users digest in the ranking"
-# Splitting the workload across two tenants drops every group below the N+1
-# threshold, so no detector fires on these templates. Before 0.15.0 the
-# cross-reference keyed on the findings, which left a perfectly healthy traced
-# query unmarked; it now keys on every template the traces carried, so the
-# marker is present precisely because the query is traced, not because it is
-# broken. Asserting the absence here is what the pre-0.15.0 version did.
-assert all(entry["seen_in_traces"] for entry in matches), \
-    "a traced template is unmarked, the cross-reference fell back to findings"
+marked = {entry["normalized_template"]: entry["seen_in_traces"]
+          for ranking in report["rankings"] for entry in ranking["entries"]}
+# The three point lookups the trace fixture actually issues. Splitting the
+# workload across two tenants drops every group below the N+1 threshold, so no
+# detector fires on any of them. Before 0.15.0 the cross-reference keyed on the
+# findings, which left a perfectly healthy traced query unmarked; it now keys on
+# every template the traces carried, so the marker is there because the query is
+# traced, not because it is broken. Naming them beats a substring filter, which
+# also swept in the aggregates and the UPDATE below.
+traced = [
+    "SELECT * FROM `orders` WHERE `id` = ?",
+    "SELECT * FROM `line_items` WHERE `order_id` = ?",
+    "SELECT * FROM `users` WHERE `uid` = ?",
+]
+for template in traced:
+    assert marked.get(template) is True, f"traced template unmarked: {template!r}"
+# The counterpart: digest rows the traces never carried must stay unmarked, or
+# the cross-reference is matching on something looser than the template.
+for template in ("SELECT SUM ( `qty` ) FROM `line_items`",
+                 "UPDATE `orders` SET STATUS = ? WHERE `id` = ?"):
+    assert marked.get(template) is False, f"untraced template marked: {template!r}"
 summary = report.get("trace_match")
-assert summary and summary["matched_templates"] >= 1, \
-    f"trace_match missing or empty: {summary}"
+assert summary and summary["matched_templates"] == len(traced), \
+    f"trace_match should count {len(traced)} matched templates: {summary}"
 PY
 then
   assert_pass "B4-grouping" "grouped traffic still marks its templates, and trace_match counts them"
