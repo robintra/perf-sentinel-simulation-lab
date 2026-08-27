@@ -136,7 +136,7 @@ jobs:
           rm -f tmp/pf-*.pid
           sleep 2
           ./scripts/port-forward.sh start
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
               echo "daemon reachable after ${i}s"
               break
@@ -151,7 +151,7 @@ jobs:
           rm -f tmp/pf-*.pid
           sleep 2
           ./scripts/port-forward.sh start
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
               break
             fi
@@ -167,7 +167,7 @@ jobs:
           ./scripts/port-forward.sh start
           kubectl -n observability port-forward svc/kube-prometheus-stack-prometheus 9090:9090 \
             > /tmp/pf-prom.log 2>&1 &
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             daemon_ok=$(curl -fsS http://localhost:14318/api/status >/dev/null 2>&1 && echo y || echo n)
             prom_ok=$(curl -fsS http://localhost:9090/-/ready >/dev/null 2>&1 && echo y || echo n)
             if [ "${daemon_ok}" = "y" ] && [ "${prom_ok}" = "y" ]; then
@@ -195,7 +195,7 @@ jobs:
           rm -f tmp/pf-*.pid
           sleep 2
           ./scripts/port-forward.sh start
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
               break
             fi
@@ -242,7 +242,7 @@ jobs:
           rm -f tmp/pf-*.pid
           sleep 2
           ./scripts/port-forward.sh start
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             curl -fsS http://localhost:14318/api/status >/dev/null 2>&1 && break
             sleep 1
           done
@@ -385,7 +385,7 @@ jobs:
           rm -f tmp/pf-*.pid
           sleep 2
           ./scripts/port-forward.sh start
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
               echo "daemon reachable after ${i}s"
               break
@@ -610,7 +610,7 @@ jobs:
           rm -f tmp/pf-*.pid
           sleep 2
           ./scripts/port-forward.sh start
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -fsS http://localhost:14318/api/status >/dev/null 2>&1; then
               echo "daemon reachable after ${i}s"
               break
