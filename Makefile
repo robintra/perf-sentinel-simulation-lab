@@ -48,7 +48,9 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-chart-disclose-persistence \
         verify-java-ci-capture \
         verify-ci-e2e-jenkins verify-ci-e2e-github verify-ci-e2e-gitlab \
-        verify-archive-integrity-chain verify-config-fragments \
+        verify-archive-integrity-chain verify-archive-window-drops verify-config-fragments \
+        verify-disclose-archive-family-baseline verify-diff-mutated-findings \
+        seed-hub-local \
         verify-otlp-compression-matrix verify-ack-lifecycle-warning \
         verify-export-snapshot-scope \
         verify-all-scenarios
@@ -93,6 +95,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	  manifests/messaging-rabbitmq.yaml \
 	  manifests/tempo.yaml \
 	  manifests/perf-sentinel-daemon.yaml \
+	  manifests/perf-sentinel-hub.yaml \
 	  manifests/scaphandre-mock.yaml \
 	  cluster/k3d-config.yaml \
 	  helm/values/kube-prometheus-stack.yaml \
@@ -429,6 +432,9 @@ verify-correlation-finding: ## cross-trace correlation finding via /api/correlat
 verify-grouping-identity: ## 0.11 grouping identity across ingest, detection, diff, API, HTML and CSV
 	./scenarios/grouping-identity/verify.sh
 
+verify-diff-mutated-findings: ## 0.15 template-mutation pairing in diff: pairs, stays out of SARIF, carries its severity escalation, never guesses (no cluster)
+	./scenarios/diff-mutated-findings/verify.sh
+
 verify-pg-stat: ## perf-sentinel report --pg-stat live integration
 	./scenarios/pg-stat/verify.sh
 
@@ -504,6 +510,9 @@ verify-disclose: ## periodic disclosure two-tier waste (current schema, verify-h
 verify-disclose-temporal: ## periodic disclosure continuity (temporal_coverage, coverage_basis, dense/sparse)
 	./scenarios/disclose-temporal/verify.sh
 
+verify-disclose-archive-family-baseline: ## 0.15 drop baseline keyed per archive family: two hosts stay independent, a rotation keeps its delta (no cluster)
+	./scenarios/disclose-archive-family-baseline/verify.sh
+
 verify-sci-functional-unit: ## 0.8.13 G1: SCI per-functional-unit intensity (batch analyze + daemon /api/export/report)
 	./scenarios/sci-functional-unit/verify.sh
 
@@ -551,6 +560,9 @@ seed-tracegen: ## Build + import the tracegen load-generator image (I/O-semantic
 
 seed-daemon-local: ## Build a daemon image from a local perf-sentinel checkout and pin the manifest to it (pre-release validation)
 	./scripts/seed-daemon-local.sh
+
+seed-hub-local: ## Build a PerfSentinelHub image from a local checkout, import it and pin the manifest (no published image exists)
+	./scripts/seed-hub-local.sh
 
 verify-limit-batch-volume: ## Large-input batch CLI (50k+ traces x 3 formats, no cluster)
 	./scenarios/limit-batch-volume/verify.sh
@@ -632,7 +644,7 @@ verify-export-snapshot-scope: ## 0.13.1 export snapshot scope: the configurable 
 verify-otlp-compression-matrix: ## 0.9.28 OTLP transport x encoding matrix (gRPC/HTTP x gzip/deflate/none/zstd) with an A/B against the pre-fix image (Docker, no cluster; one cluster leg SKIPs without one)
 	./scenarios/otlp-compression-matrix/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 70 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: seed-tracegen ## Run all 73 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -681,7 +693,7 @@ verify-all-scenarios: seed-tracegen ## Run all 70 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain config-fragments grouping-identity ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments grouping-identity diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape daemon-otlp-direct multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

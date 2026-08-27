@@ -1,0 +1,362 @@
+[
+ {
+  "timestamp": "2026-06-05T10:00:00.100Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-0",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 1 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.130Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-1",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 2 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.160Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-2",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 3 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.190Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-3",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 4 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.220Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-4",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 5 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.250Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-5",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 6 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.280Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-6",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 7 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.310Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-7",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 8 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.340Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-8",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 9 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.370Z",
+  "trace_id": "t-anc-a1",
+  "span_id": "t-anc-a1-OrderItemRepository.findByOrderId-9",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE order_id = 10 AND quantity > 0",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByOrderId",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.100Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-0",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 101",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.130Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-1",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 102",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.160Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-2",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 103",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.190Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-3",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 104",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.220Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-4",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 105",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.250Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-5",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 106",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.280Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-6",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 107",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.310Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-7",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 108",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.340Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-8",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 109",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.370Z",
+  "trace_id": "t-anc-a2",
+  "span_id": "t-anc-a2-OrderItemRepository.findByCustomer-9",
+  "service": "order-svc",
+  "type": "sql",
+  "operation": "SELECT",
+  "target": "SELECT * FROM order_item WHERE customer_id = 110",
+  "duration_us": 900,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "OrderItemRepository.findByCustomer",
+  "code_filepath": "order-service/src/main/java/com/example/order/repository/OrderItemRepository.java",
+  "code_lineno": 42,
+  "code_namespace": "com.example.order.repository"
+ }
+]

@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 70 scenarios live under `scenarios/<name>/` and each one ships a
+The 73 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -300,7 +300,7 @@ oversized snapshot named rather than flattened into an unreachable
 daemon, and the startup advisory that fires on the two knobs together
 but never on retained traces alone.
 
-The release gate runs all 70. Each validated version is recorded in
+The release gate runs all 73. Each validated version is recorded in
 the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
@@ -1285,7 +1285,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 70 scenarios, in an order
+`make verify-all-scenarios` includes all 73 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2422,6 +2422,81 @@ the file, which `integrity.cross_period_log` stays reserved for), and
 a **version rollback** appends unchained windows after chained ones,
 which the anti-strip rule counts as a break. Rotate the archive before
 a downgrade.
+
+## archive-window-drops (0.15.0 dropped archive windows)
+
+`make verify-archive-window-drops`. Self-contained: a local release binary and
+python3. No cluster, no Docker. Around a minute.
+
+The daemon drops a scored window rather than block the analysis path when its
+archive writer falls behind. Until 0.15.0 that drop left no trace: `try_send`
+returned a boolean nobody read, and because `seq` only advances after a
+successful write, the hash chain stayed perfectly continuous across the gap. A
+period could lose windows and still publish a coherent disclosure report.
+
+Two legs, because one daemon run cannot show both halves.
+
+**A, healthy archive.** Every archived line carries a cumulative `drops` field
+and all four reasons of
+`perf_sentinel_archive_windows_dropped_total{reason}` are present at zero. The
+pre-warm is part of the contract: a counter that materialises only once it
+fires cannot be alerted on.
+
+**B, saturated archive.** `CHANNEL_CAPACITY` is a compile-time 256, so the
+channel cannot be shrunk to force the condition. The archive points at a FIFO
+whose reader consumes nothing: the pipe fills, the writer blocks inside
+`write_all`, the channel backs up and windows drop. The assertion is
+`channel_full > 0` **with the other three reasons still at zero**, which is
+what separates a saturation from an I/O fault.
+
+Deliberately not asserted: an exact drop count (it follows the pipe buffer size
+and the scheduler) and the fold arithmetic (a blocked FIFO yields no readable
+lines, so `disclose-archive-family-baseline` gates that instead).
+
+## disclose-archive-family-baseline (0.15.0 drop baseline per archive family)
+
+`make verify-disclose-archive-family-baseline`. Hermetic: the binary under
+validation over committed fixtures. No cluster, no daemon. Seconds.
+
+`disclose` folds the per-window `drops` counters into the period's
+`windows_dropped`. The counter is daemon-lifetime, which puts the fold between
+two regressions that both produce a plausible number. Reset the baseline per
+file and every rotation loses the delta across its boundary. Share one baseline
+across all inputs and two unrelated archives contaminate each other, since
+`disclose` takes a list and sorts it: one host's opening value gets diffed
+against another's closing value, and a lower opening reads as a restart.
+
+The fixtures overlap on purpose so the two failure modes are arithmetically
+distinguishable, not merely suspicious: two hosts must report 11 dropped and 0
+resets (a shared baseline gives 16 and 1), a rotated pair must report 10 (a
+per-file baseline gives 6), and a genuine restart inside one family must still
+be counted exactly once.
+
+## diff-mutated-findings (0.15.0 template-mutation pairing)
+
+`make verify-diff-mutated-findings`. Hermetic: the binary under validation over
+committed trace fixtures. No cluster. Seconds.
+
+A finding's identity ends with the hash of its normalized template, so adding a
+predicate to a query used to read as two unrelated events: the old finding
+resolved and a new one appeared. Both readings were wrong at once, since the
+anti-pattern was still live while the report said it was fixed and a gate keyed
+on `new_findings` fired for a pre-existing problem.
+
+`diff` now pairs the two sides into `mutated_findings` when the detector,
+service, endpoint and grouping match and only the template moved. Two
+properties matter as much as the pairing. A mutation must never be guessed: an
+identity is also the acknowledgment boundary, so when the sides are not
+one-to-one the pairing falls back to the finding's `(filepath, function)` code
+anchor and pairs only when that anchor is itself unambiguous. And a severity
+escalation hidden inside a mutation must stay visible, because the pair never
+reaches `severity_changes` and the mutated line is its only witness.
+
+The scenario gates the pairing, the deliberate absence from SARIF, the
+dashboard panel and its CSV export column, the `WARNING → CRITICAL` rendering,
+and both halves of the ambiguity rule: two successors under one anchor pair
+nothing, distinct anchors pair the right one and leave the genuinely new
+finding new.
 
 ## config-fragments (0.9.25 `.perf-sentinel.d/` loader)
 

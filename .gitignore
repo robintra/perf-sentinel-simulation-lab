@@ -21,6 +21,7 @@ cluster/.cni-active
 .postgres-password
 .postgres-*-password
 .rabbitmq-password
+.perf-sentinel-hub-import-key
 .electricity-maps-token
 *.pem
 *.key
@@ -61,3 +62,7 @@ artifacts/fixtures/*
 !artifacts/fixtures/*.yml
 !artifacts/fixtures/*.yaml
 scenarios/ci-e2e-jenkins/fixtures/project/
+
+# Local tool output, never committed
+graphify-out/
+__pycache__/

@@ -1,0 +1,146 @@
+[
+ {
+  "timestamp": "2026-06-05T10:00:00.100Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-0",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/1",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.125Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-1",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/2",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.150Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-2",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/3",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.175Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-3",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/4",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.200Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-4",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/5",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.225Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-5",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/6",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.250Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-6",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/7",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ },
+ {
+  "timestamp": "2026-06-05T10:00:00.275Z",
+  "trace_id": "t-esc-b",
+  "span_id": "t-esc-b-http-7",
+  "service": "order-svc",
+  "type": "http_out",
+  "operation": "GET",
+  "target": "user-svc/api/users/8",
+  "duration_us": 1200,
+  "source": {
+   "endpoint": "POST /api/orders/42/submit",
+   "method": "OrderService::create_order"
+  },
+  "code_function": "UserClient.fetchUser",
+  "code_filepath": "order-service/src/main/java/com/example/order/client/UserClient.java",
+  "code_lineno": 77,
+  "code_namespace": "com.example.order.client"
+ }
+]

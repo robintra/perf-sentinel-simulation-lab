@@ -41,6 +41,21 @@ data:
     enabled = true
     storage_path = "/var/lib/perf-sentinel/acks.jsonl"
 
+    # Push export to PerfSentinelHub. The push is the primary path; the Hub
+    # also polls this daemon on the same source id, which is deliberate: only
+    # a successful poll clears the Hub's unreachable marker, a push never
+    # touches it, so wiring both exercises the two semantics permanently.
+    # The key file is the same Secret the Hub reads as an env var. Both sides
+    # trim, so a trailing newline cannot desync them.
+    [daemon.hub_export]
+    enabled = true
+    endpoint = "http://perf-sentinel-hub.observability.svc.cluster.local:8080/api/import/findings"
+    source_id = "lab-daemon"
+    api_key_file = "/etc/perf-sentinel-hub/import-key"
+    batch_size = 100
+    flush_interval_secs = 5
+    max_pending = 10000
+
     [detection]
     n_plus_one_min_occurrences = 5
     # Strict mode: require both signals (ORM scope marker AND timing
@@ -324,6 +339,13 @@ spec:
             - name: config
               mountPath: /etc/perf-sentinel
               readOnly: true
+            # The import key for [daemon.hub_export]. `optional: true` keeps
+            # the daemon startable before `make seed-hub-local` has created
+            # the Secret: hub_export then fails its reads and counts drops on
+            # perf_sentinel_hub_export_dropped_total rather than blocking boot.
+            - name: hub-import-key
+              mountPath: /etc/perf-sentinel-hub
+              readOnly: true
             # The container rootfs stays read-only (see securityContext
             # below); the daemon writes ack JSONL only under this mount.
             - name: acks
@@ -373,6 +395,13 @@ spec:
         - name: acks
           persistentVolumeClaim:
             claimName: perf-sentinel-acks
+        - name: hub-import-key
+          secret:
+            secretName: perf-sentinel-hub-import-key
+            optional: true
+            items:
+              - key: import-key
+                path: import-key
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor

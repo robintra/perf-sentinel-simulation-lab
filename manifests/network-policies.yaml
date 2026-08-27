@@ -693,6 +693,90 @@ spec:
         - protocol: TCP
           port: 8000
 ---
+# 4.D.undecies daemon egress to the Hub for [daemon.hub_export] push.
+# The push is the primary path; the Hub's poll below is the safety net.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-hub-export-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-hub
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# 4.D.duodecies ingress on the Hub limited to the daemon's push.
+# kubectl port-forward bypasses NetworkPolicy, so verify.sh can still read
+# the Hub's API during validation without opening it to the cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-hub-allow-daemon-push
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-hub
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# 4.D.terdecies Hub egress to the daemon for the hourly poll.
+# HTTP only: SourcePoller calls /api/status and /api/findings, never gRPC.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-hub-poll-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-hub
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 14318
+---
+# 4.D.quaterdecies ingress on the daemon's HTTP port for the Hub's poll.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-allow-hub-poll
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-hub
+      ports:
+        - protocol: TCP
+          port: 14318
+---
 # 4.E perf-sentinel daemon egress to Electricity Maps.
 # Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
 # replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).
