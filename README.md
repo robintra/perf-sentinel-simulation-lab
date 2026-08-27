@@ -40,7 +40,10 @@ and disclosure scenarios, documented in
 - `brew install k3d kubectl helm` (minimum versions: k3d 5.x, kubectl
   1.30+, helm 3.14+ or 4.x).
 - `python3` (preinstalled on recent macOS) for JSON formatting in
-  `make status`.
+  `make status`. `batch-otlp-file` also needs the `msgpack` module
+  (`python3 -m pip install --user msgpack`) to speak the dd-trace v0.4
+  wire format; it fails outright without it, where `datadog-bridge`
+  skips its live leg instead.
 - Network access on first `make up` (Helm charts and the perf-sentinel
   GHCR image).
 
