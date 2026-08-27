@@ -87,7 +87,10 @@ docker run -d --name "${PG_CONTAINER}" --network "${NETWORK}" \
   "${POSTGRES_IMAGE}" >/dev/null || die "postgres start failed"
 PG_READY=0
 for _ in $(seq 1 60); do
-  docker exec "${PG_CONTAINER}" pg_isready -U lab -d labdb >/dev/null 2>&1 && { PG_READY=1; break; }
+  # A real query, not pg_isready: initdb runs a temporary server on the same
+  # socket while it finishes, so pg_isready answers before the real one is up.
+  docker exec "${PG_CONTAINER}" psql -U lab -d labdb -Atqc 'SELECT 1' >/dev/null 2>&1 \
+    && { PG_READY=1; break; }
   sleep 1
 done
 [ "${PG_READY}" = "1" ] || die "postgres never became ready"

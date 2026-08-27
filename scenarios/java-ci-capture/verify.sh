@@ -107,7 +107,12 @@ docker run -d --name "${PG_CONTAINER}" \
   -p "${PG_PORT}:5432" "${POSTGRES_IMAGE}" >/dev/null || die "postgres start failed"
 PG_READY=0
 for _ in $(seq 1 60); do
-  docker exec "${PG_CONTAINER}" pg_isready -U lab -d labdb >/dev/null 2>&1 && { PG_READY=1; break; }
+  # pg_isready alone is not enough: initdb runs a temporary server on the same
+  # socket while it finishes, so it answers "accepting connections" before the
+  # real one is up and the very next statement fails. Probe with an actual
+  # query instead.
+  docker exec "${PG_CONTAINER}" psql -U lab -d labdb -Atqc 'SELECT 1' >/dev/null 2>&1 \
+    && { PG_READY=1; break; }
   sleep 1
 done
 [ "${PG_READY}" = "1" ] || die "postgres never became ready: $(docker logs "${PG_CONTAINER}" 2>&1 | tail -3)"
