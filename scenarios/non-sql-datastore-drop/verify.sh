@@ -123,9 +123,18 @@ OTLP_TPL="$(curl -fsS "${DAEMON_URL}/api/findings" | assert_only_postgres)" \
 curl -fsS "${DAEMON_URL}/metrics" > "${TMP_DIR}/metrics.txt" 2>/dev/null || true
 NON_SQL="$(metric_val "${METRIC}")"
 NOT_IO="$(metric_val 'perf_sentinel_otlp_spans_filtered_total{reason="not_io"}')"
-[ "${NON_SQL}" -ge 7 ] || die "non_sql_datastore=${NON_SQL}, expected >=7 (6 redis + 1 es)"
-[ "${NOT_IO}" -eq 0 ] || die "es+url.full mis-bucketed: not_io=${NOT_IO}, expected 0 (es dropped on db.system)"
-ok "OTLP: only n_plus_one_sql [${OTLP_TPL}], non_sql_datastore=${NON_SQL} (>=7), not_io=0 (es not HTTP/not_io)"
+# Exactly 7, not "at least": the daemon is fresh, and the count is what proves
+# the elasticsearch span was bucketed on db.system. Had its url.full won, the
+# span would have landed elsewhere and this would read 6.
+[ "${NON_SQL}" -eq 7 ] || die "non_sql_datastore=${NON_SQL}, expected exactly 7 (6 redis + 1 es); an es span bucketed on url.full would read 6"
+# The one not_io span is the SERVER root. It is not an event: perf-sentinel has
+# no inbound HTTP event type, the endpoint comes from span attributes. Until
+# 0.12.0 a SERVER span carrying a URL was turned into an outbound call, so this
+# read 0; excluding them is what the fixture's SPAN_KIND_SERVER now exercises.
+# The Jaeger and Zipkin fixtures set no span.kind at all, which is why their
+# roots stay eligible and their leg still counts 7 events.
+[ "${NOT_IO}" -eq 1 ] || die "not_io=${NOT_IO}, expected exactly 1 (the SERVER root); a higher count means a datastore span fell through to not_io"
+ok "OTLP: only n_plus_one_sql [${OTLP_TPL}], non_sql_datastore=${NON_SQL} (6 redis + 1 es), not_io=${NOT_IO} (the SERVER root)"
 
 # =============================================================================
 verdict="PASS"

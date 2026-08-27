@@ -30,9 +30,16 @@ protobuf payload (`mixed.pb`) comes from `fixtures/generate-otlp.py`
 - **OTLP daemon**: a throwaway loopback `perf-sentinel watch` daemon
   ingests `mixed.pb`. Findings carry only the PostgreSQL N+1.
   `perf_sentinel_otlp_spans_filtered_total{reason="non_sql_datastore"}`
-  rises by 7 (6 redis + 1 es) while `{reason="not_io"}` stays 0. That
-  proves the elasticsearch span with `url.full` was dropped on
-  `db.system`, not re-bucketed as HTTP.
+  reads exactly 7 (6 redis + 1 es). The exact count is the proof: the
+  elasticsearch span with `url.full` was dropped on `db.system` rather
+  than re-bucketed as HTTP, and had `url.full` won it would read 6.
+  `{reason="not_io"}` reads exactly 1, the SERVER root. perf-sentinel
+  has no inbound HTTP event type, so a SERVER span is never an event of
+  its own; the endpoint comes from span attributes. Until 0.12.0 a
+  SERVER span carrying a URL was read as an outbound call, which is why
+  this used to read 0. The Jaeger and Zipkin fixtures set no
+  `span.kind` at all, so their roots stay eligible and their legs still
+  count 7 events.
 
 ## Run
 
