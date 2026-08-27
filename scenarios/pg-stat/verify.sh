@@ -146,18 +146,36 @@ done
 if python3 - "${TMP_DIR}/grouping-ungrouped.json" "${TMP_DIR}/grouping-grouped.json" <<'PY'
 import json, sys
 
-def markers(path):
+def marked(path):
     report = json.load(open(path))
-    return [entry["seen_in_traces"] for ranking in report["rankings"] for entry in ranking["entries"]]
+    return {entry["normalized_template"] for ranking in report["rankings"]
+            for entry in ranking["entries"] if entry["seen_in_traces"]}
 
-assert any(markers(sys.argv[1])), "ungrouped trace did not cross-reference"
-assert not any(markers(sys.argv[2])), "tenant groups were coalesced"
+def matched(path):
+    return (json.load(open(path)).get("trace_match") or {}).get("matched_templates")
+
+ungrouped, grouped = marked(sys.argv[1]), marked(sys.argv[2])
+assert ungrouped, "ungrouped trace did not cross-reference at all"
+# Splitting the workload across two tenants drops every group below the N+1
+# threshold, so no detector fires under grouping. Until 0.15.0 the
+# cross-reference keyed on the findings and the grouped run therefore marked
+# nothing, which is what this used to assert. It keys on every template the
+# traces carried now, so grouping cannot change the marker set: the templates
+# are the same spans either way. Equality is the regression guard, a fallback
+# to findings would empty the grouped side and break it.
+assert grouped == ungrouped, (
+    "grouping changed the marked template set, so the cross-reference is not "
+    f"keyed on templates: only ungrouped {sorted(ungrouped - grouped)}, "
+    f"only grouped {sorted(grouped - ungrouped)}")
+assert matched(sys.argv[1]) == matched(sys.argv[2]) == len(ungrouped), (
+    f"trace_match disagrees with the markers: {matched(sys.argv[1])} ungrouped, "
+    f"{matched(sys.argv[2])} grouped, {len(ungrouped)} marked")
 PY
 then
-  ok "--traces cross-reference keeps tenant-a and tenant-b below the detector threshold"
+  ok "--traces marks the same templates with and without a tenant grouping"
 else
   verdict="FAIL"
-  color_red "    fail: pg-stat --traces ignored [detection] grouping_attributes"
+  color_red "    fail: the --traces marker set is not template-keyed under a grouping"
 fi
 
 # Path 2: pg_stat via Prometheus scraping postgres-exporter. Skipped
