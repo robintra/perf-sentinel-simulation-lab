@@ -22,7 +22,15 @@ GITLAB_URL="${GITLAB_URL:-http://localhost:8181}"
 PAT_FILE="${PAT_FILE:-/tmp/gitlab-pat.txt}"
 PROJECT_NAME="${PROJECT_NAME:-perf-sentinel-template-test}"
 ROOT_USER="root"
-PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.13.1}"
+# The image under test, resolved like every other image-based scenario rather
+# than pinned here. A hardcoded default silently validates whatever release it
+# names on every future gate run, which is the exact failure resolve-image.sh
+# was written to stop. PERF_SENTINEL_IMAGE still wins, resolve-image.sh reads
+# it first.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
+PERF_SENTINEL_IMAGE="${IMAGE}"
 PAGES_PORT="${PAGES_PORT:-18190}"
 PAGES_HOST="${ROOT_USER}.pages.localhost"
 PIPELINE_TIMEOUT_S="${PIPELINE_TIMEOUT_S:-1200}"
@@ -109,6 +117,7 @@ cp "${SCRIPT_DIR}/fixtures/gitlab-ci.yml" "${WORK}/.gitlab-ci.yml"
 # the runner free of any egress to github.com, and gives the arm64 lab an arm64
 # binary rather than the amd64 release asset.
 docker rm -f gle2e-extract >/dev/null 2>&1 || true
+ok "under test: ${PERF_SENTINEL_IMAGE}"
 docker create --name gle2e-extract "${PERF_SENTINEL_IMAGE}" >/dev/null 2>&1 \
   || die "cannot pull ${PERF_SENTINEL_IMAGE}"
 docker cp gle2e-extract:/perf-sentinel "${WORK}/perf-sentinel" >/dev/null 2>&1 \

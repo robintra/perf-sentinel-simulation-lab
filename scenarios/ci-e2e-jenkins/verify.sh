@@ -41,7 +41,15 @@ JENKINS_IMAGE="${JENKINS_IMAGE:-perf-sentinel-lab-jenkins:2.568.1}"
 # Where the perf-sentinel binary baked into the controller comes from. Defaults
 # to the published release. A pre-release validation points it at a locally
 # built image, the same override the other two ci-e2e scenarios take.
-PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.13.1}"
+# The image under test, resolved like every other image-based scenario rather
+# than pinned here. A hardcoded default silently validates whatever release it
+# names on every future gate run, which is the exact failure resolve-image.sh
+# was written to stop. PERF_SENTINEL_IMAGE still wins, resolve-image.sh reads
+# it first.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
+PERF_SENTINEL_IMAGE="${IMAGE}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
 NETWORK="jce2e-net"
 JENKINS_CONTAINER="jce2e-jenkins"
@@ -110,6 +118,7 @@ cp -R "${JAVA_FIXTURES}" "${SCRIPT_DIR}/fixtures/project"
 rm -rf "${SCRIPT_DIR}/fixtures/project/target"
 
 step "Build the Jenkins image (Maven + perf-sentinel from ${PERF_SENTINEL_IMAGE} + the job)"
+ok "under test: ${PERF_SENTINEL_IMAGE}"
 docker build -q --build-arg "PERF_SENTINEL_IMAGE=${PERF_SENTINEL_IMAGE}" \
   -t "${JENKINS_IMAGE}" "${SCRIPT_DIR}/fixtures" > "${TMP_DIR}/image-build.log" 2>&1 \
   || die "jenkins image build failed: $(tail -5 "${TMP_DIR}/image-build.log")"

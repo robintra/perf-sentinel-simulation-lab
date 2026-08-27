@@ -27,7 +27,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RENDER_CHECK="${SCRIPT_DIR}/../ci-e2e-common/render-check.sh"
 JAVA_FIXTURES="${SCRIPT_DIR}/../java-ci-capture/fixtures"
 
-PERF_SENTINEL_IMAGE="${PERF_SENTINEL_IMAGE:-ghcr.io/robintra/perf-sentinel:0.13.1}"
+# The image under test, resolved like every other image-based scenario rather
+# than pinned here. A hardcoded default silently validates whatever release it
+# names on every future gate run, which is the exact failure resolve-image.sh
+# was written to stop. PERF_SENTINEL_IMAGE still wins, resolve-image.sh reads
+# it first.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
+PERF_SENTINEL_IMAGE="${IMAGE}"
 POSTGRES_IMAGE="${POSTGRES_IMAGE:-postgres:18.4-alpine}"
 NETWORK="ghe2e-net"
 PG_CONTAINER="ghe2e-postgres"
@@ -100,6 +108,7 @@ rm -rf "${WORKDIR}/project/target"
 # binary from there is both the artifact a user installs and the only way to get
 # a Linux binary from a macOS host.
 docker rm -f ghe2e-extract >/dev/null 2>&1 || true
+ok "under test: ${PERF_SENTINEL_IMAGE}"
 docker create --name ghe2e-extract "${PERF_SENTINEL_IMAGE}" >/dev/null 2>&1 \
   || die "cannot pull ${PERF_SENTINEL_IMAGE}"
 docker cp ghe2e-extract:/perf-sentinel "${WORKDIR}/perf-sentinel" >/dev/null 2>&1 \
