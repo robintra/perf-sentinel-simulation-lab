@@ -33,7 +33,7 @@ unchecked until the same round added them.
 | `B2-truncation-entry` | the truncation entry appears, names **both** counts (`capped at 2 of 3 retained`) and warns that the gate counts only these |
 | `A3-zero-cap-counts` | cap 0 → 0 findings, and `n_plus_one_sql_critical_max` goes from `actual=3, passed=false` to `actual=0, passed=true` over an unchanged store |
 | `A3-ratio-survives` | `io_waste_ratio_max` still reads the batch value at cap 0, so the whole verdict does **not** unconditionally flip (see Notes) |
-| `C1-oversize-named` | a 9 MiB body → `query monitor` shows `[STALE]` **and** `over the 8 MB read limit: lower max_export_findings ...` |
+| `C1-oversize-named` | a 9 MiB body → `query monitor` shows `[STALE]` **and** `over the 8 MiB read limit: lower max_export_findings ...` |
 | `C1-control` | the live daemon's normal-sized body is not reported as oversized |
 | `C2-inspect-gap` | `query inspect` still flattens the same overrun into an empty view. Recorded `KNOWN`, and flips to `CHANGED` if a later release fixes it |
 | `T-pair-warns` | `max_export_findings = 2000` with `max_retained_traces = 400` projects ~10 MB and the startup advisory names both knobs and values |

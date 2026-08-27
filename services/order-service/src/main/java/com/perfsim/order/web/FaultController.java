@@ -72,6 +72,48 @@ public class FaultController extends BaseFaultController {
                 });
     }
 
+    /**
+     * Same detector, same service, same endpoint, two SQL shapes. Shape "b"
+     * adds a predicate, so the normalized template (and therefore the finding
+     * signature) differs while everything the Hub groups lineage on stays
+     * identical. Separate from /n-plus-one-sql on purpose: that endpoint's
+     * committed fixtures are pinned to its current shape.
+     */
+    @PostMapping("/template-mutation-sql")
+    @Transactional
+    public ResponseEntity<FaultResponse> templateMutationSql(
+            @RequestParam(defaultValue = "a") String shape,
+            @RequestParam(defaultValue = "12") int items) {
+        if (!"a".equals(shape) && !"b".equals(shape)) {
+            return ResponseEntity.badRequest().build();
+        }
+        if (items < 5 || items > 100) {
+            return ResponseEntity.badRequest().build();
+        }
+        // Bound to the two literals above, never interpolated from the request.
+        String predicate = "b".equals(shape) ? " AND quantity > 0" : "";
+        return runFault(
+                "template_mutation_sql",
+                Map.of("shape", shape, "items", items),
+                () -> {
+                    // Lab-only: literal order id concatenated per iteration, same
+                    // reason as /n-plus-one-sql above. Never copy this pattern
+                    // into any code path that handles untrusted input.
+                    int total = 0;
+                    for (int orderId = 1; orderId <= items; orderId++) {
+                        Object count = em.createNativeQuery(
+                                        "SELECT count(*) FROM orders.order_items "
+                                                + "WHERE order_id = " + orderId
+                                                + predicate)
+                                .getSingleResult();
+                        if (count instanceof Number n) {
+                            total += n.intValue();
+                        }
+                    }
+                    return Map.of("shape", shape, "orders_touched", items, "items_total", total);
+                });
+    }
+
     @PostMapping("/redundant-http")
     public ResponseEntity<FaultResponse> redundantHttp(
             @RequestParam(defaultValue = "10") int repeats) {

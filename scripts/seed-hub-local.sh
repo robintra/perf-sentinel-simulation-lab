@@ -77,17 +77,40 @@ out, n = re.subn(
 )
 if n == 0 and f"image: {tag}" not in src:
     sys.exit("error: could not find the hub image pin to replace")
-if "imagePullPolicy: Never" not in out:
-    out = out.replace(
-        f"image: {tag}  # local build, this manifest has no published fallback",
-        f"image: {tag}  # local build, this manifest has no published fallback\n          imagePullPolicy: Never",
-    )
+# The committed manifest already carries an imagePullPolicy. Replace it rather
+# than adding a second one: a duplicate YAML key is last-wins, so appending
+# would silently leave IfNotPresent in force and defeat the local pin.
+out = re.sub(r"imagePullPolicy: \w+", "imagePullPolicy: Never", out, count=1)
 open(path, "w").write(out)
 PY
 
 echo "==> applying and rolling the hub"
 kubectl apply -f "${MANIFEST}" >/dev/null
 kubectl -n observability rollout status deploy/perf-sentinel-hub --timeout=180s
+
+# Turn the daemon's push export on. It ships disabled because the daemon EXITS
+# at startup when api_key_file is missing, so a committed `enabled = true`
+# would CrashLoopBackOff every cluster brought up without a Hub. Now that the
+# Secret exists, flipping it is safe. Another uncommitted working-tree edit,
+# same as the image pin above.
+DAEMON_MANIFEST="${REPO_ROOT}/manifests/perf-sentinel-daemon.yaml"
+if grep -q '^    enabled = false' "${DAEMON_MANIFEST}"; then
+  echo "==> enabling [daemon.hub_export] in ${DAEMON_MANIFEST} (uncommitted)"
+  python3 - "${DAEMON_MANIFEST}" <<'PY2'
+import re, sys
+path = sys.argv[1]
+src = open(path).read()
+# Only the flag inside [daemon.hub_export]; other sections have their own.
+out, n = re.subn(r"(\[daemon\.hub_export\]\n    enabled = )false", r"\1true", src)
+if n != 1:
+    sys.exit(f"error: expected exactly one hub_export enabled flag, rewrote {n}")
+open(path, "w").write(out)
+PY2
+  kubectl apply -f "${DAEMON_MANIFEST}" >/dev/null
+  # The ConfigMap is mounted by subPath, which does not refresh in place.
+  kubectl -n observability rollout restart deploy/perf-sentinel-daemon >/dev/null
+  kubectl -n observability rollout status deploy/perf-sentinel-daemon --timeout=180s
+fi
 
 echo "==> done. The manifest now carries an uncommitted local pin:"
 git -C "${REPO_ROOT}" diff --stat -- manifests/perf-sentinel-hub.yaml || true

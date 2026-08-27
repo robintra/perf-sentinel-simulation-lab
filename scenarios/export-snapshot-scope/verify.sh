@@ -362,7 +362,7 @@ start_stub
 monitor_header "http://127.0.0.1:${STUB_PORT}" > "${TMP_DIR}/monitor-oversize.txt"
 grep -q 'STALE' "${TMP_DIR}/monitor-oversize.txt" \
   || die "monitor did not mark an unreadable snapshot as stale"
-grep -q 'over the 8 MB read limit' "${TMP_DIR}/monitor-oversize.txt" \
+grep -q 'over the 8 MiB read limit' "${TMP_DIR}/monitor-oversize.txt" \
   || die "monitor reports [STALE] without naming the read limit: $(grep -o 'STALE.\{0,90\}' "${TMP_DIR}/monitor-oversize.txt" | tail -1)"
 # The reason must name the knob to turn, not just the symptom: cut before it,
 # it is no better than the bare marker it replaces.
@@ -374,7 +374,7 @@ stop_stub
 monitor_header "${DAEMON_URL}" > "${TMP_DIR}/monitor-ok.txt"
 grep -q 'read limit' "${TMP_DIR}/monitor-ok.txt" \
   && die "a normal-sized snapshot is reported as oversized"
-record "C1-oversize-named" "PASS" "[STALE] + 'over the 8 MB read limit: lower max_export_findings ...'"
+record "C1-oversize-named" "PASS" "[STALE] + 'over the 8 MiB read limit: lower max_export_findings ...'"
 record "C1-control" "PASS" "the live daemon's normal body is not reported as oversized"
 ok "monitor names the oversized body and leaves the normal one alone"
 

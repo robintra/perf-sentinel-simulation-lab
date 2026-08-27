@@ -37,6 +37,13 @@ through the cluster OTel Collector.
 | POST   | `/api/fault/serialized`      | `steps=6`               | `serialized_calls`    |
 | POST   | `/api/fault/pool-saturation` | `concurrency=20`        | `pool_saturation`     |
 
+`order-service` carries one endpoint beyond this contract,
+`POST /api/fault/template-mutation-sql?shape=a|b&items=12`. It is
+deliberately **not** part of the 12: it exists for a single scenario,
+[`hub-lineage-mutation`](../scenarios/hub-lineage-mutation), which needs the
+same detector, service and endpoint to produce two different SQL templates.
+Nothing requires the other stacks to implement it.
+
 Valid, successful fault requests return HTTP 200 with the JSON shape below.
 Validation and dependency failures follow the 400/non-200 contract documented
 below.

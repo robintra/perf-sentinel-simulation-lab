@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 73 scenarios live under `scenarios/<name>/` and each one ships a
+The 79 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -190,7 +190,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 70
+`grouping-identity` is the 0.11 contract gate. The lab now ships 79
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -300,7 +300,35 @@ oversized snapshot named rather than flattened into an unreachable
 daemon, and the startup advisory that fires on the two knobs together
 but never on retained traces alone.
 
-The release gate runs all 73. Each validated version is recorded in
+The six `hub-*` gates are the 0.15.0 ecosystem tier, the first
+scenarios in this lab to involve anything other than perf-sentinel
+itself. `hub-ingestion` is their dependency root: the daemon's push
+export reaching PerfSentinelHub, and the envelope coming back out in a
+shape the IDE plugins parse. `hub-source-reachability` isolates a
+daemon-and-Hub pair to prove that only a successful poll clears the
+unreachable marker and a push never does. `hub-derived-status` forges
+envelopes to reach `likely_resolved`, which no organic traffic in this
+lab produces, and pins the two negative cases (a source that never
+witnessed the finding, and one the Hub cannot reach) that must stay
+`not_observed`. `hub-lineage-mutation` drives a real SQL template
+mutation through `order-service` and checks both halves of the answer,
+the Hub's lineage origin and the CLI's `mutated_findings` pairing.
+`hub-retention-purge` proves the boot purge drops a stale predecessor
+while its successor keeps the original birth date, and that `backup`
+yields a database a second Hub can serve from. `hub-plugin-contract`
+captures the payload the JetBrains plugin actually parses, straight
+from a running Hub, into a fixture the plugin replays in its own
+`HubContractTest`.
+
+Two limits are worth stating. The Hub has no published image, so every
+run needs `make seed-hub-local` to build one from a local checkout, and
+the committed manifest stays in `ImagePullBackOff` until it does. And
+no finding in this lab carries a `code_location`: the OpenTelemetry
+Java agent attaches no `code.*` attributes to JDBC spans, so the
+plugin's navigation contract is not covered by a captured fixture and
+stays owned by the plugin's own anchor resolver tests.
+
+The release gate runs all 79. Each validated version is recorded in
 the upstream `release-gate/lab-validations.txt` ledger.
 
 ## Run
@@ -1285,7 +1313,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 73 scenarios, in an order
+`make verify-all-scenarios` includes all 79 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is

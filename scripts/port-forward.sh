@@ -96,12 +96,17 @@ case "${cmd}" in
     start_one daemon     observability perf-sentinel-daemon            14318 14318 /health
     start_one tempo      observability tempo                            3200  3200 /ready
     start_one prometheus observability kube-prometheus-stack-prometheus 9090  9090 /-/ready
+    # The Hub's read API. NetworkPolicy keeps it closed to the cluster except
+    # for the daemon's push, and port-forward goes through the kubelet proxy,
+    # so this is how the host reads it without opening an ingress.
+    start_one hub        observability perf-sentinel-hub                 8080  8080 /health/ready
     ;;
   stop)
     stop_one grafana
     stop_one daemon
     stop_one tempo
     stop_one prometheus
+    stop_one hub
     ;;
   *)
     echo "Usage: $0 {start|stop}"

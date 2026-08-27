@@ -215,7 +215,7 @@ cat >"${TMP_DIR}/detectors.toml" <<'EOF'
 grouping_attributes = ["k8s.namespace.name"]
 n_plus_one_min_occurrences = 5
 slow_query_threshold_ms = 100
-slow_min_occurrences = 3
+slow_query_min_occurrences = 3
 pool_saturation_concurrent_threshold = 4
 chatty_service_min_calls = 5
 max_fanout = 100
@@ -440,9 +440,13 @@ else
   fail "H.report" "HTML report failed: $(tail -2 "${TMP_DIR}/report.log")"
 fi
 
+# The findings table names the grouping key once, in the column header, and
+# carries the value on each row. It used to render a `key=value` pill per row;
+# both identities are still distinguishable, which is the claim under test.
 if "${BROWSER_CHECK}" "${TMP_DIR}/dashboard.html" dom >"${TMP_DIR}/dom.txt" \
-  && grep -q 'k8s.namespace.name=prod-eu' "${TMP_DIR}/dom.txt" \
-  && grep -q 'k8s.namespace.name=staging-eu' "${TMP_DIR}/dom.txt"; then
+  && grep -q 'k8s.namespace.name' "${TMP_DIR}/dom.txt" \
+  && grep -q '^prod-eu$' "${TMP_DIR}/dom.txt" \
+  && grep -q '^staging-eu$' "${TMP_DIR}/dom.txt"; then
   pass "H.dom" "real Chrome renders both deployment identities"
 else
   fail "H.dom" "rendered dashboard did not expose both grouping labels"
