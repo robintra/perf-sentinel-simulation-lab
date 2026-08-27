@@ -33,6 +33,46 @@ emits while the system breaks:
 | X3 | chaos guard: the slice still contains the stamped counts of ERROR spans and broken-parent traces - proves the committed corpus is actually chaotic, so X1/X2 can never pass vacuously on a tame slice |
 | X4 | `report --input chaos-slice.ndjson` renders a usable dashboard |
 
+## Restamp history
+
+The census is only meaningful next to the binary that produced it, so every
+restamp is recorded here.
+
+**0.15.0.** The stamp had been carried since 0.11.0 and the gate was red from
+0.12.0 on, unnoticed because the lab gate was paused between 0.13.0 and 0.15.0.
+Replaying the unchanged slice on the published 0.11.0, 0.12.0, 0.13.0, 0.13.1
+and 0.14.0 images puts the change squarely in 0.12.0, and 0.15.0 reproduces
+0.12.0 exactly:
+
+| | 0.11.0 (old stamp) | 0.12.0 onwards |
+|---|---|---|
+| `traces_analyzed` | 249 | 241 |
+| `redundant_http` | 279 | 57 |
+| `n_plus_one_http` | 5 | 3 |
+| `chatty_service` | 32 | 31 |
+| `slow_http` | 2 | absent |
+
+Every finding that disappeared is an HTTP one, and every disappearing key is a
+SERVER-span artefact: 70 distinct `redundant_http` identities collapse to 5,
+and the largest were `frontend-proxy` rows carrying `source_endpoint:
+"unknown"` and templates like `GET frontend-proxy/`. A proxy receiving N
+requests was being read as a service making N redundant outbound calls. 0.12.0
+stopped counting inbound SERVER spans as outbound work, which is why
+`traces_analyzed` drops too: a trace made only of proxy SERVER spans has
+nothing left to analyze. The drop is a false-positive reduction, so the new
+census is the correct one.
+
+Bisecting the 0.11.0..0.12.0 range pins it to a single commit,
+`f01669ad fix(ingest): exclude server spans from http out`: its parent
+reproduces the old census exactly and it reproduces the new one exactly, which
+rules out the neighbouring endpoint-resolution fixes in the same batch.
+
+Worth knowing: the change shipped undocumented. The CHANGELOG entry under
+`[0.12.0]` was written retroactively, from this gate. `redundant_sql`,
+`serialized_calls` and `excessive_fanout` are identical across all six
+binaries, which is what rules out the documented 0.12.0 session-command fixes
+as the cause.
+
 ## How it works
 
 Capture once, replay forever - the demo shares the pinned clone in

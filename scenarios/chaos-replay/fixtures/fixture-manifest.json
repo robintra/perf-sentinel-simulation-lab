@@ -21,15 +21,14 @@
     "window_minutes": 12
   },
   "traces": 300,
-  "traces_analyzed": 249,
+  "traces_analyzed": 241,
   "finding_census": {
-    "chatty_service": 32,
+    "chatty_service": 31,
     "excessive_fanout": 31,
-    "n_plus_one_http": 5,
-    "redundant_http": 279,
+    "n_plus_one_http": 3,
+    "redundant_http": 57,
     "redundant_sql": 15,
-    "serialized_calls": 9,
-    "slow_http": 2
+    "serialized_calls": 9
   },
   "error_spans": 119,
   "broken_parent_traces": 4

@@ -266,7 +266,7 @@ else
 fi
 
 # ── B5: robustness on real exports ──────────────────────────────────────────
-step "B4: --traces honors configured grouping"
+step "B4-grouping: a split-by-tenant workload is still marked as traced"
 python3 - "${TRACES}" "${TMP_DIR}" <<'PY'
 import json, pathlib, sys
 
@@ -293,12 +293,23 @@ import json, sys
 report = json.load(open(sys.argv[1]))
 matches = [entry for ranking in report["rankings"] for entry in ranking["entries"]
            if any(table in entry["normalized_template"] for table in ("orders", "line_items", "users"))]
-assert matches and not any(entry["seen_in_traces"] for entry in matches)
+assert matches, "no orders/line_items/users digest in the ranking"
+# Splitting the workload across two tenants drops every group below the N+1
+# threshold, so no detector fires on these templates. Before 0.15.0 the
+# cross-reference keyed on the findings, which left a perfectly healthy traced
+# query unmarked; it now keys on every template the traces carried, so the
+# marker is present precisely because the query is traced, not because it is
+# broken. Asserting the absence here is what the pre-0.15.0 version did.
+assert all(entry["seen_in_traces"] for entry in matches), \
+    "a traced template is unmarked, the cross-reference fell back to findings"
+summary = report.get("trace_match")
+assert summary and summary["matched_templates"] >= 1, \
+    f"trace_match missing or empty: {summary}"
 PY
 then
-  assert_pass "B4-grouping" "tenant-a and tenant-b stay separate during --traces cross-reference"
+  assert_pass "B4-grouping" "grouped traffic still marks its templates, and trace_match counts them"
 else
-  assert_fail "B4-grouping" "mysql-stat --traces ignored [detection] grouping_attributes"
+  assert_fail "B4-grouping" "a traced template went unmarked under a tenant grouping"
 fi
 
 step "B5: NULL catch-all row (saturated digest table)"
