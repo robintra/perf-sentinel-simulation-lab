@@ -116,7 +116,11 @@ print(json.dumps({'content': content}))
         ok "lint PASS, GitLab CE accepted the upstream YAML"
       else
         LINT_VERDICT="FAIL"
-        LINT_NOTE="$(jq -r '.errors // [] | join(\", \")' "${TMP_DIR}/lint-response.json" 2>/dev/null || echo 'unknown error')"
+        # jq gets the join separator from a here-string, not from an escaped
+        # literal: inside single quotes the backslashes reach jq verbatim, the
+        # program fails to parse and every lint error read "unknown error".
+        LINT_NOTE="$(jq -r '(.errors // []) | join("; ")' "${TMP_DIR}/lint-response.json" 2>/dev/null)"
+        [ -n "${LINT_NOTE}" ] || LINT_NOTE="unknown error, raw response in ${TMP_DIR}/lint-response.json"
         warn "lint FAIL: ${LINT_NOTE}"
       fi
     fi
