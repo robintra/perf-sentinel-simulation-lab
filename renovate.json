@@ -6,6 +6,9 @@
   "labels": ["dependencies"],
   "commitMessagePrefix": "chore(deps):",
   "dependencyDashboard": true,
+  "logLevelRemap": [
+    { "matchMessage": "/^(Error obtaining docker token|No docker auth found)/", "newLogLevel": "debug" }
+  ],
   "kubernetes": { "managerFilePatterns": ["/manifests/.+\\.yaml$/"] },
   "helm-values": { "managerFilePatterns": ["/helm/values/.+\\.yaml$/"] },
   "customManagers": [
