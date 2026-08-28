@@ -95,6 +95,7 @@ case "${cmd}" in
     start_one grafana    observability kube-prometheus-stack-grafana    3000  3000 /api/health
     start_one daemon     observability perf-sentinel-daemon            14318 14318 /health
     start_one tempo      observability tempo                            3200  3200 /ready
+    start_one victoria   observability victoria-traces                  10428 10428 /health
     start_one prometheus observability kube-prometheus-stack-prometheus 9090  9090 /-/ready
     # The Hub's read API. NetworkPolicy keeps it closed to the cluster except
     # for the daemon's push, and port-forward goes through the kubelet proxy,
@@ -105,6 +106,7 @@ case "${cmd}" in
     stop_one grafana
     stop_one daemon
     stop_one tempo
+    stop_one victoria
     stop_one prometheus
     stop_one hub
     ;;

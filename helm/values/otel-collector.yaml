@@ -110,6 +110,13 @@ config:
       endpoint: http://perf-sentinel-daemon.observability.svc.cluster.local:14318
       tls:
         insecure: true
+    otlphttp/victoria_traces:
+      # The exporter appends /v1/traces, so the base stops at /insert/opentelemetry.
+      # Note this is NOT the prefix the Jaeger query API lives under: that one is
+      # /select/jaeger, which is what perf-sentinel's --endpoint must carry.
+      endpoint: http://victoria-traces.observability.svc.cluster.local:10428/insert/opentelemetry
+      tls:
+        insecure: true
     prometheus:
       endpoint: 0.0.0.0:8889
       send_timestamps: true
@@ -133,6 +140,7 @@ config:
         exporters:
           - otlphttp/tempo
           - otlphttp/perf_sentinel
+          - otlphttp/victoria_traces
       metrics:
         receivers:
           - otlp

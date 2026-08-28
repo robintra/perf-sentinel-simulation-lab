@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 79 scenarios live under `scenarios/<name>/` and each one ships a
+The 80 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -178,6 +178,7 @@ Findings produced by the standard rule omit the field.
 |-----------------------------------------------------------|----------------------------------------------------------------|--------------------------------------------------|--------|
 | [`hybrid-daemon-batch`](#hybrid-daemon-to-batch-html)     | hybrid daemon -> batch HTML                                    | running daemon                                   | PASS   |
 | [`batch-tempo-scrape`](#batch-over-tempo)                 | batch over Tempo via `perf-sentinel tempo`                     | daemon + Tempo                                   | PASS   |
+| [`batch-victoria-scrape`](#batch-over-victoria-traces)    | batch over Victoria Traces via `jaeger-query`                  | Victoria Traces + collector fan-out              | PASS   |
 | [`daemon-otlp-direct`](#daemon-otlp-direct-no-collector)  | daemon OTLP direct (no Collector)                              | dedicated daemon + cloned service                | PASS   |
 | [`multiformat-input`](#multi-format-input-jaeger--zipkin) | multi-format input (Jaeger + Zipkin)                           | Jaeger + Zipkin + multi-export collector         | PASS   |
 | [`calibrate-mode`](#calibrate-energy-coefficients)        | calibrate energy coefficients                                  | none (fixture + synthetic CSV)                   | PASS   |
@@ -430,6 +431,7 @@ the lab has exercised live.
 | OTLP/protobuf (live)                        | daemon `:14317` (gRPC) / `:14318` (HTTP)    | OTel Collector or direct from app | daemon-otlp-direct, sidecar-pattern, correlation-finding |
 | OTLP-JSON (Tempo)                           | `perf-sentinel tempo --endpoint <url>`      | Tempo `:3200`                     | batch-tempo-scrape                                       |
 | Jaeger v1 JSON                              | `perf-sentinel analyze --input`             | Jaeger query API                  | multiformat-input                                        |
+| Jaeger query API (live)                     | `perf-sentinel jaeger-query --endpoint <url>` | Victoria Traces `:10428/select/jaeger` | batch-victoria-scrape                              |
 | Zipkin v2 JSON                              | `perf-sentinel analyze --input`             | Zipkin query API                  | multiformat-input                                        |
 | Daemon Report JSON                          | `perf-sentinel report --input`              | `/api/export/report`              | hybrid-daemon-batch                                      |
 | Postgres `pg_stat_statements` CSV           | `perf-sentinel report --pg-stat`            | `psql \copy`                      | pg-stat                                                  |
@@ -1313,7 +1315,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 79 scenarios, in an order
+`make verify-all-scenarios` includes all 80 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is

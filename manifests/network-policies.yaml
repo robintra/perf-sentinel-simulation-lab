@@ -463,6 +463,13 @@ spec:
           port: 14318
         - protocol: TCP
           port: 14317
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: victoria-traces
+      ports:
+        - protocol: TCP
+          port: 10428
 ---
 # 4.D.bis OTel collector ingress from shop pods (pairs with 4.C).
 apiVersion: networking.k8s.io/v1
@@ -509,6 +516,28 @@ spec:
           port: 4318
         - protocol: TCP
           port: 3200
+---
+# 4.D.ter.bis ingress on Victoria Traces limited to OTel. One port carries
+# both halves of this backend: ingestion under /insert and the Jaeger query
+# API under /select, so there is nothing finer to allow here than the port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: victoria-traces-allow-internal
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: victoria-traces
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opentelemetry-collector
+      ports:
+        - protocol: TCP
+          port: 10428
 ---
 # 4.D.quater ingress on perf-sentinel daemon limited to OTel.
 apiVersion: networking.k8s.io/v1

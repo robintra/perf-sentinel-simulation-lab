@@ -1,0 +1,111 @@
+# Victoria Traces, the second backend perf-sentinel's `jaeger-query` subcommand
+# targets. Tempo covers the `tempo` subcommand; this covers the Jaeger query API
+# half, which until 0.16.0 was never exercised anywhere.
+#
+# Two paths matter and they are not the same prefix:
+#   ingest  POST /insert/opentelemetry/v1/traces
+#   query   GET  /select/jaeger/api/traces
+# The Jaeger prefix is why `--endpoint` must carry a path here, unlike Tempo.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: victoria-traces
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: victoria-traces
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: victoria-traces
+  ports:
+    - name: http
+      port: 10428
+      targetPort: 10428
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: victoria-traces
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: victoria-traces
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    app.kubernetes.io/version: "0.11.0"
+spec:
+  serviceName: victoria-traces
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: victoria-traces
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: victoria-traces
+        app.kubernetes.io/part-of: perf-sentinel-lab
+        app.kubernetes.io/version: "0.11.0"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: victoria-traces
+          image: victoriametrics/victoria-traces@sha256:9947b14b6b9baa61b8efef64467a7118ee54ccd6be6b7c1849f6fdd65d8e17fd  # v0.11.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -storageDataPath=/vtraces-data
+            - -httpListenAddr=:10428
+            # Short on purpose: the lab only ever queries traces it just
+            # produced, and a long retention would grow the volume for nothing.
+            - -retentionPeriod=1d
+          ports:
+            - name: http
+              containerPort: 10428
+              protocol: TCP
+          volumeMounts:
+            - name: data
+              mountPath: /vtraces-data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 10428
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 10428
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/name: victoria-traces
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 5Gi
