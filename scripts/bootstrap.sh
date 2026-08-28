@@ -242,6 +242,13 @@ deploy_tempo() {
   ok "tempo deployed"
 }
 
+deploy_victoria_traces() {
+  step "Deploying Victoria Traces (second trace backend, hand-written manifest)"
+  kubectl apply -f "${REPO_ROOT}/manifests/victoria-traces.yaml"
+  kubectl rollout status statefulset victoria-traces -n observability --timeout=180s
+  ok "victoria-traces deployed"
+}
+
 deploy_otel_collector() {
   step "Installing OTel Collector ${OTEL_CHART_VERSION}"
   helm upgrade --install otel-collector \
@@ -363,6 +370,11 @@ main() {
   deploy_messaging
   deploy_kube_prometheus_stack
   deploy_tempo
+  # Before the collector: its traces pipeline exports to Victoria Traces, and an
+  # exporter whose target does not exist retries forever, grows its sending queue
+  # and pushes the collector past memory_limiter, which then refuses spans at the
+  # receiver for the whole pipeline (the daemon included).
+  deploy_victoria_traces
   deploy_otel_collector
   deploy_grafana_dashboards
   deploy_scaphandre_mock

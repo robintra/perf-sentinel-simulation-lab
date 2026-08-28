@@ -25,12 +25,16 @@ traffic.
   │  │     receivers: OTLP gRPC 4317, HTTP 4318         │    │
   │  │     exporters:                                   │    │
   │  │       ├── otlphttp -> tempo:4318                 │    │
+  │  │       ├── otlphttp -> victoria-traces:10428      │    │
   │  │       ├── otlphttp -> perf-sentinel-daemon:14318 │    │
   │  │       └── prometheus :8889/metrics               │    │
   │  │                                                  │    │
   │  │   Tempo (single-binary)                          │    │
   │  │     receivers: OTLP 4317/4318, query 3200        │    │
   │  │     storage: local PVC 10Gi                      │    │
+  │  │                                                  │    │
+  │  │   Victoria Traces (second trace backend)         │    │
+  │  │     OTLP insert + Jaeger query on 10428          │    │
   │  │                                                  │    │
   │  │   perf-sentinel daemon                           │    │
   │  │     OTLP HTTP 14318, gRPC 14317                  │    │
@@ -64,7 +68,8 @@ The lab mixes two installation styles. The split follows three rules:
 
 Concretely:
 
-- **Direct manifest**: Tempo (both Grafana charts deprecated), perf-sentinel
+- **Direct manifest**: Tempo (both Grafana charts deprecated), Victoria
+  Traces (second trace backend, feeds `batch-victoria-scrape`), perf-sentinel
   daemon (upstream chart wraps choices we override anyway), PostgreSQL
   (single StatefulSet, init via ConfigMap is enough), namespaces,
   Grafana dashboards (loaded as ConfigMap).
