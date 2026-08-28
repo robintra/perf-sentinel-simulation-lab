@@ -56,7 +56,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: victoria-traces
-          image: victoriametrics/victoria-traces@sha256:9947b14b6b9baa61b8efef64467a7118ee54ccd6be6b7c1849f6fdd65d8e17fd  # v0.11.0
+          image: victoriametrics/victoria-traces@sha256:66e784a595c4a88e5b1dfab5d153dea442cf1caaeae4d67839c550414c33b3b0  # v0.11.0
           imagePullPolicy: IfNotPresent
           args:
             - -storageDataPath=/vtraces-data
