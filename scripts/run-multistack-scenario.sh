@@ -173,7 +173,10 @@ if not matched:
             json.dumps(suggestion.get("recommendation") or "")[:80],
             json.dumps(rejected[0].get("pattern") or {})[:120])).replace("|", "/"))
     else:
-        print("0|no fresh type/service/source finding")
+        # Distinguish "the daemon never produced it" from "it was there but not fresh"
+        # (pre-existing trace id, or stored before the k6 job started).
+        same = [item for item, finding in records if finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint]
+        print("0|no fresh type/service/source finding (same type+service+source in store: %d)" % len(same))
 else:
     finding = matched[0]
     pattern = finding.get("pattern") or {}
@@ -275,6 +278,8 @@ EOF
             kubectl -n "${NAMESPACE}" logs "job/${job_name}" --all-containers=true --tail=100 >&2 || true
             RESULTS+=("FAIL|${pattern}|0|k6 Job Failed condition")
         else
+            color_red "    k6 job timed out; logs follow"
+            kubectl -n "${NAMESPACE}" logs "job/${job_name}" --all-containers=true --tail=50 >&2 || true
             RESULTS+=("FAIL|${pattern}|0|k6 job timeout")
         fi
         cleanup_one "${job_name}"
@@ -285,7 +290,9 @@ EOF
     # PHP stacks flush self-call child spans late: symfony redundant_sql regularly burns 4 of
     # the old 6 attempts, laravel redundant_http exhausted them in run 31368007598 (issue #101).
     sleep 15
-    attempts=10
+    # trace_ttl_ms is 30s, so the last requests of a run are only analysed at k6+30s;
+    # 18 attempts leave ~100s of margin for the daemon analysis queue under load.
+    attempts=18
     for attempt in $(seq "${attempts}"); do
         if ! findings_json="$(daemon_curl -fsS "${DAEMON_URL}/api/findings?limit=10000&include_acked=true")"; then
             RESULTS+=("FAIL|${pattern}|0|daemon findings unavailable")
@@ -301,6 +308,8 @@ EOF
             RESULTS+=("PASS|${pattern}|${count}|${note}")
             break
         elif [ "${attempt}" -eq "${attempts}" ]; then
+            color_red "    no finding matched; k6 summary follows"
+            kubectl -n "${NAMESPACE}" logs "job/${job_name}" --all-containers=true --tail=50 >&2 || true
             RESULTS+=("FAIL|${pattern}|0|${note}")
         else
             sleep 5
