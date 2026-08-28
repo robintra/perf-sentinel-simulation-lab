@@ -65,7 +65,7 @@
   "packageRules": [
     {
       "description": "Out of scope: custom-service application dependency managers",
-      "matchManagers": ["npm", "nuget", "gradle", "maven", "maven-wrapper", "cargo", "gomod", "pip_requirements", "poetry"],
+      "matchManagers": ["npm", "nuget", "gradle", "maven", "maven-wrapper", "cargo", "gomod", "pip_requirements", "poetry", "composer", "bundler"],
       "enabled": false
     },
     {
