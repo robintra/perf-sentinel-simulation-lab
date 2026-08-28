@@ -10,7 +10,7 @@
 # Build with:  docker build -t go-svc:s1 services/go-svc
 
 # ---- builder ----
-FROM golang:1.26-bookworm AS builder
+FROM golang:1.27-bookworm AS builder
 
 WORKDIR /src
 
