@@ -33,9 +33,9 @@ fi
   printf "\033[31m           expected a ghcr.io/robintra/perf-sentinel tag or digest, or a local perf-sentinel:<ver>-<sha> pin\033[0m\n" >&2
   exit 1
 }
-KPS_CHART_VERSION="88.2.0"
+KPS_CHART_VERSION="88.6.0"
 TEMPO_IMAGE_VERSION="3.0.0"
-OTEL_CHART_VERSION="0.169.0"
+OTEL_CHART_VERSION="0.171.0"
 
 # shellcheck source=./wait-for-ready.sh
 . "${REPO_ROOT}/scripts/wait-for-ready.sh"
