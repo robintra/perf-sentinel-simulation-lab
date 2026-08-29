@@ -1077,20 +1077,19 @@ sys.exit(0 if all(k in mw for k in need) and (mw.get('energy_kwh') or 0)>0 else 
     || { color_red "    FAIL: /api/export/report has no usable messaging_waste"; C_FAILS=$((C_FAILS + 1)); }
 
   # `query monitor` is a TUI, so drive it headless in a pty against the still
-  # running daemon. A pty-less environment SKIPs rather than fails: the data
-  # plane above plus the upstream render unit tests already cover the string.
+  # running daemon. A render that does not surface the line SKIPs rather than
+  # fails, and leg C then says so instead of claiming every surface.
   MON_OUT="${TMP_DIR}/c-monitor.txt"
-  ( script -q /dev/null "${PERF_SENTINEL_LOCAL_BIN}" query --daemon-url "${DAEMON_URL}" monitor --refresh 1 ) \
-    > "${MON_OUT}" 2>&1 &
-  MON_PID=$!
-  sleep 6
-  kill "${MON_PID}" 2>/dev/null || true
-  wait "${MON_PID}" 2>/dev/null || true
+  # Tab after 3s: the monitor opens on Advisor, the line lives on Energy.
+  python3 "${SCRIPT_DIR}/../tui-common/pty_run.py" 9 200 50 3 "$(printf '\t')" \
+    "${PERF_SENTINEL_LOCAL_BIN}" query --daemon "${DAEMON_URL}" monitor --refresh 1 \
+    > "${MON_OUT}" 2>&1 || true
+  C_TUI="checked"
   if grep -aqF "Broker waste" "${MON_OUT}"; then
     ok "\`query monitor\` Energy tab renders the 'Broker waste:' line"
   else
-    skip "headless TUI capture did not surface the line (pty/term); data plane proven above"
-    note "C: TUI render SKIPPED, not failed — see ${MON_OUT}"
+    C_TUI="unchecked"
+    record_skip "C-tui" "the Energy tab did not render the line, see ${MON_OUT}; data plane proven above"
   fi
 
   "${PERF_SENTINEL_LOCAL_BIN}" report --input "${TMP_DIR}/c-report.json" --output "${TMP_DIR}/c-report.html" >/dev/null 2>&1 || true
@@ -1105,10 +1104,12 @@ sys.exit(0 if all(k in mw for k in need) and (mw.get('energy_kwh') or 0)>0 else 
     color_red "    FAIL: the figure blinked (${C_PRESENT} present / ${C_ABSENT} absent)"
     C_FAILS=$((C_FAILS + 1))
   fi
-  if [ "${C_FAILS}" -eq 0 ]; then
+  if [ "${C_FAILS}" -ne 0 ]; then
+    assert_fail "C" "${C_FAILS} surface check(s) failed"
+  elif [ "${C_TUI}" = "checked" ]; then
     assert_pass "C" "all surfaces show the broker figure, no flicker over ${C_PRESENT} samples"
   else
-    assert_fail "C" "${C_FAILS} surface check(s) failed"
+    assert_pass "C" "the report and the dashboard show the broker figure, no flicker over ${C_PRESENT} samples (the TUI surface was not checked, see C-tui)"
   fi
 else
   assert_fail "C" "daemon did not start (see ${TMP_DIR}/c.log)"

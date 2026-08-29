@@ -597,17 +597,16 @@ fi
 # daemon (whose live cell still carries database_waste), no fresh daemon/reseed.
 if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
   MON_OUT="${TMP_DIR}/monitor.txt"
-  ( script -q /dev/null "${PERF_SENTINEL_LOCAL_BIN}" query --daemon-url "${DAEMON_URL}" monitor --refresh 1 ) \
-    >"${MON_OUT}" 2>&1 &
-  MON_PID=$!
-  sleep 6
-  kill "${MON_PID}" 2>/dev/null || true; wait "${MON_PID}" 2>/dev/null || true
+  # Tab after 3s: the monitor opens on Advisor, the line lives on Energy.
+  python3 "${SCRIPT_DIR}/../tui-common/pty_run.py" 9 200 50 3 "$(printf '\t')" \
+    "${PERF_SENTINEL_LOCAL_BIN}" query --daemon "${DAEMON_URL}" monitor --refresh 1 \
+    >"${MON_OUT}" 2>&1 || true
   if grep -aqF "Database waste" "${MON_OUT}"; then
     extra=""
     grep -aqF "excluded from totals" "${MON_OUT}" && extra=" + 'excluded from totals'"
     assert_pass "F-render" "query monitor Energy tab renders the 'Database waste:' line${extra}"
   else
-    record_skip "F-render" "headless TUI capture did not surface the line (pty/term); data plane proven above + upstream render unit tests cover it"
+    record_skip "F-render" "the Energy tab did not render the line, see ${MON_OUT}; data plane proven above + upstream render unit tests cover it"
   fi
 else
   record_skip "F-render" "leg-B daemon not reachable for the TUI render"
