@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Helper to produce a tab-separated line for the upstream perf-sentinel
-# `lab-validations.txt` ledger after a lab validation completes. Prints
-# one line on stdout. The operator copies it into the upstream ledger.
+# Helper to produce a tab-separated line for a `lab-validations.txt` ledger
+# after a lab validation completes. Prints one line on stdout. The operator
+# copies it into the ledger of the product that was validated: perf-sentinel
+# or perf-sentinel-hub. The line format is the same for both.
 #
 # Line format:
 #   <version>\t<lab_commit_sha>\t<YYYY-MM-DD>\t<PASS|FAIL>
@@ -16,11 +17,11 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") <version> <verdict>
 
-  <version>   perf-sentinel version like vX.Y.Z (must start with 'v').
+  <version>   version of the validated product, like vX.Y.Z (must start with 'v').
   <verdict>   PASS or FAIL.
 
 Resolves the current lab repo HEAD short SHA and UTC date, then prints
-one tab-separated line for the upstream lab-validations.txt ledger.
+one tab-separated line for a lab-validations.txt ledger.
 EOF
 }
 
