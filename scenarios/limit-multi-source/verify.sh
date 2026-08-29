@@ -154,6 +154,8 @@ GRPC_SENT="$(kubectl -n "${NS}" logs job/tracegen-grpc --tail=1 | python3 -c 'im
 HTTP_SENT="$(kubectl -n "${NS}" logs job/tracegen-httppb --tail=1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["spans_io"])')"
 GRPC_TOTAL="$(kubectl -n "${NS}" logs job/tracegen-grpc --tail=1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["spans"])')"
 HTTP_TOTAL="$(kubectl -n "${NS}" logs job/tracegen-httppb --tail=1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["spans"])')"
+GRPC_TRACES="$(kubectl -n "${NS}" logs job/tracegen-grpc --tail=1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["traces"])')"
+HTTP_TRACES="$(kubectl -n "${NS}" logs job/tracegen-httppb --tail=1 | python3 -c 'import sys,json;print(json.load(sys.stdin)["traces"])')"
 
 sleep 8
 snapshot_metrics || die "scoped daemon /metrics unreachable after load"
@@ -165,9 +167,17 @@ SENT_OTLP=$(( GRPC_TOTAL + HTTP_TOTAL ))
 LOW=$(( SENT_OTLP * 90 / 100 )); HIGH=$(( SENT_OTLP * 110 / 100 ))
 [ "${D_RECEIVED}" -ge "${LOW}" ] && [ "${D_RECEIVED}" -le "${HIGH}" ] \
   || die "otlp_spans_received delta ${D_RECEIVED} outside ±10% of sent ${SENT_OTLP}"
-# The generator only emits I/O spans on the OTLP paths except the SERVER
-# roots, which carry http.url too -> not_io must stay flat.
-[ "${D_NOTIO}" -eq 0 ] || die "filtered{not_io} moved by ${D_NOTIO}: the generator emitted non-I/O spans"
+# One SERVER root per trace, and every one of them is filtered. perf-sentinel
+# drops SERVER spans so a hop is not counted twice, and it does that on the kind
+# alone: the root carries http.url and is dropped all the same, which is why
+# this used to expect a flat counter and got one hit per trace instead.
+#
+# The equality is the assertion, not a bound: every other span the generator
+# emits carries db.system with a statement, or a URL with a method, so anything
+# beyond the roots landing here means the generator stopped emitting I/O.
+SENT_TRACES=$(( GRPC_TRACES + HTTP_TRACES ))
+[ "${D_NOTIO}" -eq "${SENT_TRACES}" ] \
+  || die "filtered{not_io} moved by ${D_NOTIO}, expected ${SENT_TRACES} (one SERVER root per trace)"
 
 # No starvation: all three live prefixes present in the export report.
 curl -fsS "${ENDPOINT}/api/export/report" > "${TMP_DIR}/export.json" || die "export/report unreachable"
@@ -182,7 +192,7 @@ sys.exit(0 if '${prefix}' in blob else 1)" \
 done
 RESTARTS_AFTER="$(daemon_restarts)"
 [ "${RESTARTS_AFTER}" = "${RESTARTS_BEFORE}" ] || die "scoped daemon restarted"
-ok "received +${D_RECEIVED} (sent ${SENT_OTLP}), not_io flat, three prefixes present, restarts=0"
+ok "received +${D_RECEIVED} (sent ${SENT_OTLP}), not_io ${D_NOTIO} == one root per trace, three prefixes present, restarts=0"
 
 verdict="PASS"
 {
@@ -194,7 +204,7 @@ verdict="PASS"
   echo "| gRPC sent (spans/io) | ${GRPC_TOTAL}/${GRPC_SENT} |"
   echo "| HTTP sent (spans/io) | ${HTTP_TOTAL}/${HTTP_SENT} |"
   echo "| otlp received delta | ${D_RECEIVED} (±10% of ${SENT_OTLP}) |"
-  echo "| filtered not_io delta | ${D_NOTIO} |"
+  echo "| filtered not_io delta | ${D_NOTIO} (one SERVER root per trace, ${SENT_TRACES} sent) |"
   echo "| tempo reader | ${TEMPO_RESULT} |"
   echo "| restarts (daemon container) | ${RESTARTS_BEFORE} -> ${RESTARTS_AFTER} |"
   echo ""
