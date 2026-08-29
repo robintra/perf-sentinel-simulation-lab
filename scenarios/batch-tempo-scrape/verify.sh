@@ -70,11 +70,20 @@ done
 kill "${PF_ORDER_PID}" 2>/dev/null || true
 wait "${PF_ORDER_PID}" 2>/dev/null || true
 PF_ORDER_PID=""
+# One number for the readiness gate below and for the run further down. They
+# used to say 4 twice, independently, and that made the gate a liar: order-service
+# is polled continuously by its liveness probe and scraped by Prometheus, and
+# those SERVER spans carry no outbound call, so the engine drops them. Enough of
+# them land in the seconds between the gate and the container start to push the
+# three injected traces out of the newest four, and the run then analyses only
+# health checks and reports no I/O event at all.
+MAX_TRACES=50
+
 indexed=0
 for i in $(seq 1 30); do
   now=$(date +%s)
   start=$((now - 120))
-  if curl -fsS "${TEMPO_URL_HOST}/api/search?tags=service.name%3Dorder-service&start=${start}&end=${now}&limit=4" \
+  if curl -fsS "${TEMPO_URL_HOST}/api/search?tags=service.name%3Dorder-service&start=${start}&end=${now}&limit=${MAX_TRACES}" \
        | python3 -c 'import json,sys; sys.exit(not any(t.get("rootTraceName", "").startswith("POST ") for t in json.load(sys.stdin).get("traces", [])))'; then
     indexed=1
     break
@@ -96,7 +105,7 @@ if docker run --rm \
        --endpoint "${TEMPO_URL_IN_CONTAINER}" \
        --service order-service \
        --lookback 2m \
-       --max-traces 4 \
+       --max-traces "${MAX_TRACES}" \
        --format json \
      > "${TMP_DIR}/tempo-findings.json" \
      2> "${TMP_DIR}/tempo.log"; then
@@ -155,7 +164,7 @@ step "Write report"
   echo "perf-sentinel tempo \\"
   echo "  --endpoint ${TEMPO_URL_IN_CONTAINER} \\"
   echo "  --service order-service \\"
-  echo "  --lookback 2m --max-traces 4 \\"
+  echo "  --lookback 2m --max-traces ${MAX_TRACES} \\"
   echo "  --format json"
   echo '```'
   echo
