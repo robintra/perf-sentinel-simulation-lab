@@ -176,12 +176,17 @@ else
     # Retry the health probe: a CPU-saturated daemon legitimately drops
     # a share of single probes (the liveness poll count documents it),
     # one missed curl must not reclassify backpressure as a failure.
+    # The tunnel this probe rides was opened at preflight, a whole ramp
+    # ago. A port-forward that died in between would report a healthy
+    # daemon as dead, which is the one misclassification this branch
+    # exists to avoid, so re-establish it before believing a failure.
     DAEMON_HEALTHY=0
     for i in $(seq 1 6); do
       if curl -fsS --max-time 5 "${ENDPOINT}/api/status" >/dev/null 2>&1; then
         DAEMON_HEALTHY=1
         break
       fi
+      [ "${i}" -eq 2 ] && pf_restart
       sleep 5
     done
     if kubectl -n limit-testing logs job/tracegen-saturation 2>/dev/null | grep -q '^LAG' \
