@@ -51,14 +51,34 @@ daemon_restarts() {
 }
 
 # =============================================================================
-step "Preflight: daemon reachable, 0.8.7 span counters present, host protobuf deps"
+step "Preflight: fresh daemon, 0.8.7 span counters present, host protobuf deps"
+# The RSS envelope below is absolute, so it only means anything on a daemon
+# that starts cold. The three sibling limit-* scenarios roll it for the same
+# reason; this one inherited whatever the run before it left behind, and read
+# 229 MiB against its own 200 MiB bound before sending a single span.
+kubectl -n "${OBS_NS}" rollout restart deploy/"${DEPLOY}" >/dev/null
+kubectl -n "${OBS_NS}" rollout status deploy/"${DEPLOY}" --timeout=180s >/dev/null \
+  || die "daemon rollout failed"
+pkill -f "port-forward.*${DEPLOY}" 2>/dev/null || true
+"$(cd "$(dirname "$0")/../.." && pwd)/scripts/port-forward.sh" start >/dev/null 2>&1 || true
+for _ in $(seq 1 30); do
+  curl -fsS --max-time 3 "${ENDPOINT}/api/status" >/dev/null 2>&1 && break
+  sleep 2
+done
 curl -fsS "${ENDPOINT}/api/status" >/dev/null \
-  || die "daemon unreachable on ${ENDPOINT}, run ./scripts/port-forward.sh start"
+  || die "daemon unreachable on ${ENDPOINT} after the rollout"
 snapshot_metrics
 grep -q "^# TYPE perf_sentinel_otlp_spans_received_total " "${TMP_DIR}/metrics.txt" \
   || die "perf_sentinel_otlp_spans_received_total absent (daemon is not 0.8.7? run scripts/seed-daemon-local.sh)"
 python3 -c "import opentelemetry.proto" 2>/dev/null \
   || { skip "host python lacks opentelemetry-proto (pip install opentelemetry-proto); scenario skipped"; exit 0; }
+# Every wait below is derived from this: a trace goes stale at the TTL and
+# the sweep that analyses it runs on a ticker at half of it, so nothing this
+# scenario sends can produce a finding before TTL + one tick.
+TTL_S="$(curl -fsS "${ENDPOINT}/api/config" 2>/dev/null \
+  | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["trace_ttl_ms"])//1000)' 2>/dev/null || echo "")"
+[ -n "${TTL_S}" ] || die "cannot read trace_ttl_ms from ${ENDPOINT}/api/config (is [daemon] api_enabled = true?)"
+ANALYSIS_WAIT_S=$(( TTL_S + TTL_S / 2 + 5 ))
 RESTARTS_BEFORE="$(daemon_restarts)"
 RSS_BEFORE="$(metric_val process_resident_memory_bytes)"
 RECEIVED_BEFORE="$(metric_val perf_sentinel_otlp_spans_received_total)"
@@ -98,7 +118,7 @@ ok "${RESULT_deep_chain}"
 # =============================================================================
 step "Sub-test c: 1200-sibling fanout (finding expected)"
 OUT="$(run_shape wide_fanout --traces 3 --fanout-width 1200)"
-sleep 8
+sleep "${ANALYSIS_WAIT_S}"
 FANOUT_FOUND="$(curl -fsS "${ENDPOINT}/api/findings?type=excessive_fanout&limit=5" \
   | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
 [ "${FANOUT_FOUND}" -ge 1 ] || die "no excessive_fanout finding after 1200-sibling traces"
@@ -106,12 +126,6 @@ RESULT_wide_fanout="excessive_fanout findings: ${FANOUT_FOUND}"
 ok "${RESULT_wide_fanout}"
 
 # =============================================================================
-# The re-emission has to land after the first generation was evicted, and
-# the count has to be read after the second one was too, so both delays
-# follow the daemon's configured TTL.
-TTL_S="$(curl -fsS "${ENDPOINT}/api/config" 2>/dev/null \
-  | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["trace_ttl_ms"])//1000)' 2>/dev/null || echo "")"
-[ -n "${TTL_S}" ] || die "cannot read trace_ttl_ms from ${ENDPOINT}/api/config (is [daemon] api_enabled = true?)"
 # The sweep runs on a ticker at trace_ttl_ms / 2, so a trace that goes
 # stale between two ticks survives until the next one, and a re-emission
 # landing in that gap is absorbed into it rather than opening a new
