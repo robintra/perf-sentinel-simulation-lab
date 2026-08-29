@@ -25,7 +25,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 mkdir -p "${TMP_DIR}"
 
-LOCAL_PORT="${LOCAL_PORT:-24318}"
+# Not 24318: crates/sentinel-cli/tests/e2e/watch.rs binds 24317 and 24318 for
+# its own listeners, so a cargo test run against the engine checkout while this
+# scenario holds its forward failed to bind with an address-in-use naming
+# neither side.
+LOCAL_PORT="${LOCAL_PORT:-24328}"
 ENDPOINT="http://localhost:${LOCAL_PORT}"
 LOAD_SECONDS="${LOAD_SECONDS:-180}"
 TPS="${TPS:-30}"
@@ -175,6 +179,11 @@ LOW=$(( SENT_OTLP * 90 / 100 )); HIGH=$(( SENT_OTLP * 110 / 100 ))
 # The equality is the assertion, not a bound: every other span the generator
 # emits carries db.system with a statement, or a URL with a method, so anything
 # beyond the roots landing here means the generator stopped emitting I/O.
+#
+# It rests on one generator invariant: every template in tools/tracegen builds
+# exactly one parentless root through templates._root. A template that emitted
+# two, or none, would turn this red with a message blaming the engine, so change
+# that helper and this number together.
 SENT_TRACES=$(( GRPC_TRACES + HTTP_TRACES ))
 [ "${D_NOTIO}" -eq "${SENT_TRACES}" ] \
   || die "filtered{not_io} moved by ${D_NOTIO}, expected ${SENT_TRACES} (one SERVER root per trace)"

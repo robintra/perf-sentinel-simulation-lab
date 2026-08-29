@@ -77,6 +77,11 @@ PF_ORDER_PID=""
 # them land in the seconds between the gate and the container start to push the
 # three injected traces out of the newest four, and the run then analyses only
 # health checks and reports no I/O event at all.
+#
+# Fifty because the probe and scrape traffic measured about twenty traces per
+# two-minute window against three injected ones. Add a scraper or shorten the
+# liveness period and that margin goes, so raise this rather than let the race
+# come back as the same confusing no-I/O-event failure.
 MAX_TRACES=50
 
 indexed=0
