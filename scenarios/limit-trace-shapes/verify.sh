@@ -27,8 +27,10 @@ mkdir -p "${TMP_DIR}"
 
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 ENDPOINT="http://localhost:${DAEMON_LOCAL_PORT}"
-# Committed lab TTL is 5000 ms: wait past it for the dup re-emission.
-DUP_GAP_S="${DUP_GAP_S:-7}"
+# Both delays are derived from the daemon's own trace_ttl_ms below, not
+# hardcoded: this sub-test was written against a 5000 ms lab TTL and went
+# on passing nothing once the lab moved to 30000 ms.
+DUP_GAP_S="${DUP_GAP_S:-}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -104,11 +106,25 @@ RESULT_wide_fanout="excessive_fanout findings: ${FANOUT_FOUND}"
 ok "${RESULT_wide_fanout}"
 
 # =============================================================================
-step "Sub-test d: identical trace ids re-emitted after the TTL (gap ${DUP_GAP_S}s)"
+# The re-emission has to land after the first generation was evicted, and
+# the count has to be read after the second one was too, so both delays
+# follow the daemon's configured TTL.
+TTL_S="$(curl -fsS "${ENDPOINT}/api/config" 2>/dev/null \
+  | python3 -c 'import sys,json;print(int(json.load(sys.stdin)["trace_ttl_ms"])//1000)' 2>/dev/null || echo "")"
+[ -n "${TTL_S}" ] || die "cannot read trace_ttl_ms from ${ENDPOINT}/api/config (is [daemon] api_enabled = true?)"
+# The sweep runs on a ticker at trace_ttl_ms / 2, so a trace that goes
+# stale between two ticks survives until the next one, and a re-emission
+# landing in that gap is absorbed into it rather than opening a new
+# trace. The deadline that matters is therefore TTL plus one tick, not
+# TTL: measured on an isolated daemon, a 33s gap against a 30s TTL
+# merged both generations into 20 traces analysed once.
+DUP_GAP_S="${DUP_GAP_S:-$(( TTL_S + TTL_S / 2 + 5 ))}"
+DUP_SETTLE_S=$(( TTL_S + TTL_S / 2 + 10 ))
+step "Sub-test d: identical trace ids re-emitted after the ${TTL_S}s TTL (gap ${DUP_GAP_S}s)"
 snapshot_metrics
 TRACES_BEFORE="$(metric_val perf_sentinel_traces_analyzed_total)"
 OUT="$(run_shape dup_trace_ids --traces 200 --dup-gap-s "${DUP_GAP_S}" --seed 31)"
-sleep 8
+sleep "${DUP_SETTLE_S}"
 snapshot_metrics
 TRACES_AFTER="$(metric_val perf_sentinel_traces_analyzed_total)"
 D_TRACES=$(( TRACES_AFTER - TRACES_BEFORE ))
