@@ -821,8 +821,14 @@ PY
      && python3 - "${TMP_DIR}/g-report.html" <<'PY'
 import sys
 h = open(sys.argv[1], encoding="utf-8", errors="replace").read()
-i = h.find("Database waste")
-sys.exit(0 if i != -1 and "within the report totals" in h[max(0, i-600):i+600] else 1)
+# Every occurrence, not the first: the method-sheet glossary entry names
+# the card 95 KB before the builder does, and anchoring on it made this
+# check unreachable rather than red.
+i, ok = h.find("Database waste"), False
+while i != -1 and not ok:
+    ok = "within the report totals" in h[max(0, i - 600):i + 600]
+    i = h.find("Database waste", i + 1)
+sys.exit(0 if ok else 1)
 PY
   then
     assert_pass "G-html" "HTML dashboard ships the Database waste card builder with the within-the-report-totals scope co-located ($(wc -c < "${TMP_DIR}/g-report.html" | tr -d ' ') bytes)"
