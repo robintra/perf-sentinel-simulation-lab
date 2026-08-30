@@ -27,10 +27,9 @@ mkdir -p "${TMP_DIR}"
 
 DAEMON_LOCAL_PORT="${DAEMON_LOCAL_PORT:-14318}"
 ENDPOINT="http://localhost:${DAEMON_LOCAL_PORT}"
-# Both delays are derived from the daemon's own trace_ttl_ms below, not
-# hardcoded: this sub-test was written against a 5000 ms lab TTL and went
-# on passing nothing once the lab moved to 30000 ms.
-DUP_GAP_S="${DUP_GAP_S:-}"
+# DUP_GAP_S is not defaulted here: it comes from the daemon's own
+# trace_ttl_ms below. This sub-test was written against a 5000 ms lab TTL
+# and went on passing nothing once the lab moved to 30000 ms.
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -60,7 +59,7 @@ kubectl -n "${OBS_NS}" rollout restart deploy/"${DEPLOY}" >/dev/null
 kubectl -n "${OBS_NS}" rollout status deploy/"${DEPLOY}" --timeout=180s >/dev/null \
   || die "daemon rollout failed"
 pkill -f "port-forward.*${DEPLOY}" 2>/dev/null || true
-"$(cd "$(dirname "$0")/../.." && pwd)/scripts/port-forward.sh" start >/dev/null 2>&1 || true
+"${REPO_ROOT}/scripts/port-forward.sh" start >/dev/null 2>&1 || true
 for _ in $(seq 1 30); do
   curl -fsS --max-time 3 "${ENDPOINT}/api/status" >/dev/null 2>&1 && break
   sleep 2
