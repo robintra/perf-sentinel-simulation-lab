@@ -598,10 +598,13 @@ fi
 if curl -fsS "${DAEMON_URL}/api/status" >/dev/null 2>&1; then
   MON_OUT="${TMP_DIR}/monitor.txt"
   # Tab after 3s: the monitor opens on Advisor, the line lives on Energy.
-  python3 "${SCRIPT_DIR}/../tui-common/pty_run.py" 9 200 50 3 "$(printf '\t')" \
-    "${PERF_SENTINEL_LOCAL_BIN}" query --daemon "${DAEMON_URL}" monitor --refresh 1 \
-    >"${MON_OUT}" 2>&1 || true
-  if grep -aqF "Database waste" "${MON_OUT}"; then
+  # A driver that never ran must not read as a tab that did not render:
+  # blaming the wrong cause is what this leg was rewritten to stop doing.
+  if ! python3 "${SCRIPT_DIR}/../tui-common/pty_run.py" 9 200 50 3 "$(printf '\t')" \
+      "${PERF_SENTINEL_LOCAL_BIN}" query --daemon "${DAEMON_URL}" monitor --refresh 1 \
+      >"${MON_OUT}" 2>&1; then
+    record_skip "F-render" "the pty driver failed to run, see ${MON_OUT}"
+  elif grep -aqF "Database waste" "${MON_OUT}"; then
     extra=""
     grep -aqF "excluded from totals" "${MON_OUT}" && extra=" + 'excluded from totals'"
     assert_pass "F-render" "query monitor Energy tab renders the 'Database waste:' line${extra}"

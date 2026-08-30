@@ -11,6 +11,9 @@ Usage: pty_run.py <secs> <cols> <rows> <keys_delay_secs> <keys> <cmd> [args...]
 
 import fcntl, os, pty, select, signal, struct, subprocess, sys, termios, time
 
+if len(sys.argv) < 7:
+    sys.exit(__doc__.split("Usage:", 1)[1].strip())
+
 secs = float(sys.argv[1])
 cols, rows = int(sys.argv[2]), int(sys.argv[3])
 keys_delay, keys = float(sys.argv[4]), sys.argv[5]
@@ -50,4 +53,7 @@ try:
     p.wait(timeout=5)
 except subprocess.TimeoutExpired:
     p.kill()
-os.write(1, bytes(out))
+# Not os.write: it may write fewer bytes than asked and return the count,
+# which would truncate a capture the caller then greps and finds wanting.
+sys.stdout.buffer.write(bytes(out))
+sys.stdout.buffer.flush()

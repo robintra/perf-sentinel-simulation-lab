@@ -1081,11 +1081,15 @@ sys.exit(0 if all(k in mw for k in need) and (mw.get('energy_kwh') or 0)>0 else 
   # fails, and leg C then says so instead of claiming every surface.
   MON_OUT="${TMP_DIR}/c-monitor.txt"
   # Tab after 3s: the monitor opens on Advisor, the line lives on Energy.
-  python3 "${SCRIPT_DIR}/../tui-common/pty_run.py" 9 200 50 3 "$(printf '\t')" \
-    "${PERF_SENTINEL_LOCAL_BIN}" query --daemon "${DAEMON_URL}" monitor --refresh 1 \
-    > "${MON_OUT}" 2>&1 || true
+  # A driver that never ran must not read as a tab that did not render:
+  # blaming the wrong cause is what this leg was rewritten to stop doing.
   C_TUI="checked"
-  if grep -aqF "Broker waste" "${MON_OUT}"; then
+  if ! python3 "${SCRIPT_DIR}/../tui-common/pty_run.py" 9 200 50 3 "$(printf '\t')" \
+      "${PERF_SENTINEL_LOCAL_BIN}" query --daemon "${DAEMON_URL}" monitor --refresh 1 \
+      > "${MON_OUT}" 2>&1; then
+    C_TUI="unchecked"
+    record_skip "C-tui" "the pty driver failed to run, see ${MON_OUT}"
+  elif grep -aqF "Broker waste" "${MON_OUT}"; then
     ok "\`query monitor\` Energy tab renders the 'Broker waste:' line"
   else
     C_TUI="unchecked"
