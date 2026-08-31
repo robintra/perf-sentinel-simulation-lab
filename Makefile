@@ -577,7 +577,7 @@ seed-tracegen: ## Build + import the tracegen load-generator image (I/O-semantic
 seed-daemon-local: ## Build a daemon image from a local perf-sentinel checkout and pin the manifest to it (pre-release validation)
 	./scripts/seed-daemon-local.sh
 
-seed-hub-local: ## Build a PerfSentinelHub image from a local checkout, import it and pin the manifest (no published image exists)
+seed-hub-local: ## Build a PerfSentinelHub image from a local checkout, import it and pin the manifest (pre-release validation)
 	./scripts/seed-hub-local.sh
 
 verify-hub-ingestion: ## daemon -> Hub over the shared pair: envelopes stay plugin-compatible, a malformed import is counted not fatal

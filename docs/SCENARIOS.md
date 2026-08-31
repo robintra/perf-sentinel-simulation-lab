@@ -321,9 +321,10 @@ captures the payload the JetBrains plugin actually parses, straight
 from a running Hub, into a fixture the plugin replays in its own
 `HubContractTest`.
 
-Two limits are worth stating. The Hub has no published image, so every
-run needs `make seed-hub-local` to build one from a local checkout, and
-the committed manifest stays in `ImagePullBackOff` until it does. And
+Two limits are worth stating. The Hub is not part of `make up`: the
+committed manifest pins the published image by digest, but bringing the
+pair up still goes through `make seed-hub-local`, which also generates
+the shared import key and turns the daemon's push export on. And
 no finding in this lab carries a `code_location`: the OpenTelemetry
 Java agent attaches no `code.*` attributes to JDBC spans, so the
 plugin's navigation contract is not covered by a captured fixture and

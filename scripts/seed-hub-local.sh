@@ -8,9 +8,9 @@
 # ship; the Hub's own Dockerfile is already a source-to-binary multistage build,
 # so building it directly also exercises the real release recipe.
 #
-# Unlike the daemon there is no published fallback image: the committed manifest
-# carries a placeholder tag and the pod stays in ImagePullBackOff until this
-# script runs.
+# Like the daemon, the committed manifest pins a published image by digest, so
+# this script is the pre-release path: it overrides that pin with a local build
+# until the next `git checkout -- manifests/perf-sentinel-hub.yaml`.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -70,9 +70,10 @@ import sys
 path, tag = sys.argv[1], sys.argv[2]
 src = open(path).read()
 out, n = re.subn(
-    # Either the committed placeholder or a local pin left by a previous run.
-    r"image: perf-sentinel-hub:[0-9A-Za-z._-]+(\s*#.*)?",
-    f"image: {tag}  # local build, this manifest has no published fallback",
+    # Either the committed published digest pin or a local pin left by a
+    # previous run.
+    r"image: (?:ghcr\.io/robintra/)?perf-sentinel-hub[:@][0-9A-Za-z._:-]+(\s*#.*)?",
+    f"image: {tag}  # local build, overrides the committed published pin",
     src,
 )
 if n == 0 and f"image: {tag}" not in src:
