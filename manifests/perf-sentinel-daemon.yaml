@@ -431,5 +431,9 @@ spec:
   endpoints:
     - port: http
       path: /metrics
+      # The operator attaches a target label `service` from the Service name,
+      # which would rename the daemon's own `service` to `exported_service`.
+      # The product chart sets this since 0.17.1, the lab manifest must match.
+      honorLabels: true
       interval: 30s
       scrapeTimeout: 10s
