@@ -335,6 +335,20 @@ print(int(float(r[0]["value"][1])) if r else 0)
 [ "${GARBAGE_SERIES}" -eq 0 ] || die "Prometheus retained ${GARBAGE_SERIES} corrupted metric-name series"
 ok "Prometheus has ${GAUGE_SERIES}/${DAEMON_TARGETS} gauge series and zero corrupted names"
 
+# The daemon's own `service` label must survive the scrape. Prometheus Operator
+# attaches a target label of the same name and renames the daemon's to
+# `exported_service` unless the ServiceMonitor honours it, which empties the
+# dashboard's Service variable of every application service.
+RENAMED_QUERY="$(python3 -c 'import urllib.parse; print(urllib.parse.quote("count({__name__=~\"perf_sentinel_.*\",exported_service!=\"\"})"))')"
+RENAMED_SERIES=$(prom_api_post query "query=${RENAMED_QUERY}" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)["data"]["result"]
+print(int(float(r[0]["value"][1])) if r else 0)
+')
+[ "${RENAMED_SERIES}" -eq 0 ] \
+  || die "Prometheus holds ${RENAMED_SERIES} perf_sentinel series under exported_service: the daemon ServiceMonitor lost honorLabels"
+ok "no perf_sentinel series renamed to exported_service, the daemon's service label is honoured"
+
 python3 -c "
 import json, re
 data = json.load(open('${LAB_DASHBOARD}'))
@@ -395,27 +409,40 @@ TOTAL_PANELS=0
 # energy backends. It is empty only when none of its targets returns a series.
 # URL-encode the exprs upfront so braces, quotes, and parentheses do
 # not break shell interpolation when piped to wget --post-data.
+# Every query variable the dashboard declares renders as its All value,
+# except the job, pinned to the daemon's so other jobs' series do not count.
+# Read from templating.list, so a variable added upstream is picked up here
+# on its own, and a leftover \$ after substitution fails loudly: Prometheus
+# would otherwise reject the expr and the panel would read as empty.
 python3 -c "
-import json, urllib.parse
+import json, re, urllib.parse
 data = json.load(open('${LAB_DASHBOARD}'))
+subs = {'\$' + v['name']: '.*' for v in data.get('templating', {}).get('list', []) if v.get('type') == 'query'}
+subs.update({'\$job': 'perf-sentinel-daemon', '\$__rate_interval': '5m', '\$__range': '6h'})
 for panel_id, p in enumerate(data.get('panels', [])):
     for t in p.get('targets', []):
         expr = (t.get('expr') or '').replace('\n', ' ')
-        for variable, value in {'\$job': 'perf-sentinel-daemon', '\$namespace': '.*', '\$service': '.*', '\$__rate_interval': '5m', '\$__range': '6h'}.items():
+        for variable, value in subs.items():
             expr = expr.replace(variable, value)
+        if re.search(r'\\\$[A-Za-z_]', expr):
+            raise SystemExit('dashboard variable left unsubstituted in panel ' + str(panel_id) + ': ' + expr)
         if expr:
             print(str(panel_id) + '\t' + urllib.parse.quote(expr) + '\t' + expr)
-" > "${TMP_DIR}/upstream-exprs.txt"
+" > "${TMP_DIR}/upstream-exprs.txt" || die "could not prepare the panel queries"
 while IFS=$'\t' read -r panel_id encoded raw; do
   echo "${panel_id}" >> "${TMP_DIR}/panels-seen.txt"
+  # -1 when Prometheus rejected the query: a bad expr is a scenario defect,
+  # not an empty panel, and must not pass as one.
   count=$(prom_api_post query "query=${encoded}" \
     | python3 -c "
 import json, sys
 try:
-    print(len(json.load(sys.stdin)['data']['result']))
+    d = json.load(sys.stdin)
+    print(len(d['data']['result']) if d.get('status') == 'success' else -1)
 except Exception:
-    print(0)
-" 2>/dev/null || echo 0)
+    print(-1)
+" 2>/dev/null || echo -1)
+  [ "${count}" -ge 0 ] || die "Prometheus rejected the query of panel ${panel_id}: ${raw}"
   if [ "${count}" -ge 1 ]; then
     echo "${panel_id}" >> "${TMP_DIR}/panels-live.txt"
   fi
