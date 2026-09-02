@@ -401,7 +401,7 @@ data = json.load(open('${LAB_DASHBOARD}'))
 for panel_id, p in enumerate(data.get('panels', [])):
     for t in p.get('targets', []):
         expr = (t.get('expr') or '').replace('\n', ' ')
-        for variable, value in {'\$job': 'perf-sentinel-daemon', '\$service': '.*', '\$__rate_interval': '5m', '\$__range': '6h'}.items():
+        for variable, value in {'\$job': 'perf-sentinel-daemon', '\$namespace': '.*', '\$service': '.*', '\$__rate_interval': '5m', '\$__range': '6h'}.items():
             expr = expr.replace(variable, value)
         if expr:
             print(str(panel_id) + '\t' + urllib.parse.quote(expr) + '\t' + expr)
