@@ -54,7 +54,7 @@ data:
     # would put a plain `make up` into CrashLoopBackOff on every cluster that
     # has no Hub built yet.
     [daemon.hub_export]
-    enabled = false
+    enabled = true
     endpoint = "http://perf-sentinel-hub.observability.svc.cluster.local:8080/api/import/findings"
     source_id = "lab-daemon"
     api_key_file = "/etc/perf-sentinel-hub/import-key"
@@ -65,7 +65,7 @@ data:
     [detection]
     n_plus_one_min_occurrences = 5
     # Strict mode: require both signals (ORM scope marker AND timing
-    # variance CV > 0.5) to reclassify a sanitized SQL group from
+    # variance past sanitizer_aware_min_cv) to reclassify a sanitized SQL group from
     # redundant_sql to n_plus_one_sql. The lab opts in because the
     # default `auto` mode misclassifies the redundant-sql scenario
     # (15 cache-warmed SELECT count(*) via JPA) as n_plus_one_sql:
@@ -73,6 +73,19 @@ data:
     # strict, the low timing variance keeps the classification
     # correct. See docs/TROUBLESHOOTING.md.
     sanitizer_aware_classification = "strict"
+    # Left at the engine default on purpose, and the reason is worth stating.
+    # Raising it to 1.0 settles issue 124, where a loaded PHP-FPM runner spreads
+    # ten cached repeats past 0.5 and gets them reported as n_plus_one_sql. But
+    # this daemon is shared by every stack, and the Java N+1 that
+    # hub-lineage-mutation asserts fires at 12 occurrences, under the
+    # high-occurrence bar of 15, so under strict its only corroborator is the
+    # variance: at 1.0 its verdict oscillates between n_plus_one_sql and
+    # redundant_sql and the scenario fails, at 0.5 it is stable. The knob is
+    # per daemon, and a real deployment does not serve Java and PHP from one,
+    # so a PHP install can raise it. The lab is the mixed case, so it cannot.
+    # Validating the PHP stacks at 1.0 means a dedicated daemon or a temporary
+    # override, not this value.
+    sanitizer_aware_min_cv = 0.5
 
     [green.electricity_maps]
     # Default v4 endpoint, spelled out so the ConfigMap reads as a
@@ -317,7 +330,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: perf-sentinel
-          image: ghcr.io/robintra/perf-sentinel@sha256:ea4e1b8c4136d05b5f9446f2da4b03edd0157ec9cc7532cc2a9f162096859934  # 0.17.0
+          image: ghcr.io/robintra/perf-sentinel@sha256:3596668b4449ca68b560b5ad962c8a16711ed0ef1a4c7915c4d3cb89c0543627  # 0.18.0
           imagePullPolicy: IfNotPresent
           args:
             - watch

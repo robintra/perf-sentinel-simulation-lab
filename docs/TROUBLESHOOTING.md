@@ -334,10 +334,20 @@ ConfigMap (`manifests/perf-sentinel-daemon.yaml`, section
 `redundant-sql` scenario, 15 cache-warmed
 `SELECT count(*) WHERE customer_id = 1` via JPA, consequently
 stays classified as `redundant_sql`. The `n-plus-one-sql`
-scenario, 15 hits on distinct `order_id`s, still triggers the
-heuristic, because its timing variance crosses the CV > 0.5
-threshold. Production stacks that observe similar false positives
-can adopt the same opt-in.
+scenario, 15 hits on distinct `order_id`s, still reports, because 15
+reaches the high-occurrence bar (three times
+`n_plus_one_min_occurrences`), which corroborates on its own whatever
+the timing spread. The lab leaves `sanitizer_aware_min_cv` (engine
+0.18.0 and later) at its `0.5` default, and the reason is a real
+trade-off: raising it to `1.0` stops a loaded PHP-FPM runner from
+spreading ten cached repeats past the bar and getting them reported as
+`n_plus_one_sql`, but the Java N+1 that `hub-lineage-mutation` asserts
+fires at 12 occurrences, under the high-occurrence bar, so under strict
+the variance is its only corroborator and at `1.0` its verdict
+oscillates. The knob is per daemon and this one is shared by every
+stack. A real deployment does not serve Java and PHP from one daemon,
+so a PHP install can raise it. Production stacks that observe similar
+false positives can adopt either opt-in.
 
 ### Pre-0.5.7 behavior
 

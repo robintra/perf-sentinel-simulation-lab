@@ -43,6 +43,10 @@ data:
         "ResolutionGrace": "00:15:00",
         "DefaultReadLimit": 1000,
         "MaxReadLimit": 10000,
+        "Analysis": {
+          "EngineBinaryPath": "/app/perf-sentinel",
+          "ReportDirectory": "/data/reports"
+        },
         "Sources": [
           {
             "Id": "lab-daemon",
