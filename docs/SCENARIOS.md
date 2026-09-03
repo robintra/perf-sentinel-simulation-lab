@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 80 scenarios live under `scenarios/<name>/` and each one ships a
+The 81 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -191,7 +191,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 79
+`grouping-identity` is the 0.11 contract gate. The lab now ships 81
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -1316,7 +1316,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 80 scenarios, in an order
+`make verify-all-scenarios` includes all 81 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2709,6 +2709,79 @@ Finally, the startup advisory fires on the **pair**: 2000 findings with 400
 retained traces project ~10 MB and are named together, while
 `max_retained_traces = 100000` alone stays silent, because the span-tree term
 is clamped to the byte budget `traces_store::snapshot_for` already enforces.
+
+## grouping-metrics-split (0.19.0 grouping label and its pair caps)
+
+`make verify-grouping-metrics-split`. Self-contained: the local release
+binary, python3 and curl. No cluster, no Docker, no Prometheus. Around
+five minutes, dominated by the two saturation loops.
+
+0.19.0 puts a `grouping` label next to `service` on
+`perf_sentinel_findings_total`, `perf_sentinel_slow_duration_seconds`
+and the three `perf_sentinel_service_*_io_ops_total` counters. The
+value is the finding's effective grouping, so on Kubernetes the
+namespace the analysed traffic runs in: a `checkout` deployed in two
+namespaces was one series in 0.18.0 and is two now. Every waste and
+carbon figure an operator reads is a sum over those series, so a split
+that does not preserve the totals rewrites all of them silently.
+
+Four legs, none of them covered elsewhere. `grouping-identity` pins the
+grouping *value* across ingestion boundaries and the JSON, HTML and CSV
+contracts, and never reads `/metrics`; `limit-service-cardinality` pins
+the *service* caps, which are a different gate.
+
+- **A, split.** One service name driven under two namespaces is two
+  series on all five families, at the exact label arity 0.19.0
+  documents (`type, severity, service, grouping` on the findings
+  counter, `type, service, grouping` on the histogram, `service,
+  grouping` on the three I/O counters).
+- **B, sum invariant.** `sum by (service)` over the new label returns
+  exactly the 0.18.0 per-service series and `sum()` the pre-0.18 total.
+  Proven as an A/B on identical traffic rather than read off one
+  scrape: the same seeded tracegen runs replayed into a daemon with
+  `per_grouping_labels = false`, which is by definition the 0.18.0
+  shape, so no 0.18.0 binary is needed.
+- **C, fold.** 110 namespaces across 40 services, 4400 admitted pairs,
+  past all three caps. A pair past its cap keeps its service and folds
+  only its grouping into `_other`, the three overflow counters move,
+  admitted pairs land exactly on 512 (analysis), 256 (histogram) and
+  4096 (ingest), and B still holds. The loop stays at 40 services on
+  purpose: that is under the lowest *service* cap, the histogram's 64,
+  and the three service overflow counters reading 0 is what proves the
+  fold happened on the grouping axis alone.
+- **D, knob.** `[daemon] per_grouping_labels = false` empties the label
+  on all five families, which PromQL treats as absent. Unlike
+  `per_service_labels` it also governs the three I/O counters: with
+  `per_service_labels = false` those keep their real service and only
+  the findings counter and the histogram lose it. The leg also pins the
+  startup rule that changed with the knob, the finest trap in the
+  release: the histogram's unlabelled series is pre-warmed at startup
+  only when *both* knobs are off, so an install already running
+  `per_service_labels = false` now sees it appear with the first slow
+  span instead.
+
+Leg C's cross-run diff covers `service_analyzed_io_ops_total` and
+`service_io_ops_total` only, and the 0.19.0 validation is what
+established the line. The three finding-derived families vary run to
+run because the analysis worker batches a multi-minute stream
+differently each time: `findings_total` moved by up to 16 out of about
+7100 between two runs of the same traffic at the same knob setting, and
+`service_avoidable_io_ops_total`, a per-finding share, moved with it.
+The two families that count I/O ops directly were identical to the unit
+across every run, on a loaded machine included. That variance is not
+the fold, so the other three are covered where they are stable: leg B
+compares all five exactly on short runs, and leg C reads the avoidable
+counter against its own denominator inside a single scrape, per
+`(service, grouping)` pair.
+
+The scenario SKIPs with exit 0 rather than failing when the local
+binary is absent, and again when the daemon it starts reports no
+`per_grouping_labels` on `/api/config`. That second guard is a feature
+probe, not a version gate: a release branch keeps the previous version
+in `Cargo.toml` until tag time, so `--version` cannot answer the
+question, and a lab pinned to a pre-0.19 image must not go red on a
+feature that image does not carry.
+
 
 ## Which binary a scenario runs against
 
