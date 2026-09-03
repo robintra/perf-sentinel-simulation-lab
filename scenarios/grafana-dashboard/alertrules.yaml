@@ -55,7 +55,16 @@ spec:
           # routine lab work. 50/h is a more realistic "surge above
           # normal load" signal in production. Tune in production based
           # on observed normal traffic.
-          expr: increase(perf_sentinel_findings_total{severity="critical"}[1h]) > 50
+          #
+          # The `sum()` is not cosmetic. 0.18.0 added a `service` label to
+          # this family and 0.19.0 a `grouping` label beside it, both
+          # announced as breaking for unaggregated alerts. Without the
+          # wrapper the rule fires once per (service, grouping) pair against
+          # a per-pair count, so it both multiplies the alerts and compares
+          # the threshold to the wrong number: measured on this lab, the bare
+          # expression returned 2 series at 131 and 114 where the total was
+          # 268. Aggregate first, then compare.
+          expr: sum(increase(perf_sentinel_findings_total{severity="critical"}[1h])) > 50
           for: 5m
           labels:
             severity: critical
