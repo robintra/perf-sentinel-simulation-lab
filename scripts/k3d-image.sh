@@ -17,14 +17,25 @@
 # to containerd's prefix variations (e.g. docker.io/library/...)
 # and avoids regex injection on caller-supplied image names.
 verify_k3d_image_on_all_nodes() {
-  local cluster="$1" image="$2" node missing=() checked=0
+  local cluster="$1" image="$2" node missing=() checked=0 seen attempt
   while read -r node; do
     [ -z "${node}" ] && continue
     checked=$((checked + 1))
-    if ! docker exec "${node}" ctr -n k8s.io images list -q 2>/dev/null \
-        | grep -qF "${image}"; then
-      missing+=("${node}")
-    fi
+    # The probe is retried because the probe itself is flaky on a loaded CI
+    # runner, not only the import: `docker exec` can fail transiently while
+    # the image is there. A single shot reported a different node missing on
+    # each of two import attempts while k3d logged "Successfully imported"
+    # for all three nodes both times.
+    seen=""
+    for attempt in 1 2 3; do
+      if docker exec "${node}" ctr -n k8s.io images list -q 2>/dev/null \
+          | grep -qF "${image}"; then
+        seen=1
+        break
+      fi
+      if [ "${attempt}" -lt 3 ]; then sleep 2; fi
+    done
+    [ -n "${seen}" ] || missing+=("${node}")
   done < <(k3d node list --no-headers 2>/dev/null \
             | awk -v c="${cluster}" '$2 ~ /^(server|agent)$/ && $3 == c {print $1}')
   if [ "${checked}" -eq 0 ]; then
