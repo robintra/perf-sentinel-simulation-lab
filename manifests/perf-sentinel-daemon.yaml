@@ -54,7 +54,7 @@ data:
     # would put a plain `make up` into CrashLoopBackOff on every cluster that
     # has no Hub built yet.
     [daemon.hub_export]
-    enabled = true
+    enabled = false
     endpoint = "http://perf-sentinel-hub.observability.svc.cluster.local:8080/api/import/findings"
     source_id = "lab-daemon"
     api_key_file = "/etc/perf-sentinel-hub/import-key"
@@ -304,7 +304,7 @@ metadata:
   labels:
     app.kubernetes.io/name: perf-sentinel-daemon
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "0.17.0"
+    app.kubernetes.io/version: "0.18.0"
 spec:
   replicas: 1
   strategy:
@@ -317,7 +317,7 @@ spec:
       labels:
         app.kubernetes.io/name: perf-sentinel-daemon
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "0.17.0"
+        app.kubernetes.io/version: "0.18.0"
     spec:
       automountServiceAccountToken: false
       # UID 65534 matches the upstream perf-sentinel scratch image USER.
