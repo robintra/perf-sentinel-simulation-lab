@@ -32,7 +32,7 @@ the pair caps are a second, independent gate that fires after them.
 |---|---|
 | A | One service name in two groupings is two series, on all five families, with the exact label arity 0.19.0 documents. |
 | B | `sum by (service)` over the new label returns exactly the 0.18.0 per-service series, and `sum()` the pre-0.18 total. |
-| C | Past the pair caps a pair keeps its service and folds only its grouping into `_other`, the three overflow counters move, admitted pairs stay within the documented caps, and B still holds. |
+| C | Past the pair caps a pair keeps its service and folds only its grouping into `_other`, the three overflow counters move, the three families every pair feeds land exactly on their cap while the two finding-derived ones stay under it, and B still holds. |
 | D | `[daemon] per_grouping_labels = false` empties the label on all five families; unlike `per_service_labels` it also governs the three I/O counters; and the histogram's unlabelled series is pre-warmed at startup only when *both* knobs are off. |
 
 Legs B and C are A/B runs, not readings. The reference side is the same traffic
@@ -40,7 +40,7 @@ replayed into a daemon with `per_grouping_labels = false`, which is by
 definition the 0.18.0 shape, so the comparison needs no 0.18.0 binary. tracegen
 is seeded, so the two sides receive the same bytes.
 
-Leg C drives 110 groupings across 40 services, 4400 admitted pairs, past all
+Leg C drives 110 groupings across 40 services, 4400 *offered* pairs, past all
 three caps (512 analysis, 256 histogram, 4096 ingest). It stays at 40 services
 on purpose: that is under the lowest *service* cap, the histogram's 64, so
 anything that folds folded on the grouping axis. The service overflow counters
@@ -82,11 +82,16 @@ a release branch keeps the previous version in `Cargo.toml` until tag time, so
 `--version` cannot answer the question, and a lab pinned to a pre-0.19 image
 must not go red on a feature that image does not have.
 
+That skip has a floor, though. From 0.19.0 on, a missing key is not an old
+binary but a moved contract, so the scenario fails and prints the keys it did
+see. A gate that skips forever is indistinguishable from one that passes, and
+this lab has shipped that exact mistake before with version-pinned images.
+
 Knobs:
 
 | Variable | Default | Effect |
 |---|---|---|
-| `SAT_ITERATIONS` | `110` | groupings driven in leg C, lower it for a quicker local run |
+| `SAT_ITERATIONS` | `110` | groupings driven in leg C. Floor is `ceil(4096 / SAT_SERVICES) + 1`, so 103 at the default 40 services: below that the ingest cap is never crossed and leg C fails instead of running faster |
 | `SAT_SERVICES` | `40` | services per saturation run, keep it under 64 or the service caps fire too |
 | `GMS_DAEMON_HTTP_PORT` / `GMS_DAEMON_GRPC_PORT` | `14818` / `14817` | loopback daemon ports |
 

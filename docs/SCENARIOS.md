@@ -2741,11 +2741,17 @@ the *service* caps, which are a different gate.
   scrape: the same seeded tracegen runs replayed into a daemon with
   `per_grouping_labels = false`, which is by definition the 0.18.0
   shape, so no 0.18.0 binary is needed.
-- **C, fold.** 110 namespaces across 40 services, 4400 admitted pairs,
-  past all three caps. A pair past its cap keeps its service and folds
-  only its grouping into `_other`, the three overflow counters move,
-  admitted pairs land exactly on 512 (analysis), 256 (histogram) and
-  4096 (ingest), and B still holds. The loop stays at 40 services on
+- **C, fold.** 110 namespaces across 40 services, 4400 *offered*
+  pairs, past all three caps. A pair past its cap keeps its service and
+  folds only its grouping into `_other`, the three overflow counters
+  move, and B still holds. The three families every pair feeds
+  (`service_io_ops_total`, `service_analyzed_io_ops_total`, the
+  histogram) must land **exactly** on their cap, 4096, 512 and 256, not
+  merely under it: short of that the fold is dropping pairs it should
+  admit, which an upper bound alone would let through while the
+  overflow counters still moved. The two finding-derived families only
+  get the upper bound, because not every pair produces a finding,
+  measured at 467 and 70 of 512 on one run and 512 and 451 on another. The loop stays at 40 services on
   purpose: that is under the lowest *service* cap, the histogram's 64,
   and the three service overflow counters reading 0 is what proves the
   fold happened on the grouping axis alone.
@@ -2781,7 +2787,6 @@ probe, not a version gate: a release branch keeps the previous version
 in `Cargo.toml` until tag time, so `--version` cannot answer the
 question, and a lab pinned to a pre-0.19 image must not go red on a
 feature that image does not carry.
-
 
 ## Which binary a scenario runs against
 

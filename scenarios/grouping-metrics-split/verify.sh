@@ -53,10 +53,12 @@ DAEMON_URL="http://127.0.0.1:${DAEMON_HTTP_PORT}"
 # AF_UNIX paths cap out around 104 bytes, so /tmp rather than TMP_DIR.
 SOCK="/tmp/ps-gms-$$.sock"
 
-# Leg C sizing. 40 services x 110 namespaces is 4400 admitted pairs, past all
+# Leg C sizing. 40 services x 110 namespaces is 4400 offered pairs, past all
 # three caps, while 40 services stays under the lowest service cap (64, the
-# histogram's). Lower it to shorten a local run; the leg asserts the caps were
-# actually crossed rather than trusting the arithmetic.
+# histogram's). The binding cap is the ingest one, so the FLOOR is
+# ceil(4096 / SAT_SERVICES) + 1: below 103 iterations at 40 services the ingest
+# overflow counter never moves and the leg fails rather than running faster.
+# The leg asserts the caps were crossed rather than trusting this arithmetic.
 SAT_ITERATIONS="${SAT_ITERATIONS:-110}"
 SAT_SERVICES="${SAT_SERVICES:-40}"
 
@@ -122,7 +124,14 @@ listen_port_http = ${DAEMON_HTTP_PORT}
 listen_port_grpc = ${DAEMON_GRPC_PORT}
 json_socket = "${SOCK}"
 api_enabled = true
-trace_ttl_ms = 1000
+# 500ms, not the 1000ms the other scenarios use, and leg C is why: tracegen
+# restarts its trace counter in every process and derives the trace id from it
+# alone, so each saturation iteration re-emits the same 40 ids about 1.3s after
+# the previous one did. At a 1000ms TTL that is 300ms of margin before two
+# namespaces merge into one trace and the pair count silently falls short of
+# the caps; at 500ms it is 800ms. Nothing here needs a longer window: a trace's
+# spans all arrive in one batch.
+trace_ttl_ms = 500
 per_service_labels = $1
 per_grouping_labels = $2
 
@@ -133,6 +142,10 @@ enabled = false
 n_plus_one_min_occurrences = 5
 slow_query_threshold_ms = 100
 slow_query_min_occurrences = 3
+# Pinned rather than left to the product default, as grouping-identity does:
+# if the default list ever drops k8s.namespace.name, the legs below must fail
+# as the config drift they are, not as a metric-split regression.
+grouping_attributes = ["k8s.namespace.name", "service.namespace"]
 EOF
   "${PERF_SENTINEL_LOCAL_BIN}" watch --config "${TMP_DIR}/daemon-$3.toml" \
     > "${TMP_DIR}/daemon-$3.log" 2>&1 &
@@ -147,25 +160,42 @@ EOF
   return 1
 }
 
+SEND_FAILURES=0
 send() {  # $1 namespace, $2 services, $3 tps, $4 duration, $5 nonce
   # traces >= services, so the round-robin service assignment covers them all:
   # a short run would otherwise admit fewer pairs than the leg counts on.
+  # Failures are counted rather than ignored: a daemon that died mid-run would
+  # otherwise surface as "the cap was not reached", pointing at the sizing knob
+  # instead of at the corpse.
   python3 "${TRACEGEN}" --protocol ndjson-socket --endpoint "${SOCK}" \
     --duration "$4" --tps "$3" --batch-traces 10 --services "$2" \
     --service-prefix gms --run-nonce "$5" \
     --mix n_plus_one:40,slow:30,redundant:15,clean:15 \
     --resource-attribute "k8s.namespace.name=$1" \
-    > "${TMP_DIR}/send-$5-$1.json" 2>> "${TMP_DIR}/send.err"
+    > "${TMP_DIR}/send-$5-$1.json" 2>> "${TMP_DIR}/send.err" \
+    || SEND_FAILURES=$((SEND_FAILURES + 1))
 }
 
-scrape() { curl -fsS "${DAEMON_URL}/metrics" > "$1"; }
+check_sends() {  # $1 = leg name
+  [ "${SEND_FAILURES}" -eq 0 ] && return 0
+  die "${SEND_FAILURES} tracegen run(s) failed during leg $1, see ${TMP_DIR}/send.err; the assertions below would grade an incomplete corpus"
+}
+
+scrape() {
+  curl -fsS "${DAEMON_URL}/metrics" > "$1" \
+    || die "could not scrape ${DAEMON_URL}/metrics into $1 (daemon gone?)"
+}
 
 parse() { python3 "${PARSE}" "$@"; }
 
-counter_value() {  # $1 metrics file, $2 metric name -> the sample, or 0
+counter_value() {  # $1 metrics file, $2 metric name -> its sample
   local v
   v="$(parse value "$1" "$2")"
-  [ -n "${v}" ] && printf '%s\n' "${v}" || printf '0\n'
+  # An absent metric is not a zero. Collapsing the two would let an upstream
+  # rename silently retire the service-axis guarantee below while the leg
+  # still reported PASS.
+  [ -n "${v}" ] || die "$2 is absent from $1; it was renamed or gained a label, and the checks that read it are no longer meaningful"
+  printf '%s\n' "${v}"
 }
 
 # The two short runs leg A and leg B grade, replayed identically into whichever
@@ -174,6 +204,7 @@ counter_value() {  # $1 metrics file, $2 metric name -> the sample, or 0
 phase_split() {  # $1 = output metrics file
   send alpha 3 8 3 split
   send beta 3 8 3 split
+  check_sends "split"
   sleep 6
   scrape "$1"
 }
@@ -194,9 +225,17 @@ start_daemon true true probe || die "daemon failed to start: $(tail -3 "${TMP_DI
 # Feature probe, not a version gate: the branch that adds the label keeps the
 # previous version in Cargo.toml until tag time, so `--version` cannot answer
 # this. An older pin has no such key and the scenario skips instead of failing.
-if ! curl -fsS "${DAEMON_URL}/api/config" > "${TMP_DIR}/config.json" \
-  || ! python3 -c 'import json,sys; sys.exit(0 if "per_grouping_labels" in json.load(open(sys.argv[1])) else 1)' \
-       "${TMP_DIR}/config.json"; then
+curl -fsS "${DAEMON_URL}/api/config" > "${TMP_DIR}/config.json" \
+  || die "could not read ${DAEMON_URL}/api/config"
+if ! python3 -c 'import json,sys; sys.exit(0 if "per_grouping_labels" in json.load(open(sys.argv[1])) else 1)' \
+     "${TMP_DIR}/config.json"; then
+  # The skip is for a genuinely older binary only. From 0.19.0 on, a missing
+  # key means the contract moved (renamed, nested) and the gate must say so:
+  # a scenario that skips forever is indistinguishable from one that passes,
+  # and this lab has shipped that mistake before with version-pinned images.
+  if [ "$(printf '0.19.0\n%s\n' "${VERSION}" | sort -V | head -1)" = "0.19.0" ]; then
+    die "daemon ${VERSION} is 0.19.0 or later but /api/config has no per_grouping_labels; keys seen: $(python3 -c 'import json,sys; print(", ".join(sorted(json.load(open(sys.argv[1])))))' "${TMP_DIR}/config.json")"
+  fi
   skip "/api/config has no per_grouping_labels: daemon ${VERSION} predates the 0.19.0 grouping label, scenario skipped"
   exit 0
 fi
@@ -215,10 +254,14 @@ for family in ${FAMILIES_COUNTER} ${FAMILY_HISTOGRAM}; do
     *)                                    want="grouping,service" ;;
   esac
   # The claim is not "two grouping values exist" but "one service name is now
-  # two series", so the pair count must be twice the service count. Required of
-  # the four counter families only: the histogram carries a series only for a
-  # service that had a slow span, so a service present in one namespace and not
-  # the other is legitimate there and would make this check flaky.
+  # two series", so the pair count must be twice the service count. This is not
+  # a bet on the traffic: `phase_split` sends the two namespaces with identical
+  # seeded tracegen arguments, so the two runs are the same spans differing in
+  # one resource attribute, and any service that yields a series under alpha
+  # yields it under beta. Required of the four counter families only: the
+  # histogram carries a series only for a service that had a slow span, and
+  # which spans cross the slow threshold depends on how the worker batched
+  # them, so a one-sided service is legitimate there.
   pairs="$(parse pairs "${TMP_DIR}/metrics-on.txt" "${family}" | grep -c .)"
   expected_pairs=$((2 * services))
   [ "${family}" = "${FAMILY_HISTOGRAM}" ] && expected_pairs="${pairs}"
@@ -297,7 +340,16 @@ fi
 # alone it now appears with the first slow span instead, which is the easiest
 # thing here to break without noticing.
 start_daemon false false bothoff || die "both-off daemon failed to start"
-scrape "${TMP_DIR}/metrics-startup-bothoff.txt"
+# Retried, not scraped once: /api/status answering proves the HTTP listener is
+# bound, not that the metric registry finished its startup pre-warm, and a bare
+# scrape would read 0 on a daemon that is about to be correct. The mirror check
+# below wants a stable 0, so it reads its own file after this loop has given the
+# pre-warm every chance to show up.
+for _ in $(seq 1 20); do
+  scrape "${TMP_DIR}/metrics-startup-bothoff.txt"
+  [ "$(parse series "${TMP_DIR}/metrics-startup-bothoff.txt" "${FAMILY_HISTOGRAM}" | grep -c .)" -gt 0 ] && break
+  sleep 0.25
+done
 warm_bothoff="$(parse series "${TMP_DIR}/metrics-startup-bothoff.txt" "${FAMILY_HISTOGRAM}" | grep -c .)"
 warm_svcoff="$(parse series "${TMP_DIR}/metrics-startup-svcoff.txt" "${FAMILY_HISTOGRAM}" | grep -c .)"
 if [ "${warm_bothoff}" -lt 1 ]; then
@@ -319,6 +371,7 @@ saturate() {  # $1 = output metrics file
   for i in $(seq 1 "${SAT_ITERATIONS}"); do
     send "ns-$i" "${SAT_SERVICES}" "${SAT_SERVICES}" 1 sat
   done
+  check_sends "C"
   sleep 8
   scrape "$1"
 }
@@ -362,15 +415,28 @@ for family in ${FAMILIES_COUNTER} ${FAMILY_HISTOGRAM}; do
   # The bound is on (service, grouping) PAIRS, not on either axis alone, so it
   # is pairs that are counted here. `_other` is reserved and takes no slot,
   # which is why it is excluded rather than counted against the cap.
+  #
+  # Three of the five must land EXACTLY on their cap, not merely under it: with
+  # 4400 pairs offered, every pair carries ingest and analysed I/O ops and the
+  # slow mix fills the histogram, so anything short means the fold is dropping
+  # what it should have admitted. `<=` alone would let a regression that
+  # admitted 100 of 4400 pass while the overflow counters still moved. The
+  # other two need a FINDING per pair, which not every pair produces, so they
+  # only get the upper bound (measured: 467 and 70 of 512 on one run, 512 and
+  # 451 on another).
   case "${family}" in
-    perf_sentinel_service_io_ops_total)   cap=${CAP_INGEST_PAIRS} ;;
-    perf_sentinel_slow_duration_seconds)  cap=${CAP_HISTOGRAM_PAIRS} ;;
-    *)                                    cap=${CAP_ANALYSIS_PAIRS} ;;
+    perf_sentinel_service_io_ops_total)   cap=${CAP_INGEST_PAIRS};    exact=yes ;;
+    perf_sentinel_slow_duration_seconds)  cap=${CAP_HISTOGRAM_PAIRS}; exact=yes ;;
+    perf_sentinel_service_analyzed_io_ops_total) cap=${CAP_ANALYSIS_PAIRS}; exact=yes ;;
+    *)                                    cap=${CAP_ANALYSIS_PAIRS};  exact=no  ;;
   esac
   admitted="$(parse pairs "${TMP_DIR}/metrics-sat-on.txt" "${family}" \
     | grep -v "$(printf '\t')_other\$" | grep -c .)"
   if [ "${admitted}" -gt "${cap}" ]; then
     fail "C.cap" "${family} admitted ${admitted} (service, grouping) pairs, past its documented cap of ${cap}"
+    C_FAILED=1
+  elif [ "${exact}" = "yes" ] && [ "${admitted}" -ne "${cap}" ]; then
+    fail "C.cap" "${family} admitted only ${admitted} of its ${cap} pair slots on ${SAT_ITERATIONS}x${SAT_SERVICES} offered pairs; the fold is dropping pairs it should admit"
     C_FAILED=1
   fi
 done
@@ -401,37 +467,8 @@ for family in perf_sentinel_service_analyzed_io_ops_total \
   fi
 done
 # The avoidable counter read against its own denominator, inside one scrape, so
-# no cross-run comparison is involved. Both are charged under the same
-# (service, grouping) key by the same meter, including once a pair folds into
-# `_other`, so a ratio above 1 would mean the fold charged a numerator to a
-# pair whose denominator went elsewhere.
-if ! python3 - "${SCENARIO_DIR}" "${TMP_DIR}/metrics-sat-on.txt" <<'PY'
-import subprocess, sys
-scenario_dir, metrics = sys.argv[1], sys.argv[2]
-
-def series(family):
-    out = subprocess.run(
-        [sys.executable, f"{scenario_dir}/parse_metrics.py", "series", metrics, family],
-        capture_output=True, text=True, check=True).stdout
-    parsed = {}
-    for line in out.splitlines():
-        labels, _, value = line.rpartition(" ")
-        parsed[labels] = float(value)
-    return parsed
-
-numerator = series("perf_sentinel_service_avoidable_io_ops_total")
-denominator = series("perf_sentinel_service_analyzed_io_ops_total")
-over = [
-    (key, value, denominator.get(key))
-    for key, value in numerator.items()
-    if not denominator.get(key) or value > denominator[key]
-]
-if over:
-    print(f"{len(over)} pair(s) with avoidable > analysed, first: {over[0]}", file=sys.stderr)
-    sys.exit(1)
-print(f"{len(numerator)} pairs checked")
-PY
-then
+# no cross-run comparison is involved.
+if ! parse ratio "${TMP_DIR}/metrics-sat-on.txt"; then
   fail "C.ratio" "a (service, grouping) pair reports more avoidable than analysed I/O ops after folding"
   C_FAILED=1
 fi

@@ -13,7 +13,9 @@ Usage: parse_metrics.py <mode> <file> [args...]
   groupings <file> <family>              distinct grouping values, one per line
   services <file> <family>               distinct service values, one per line
   pairs    <file> <family>               distinct "service<TAB>grouping" pairs, one per line
-  value    <file> <family>               a single unlabelled sample's value
+  value    <file> <family>               a single unlabelled sample's value, empty when absent
+  ratio    <file>                        exit 1 and name the pairs whose avoidable ops
+                                         exceed their analysed ops
 """
 
 import collections
@@ -70,8 +72,35 @@ def render(counter):
         print(f"{{{rendered}}} {value!r}")
 
 
+def ratio(path):
+    """Per (service, grouping), avoidable ops must not exceed analysed ops.
+
+    Read inside one scrape, so no cross-run variance is involved. Both
+    counters are charged under the same key by the same meter, folded pairs
+    included, so an excess means a fold charged a numerator to a pair whose
+    denominator went elsewhere.
+    """
+    numerator = keyed(path, "perf_sentinel_service_avoidable_io_ops_total")
+    denominator = keyed(path, "perf_sentinel_service_analyzed_io_ops_total")
+    # `key not in`, not a falsy test: a pair legitimately sitting at 0/0 is
+    # not a violation, and `not 0.0` would report it as one.
+    over = [
+        (key, value, denominator.get(key))
+        for key, value in numerator.items()
+        if key not in denominator or value > denominator[key]
+    ]
+    if over:
+        for key, value, against in over[:5]:
+            print(f"avoidable={value} analysed={against} for {dict(key)}", file=sys.stderr)
+        sys.exit(f"{len(over)} pair(s) with avoidable > analysed")
+    print(f"{len(numerator)} pairs checked")
+
+
 def main():
-    mode, path, family = sys.argv[1], sys.argv[2], sys.argv[3]
+    mode, path = sys.argv[1], sys.argv[2]
+    if mode == "ratio":
+        return ratio(path)
+    family = sys.argv[3]
     if mode == "arity":
         names = {k for labels, _ in read(path, family) for k in labels}
         print("\n".join(sorted(names)))
@@ -80,7 +109,10 @@ def main():
     elif mode == "sumsvc":
         render(keyed(path, family, drop=("grouping",)))
     elif mode == "total":
-        print(repr(sum(keyed(path, family).values())))
+        # Rounded, not `repr`: the split file sums twice as many float terms as
+        # the unlabelled one and in a different order, so a fractional counter
+        # share could differ in the last ULP between two runs that agree.
+        print(f"{sum(keyed(path, family).values()):.6f}")
     elif mode in ("groupings", "services"):
         want = mode[:-1]
         print("\n".join(sorted({labels.get(want, "") for labels, _ in read(path, family)})))
