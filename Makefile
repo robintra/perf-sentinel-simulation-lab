@@ -50,6 +50,7 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-java-ci-capture \
         verify-ci-e2e-jenkins verify-ci-e2e-github verify-ci-e2e-gitlab \
         verify-archive-integrity-chain verify-archive-window-drops verify-config-fragments \
+        verify-incident-window-capture \
         verify-disclose-archive-family-baseline verify-diff-mutated-findings \
         seed-hub-local verify-hub-ingestion verify-hub-source-reachability \
         verify-hub-derived-status verify-hub-lineage-mutation \
@@ -167,6 +168,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/sidecar-pattern/verify.sh
 	@bash -n scenarios/correlation-finding/verify.sh
 	@bash -n scenarios/grouping-identity/verify.sh
+	@bash -n scenarios/incident-window-capture/verify.sh
 	@bash -n scenarios/grouping-metrics-split/verify.sh
 	@bash -n scenarios/ci-e2e-common/browser-check.sh
 	@bash -n scenarios/pg-stat/verify.sh
@@ -680,6 +682,9 @@ verify-config-fragments: ## 0.9.25 .perf-sentinel.d/ loader (merge order, reject
 verify-archive-window-drops: ## 0.15.0 dropped archive windows: the four pre-warmed reasons on a healthy archive, channel_full on a saturated one (local binary, no cluster)
 	./scenarios/archive-window-drops/verify.sh
 
+verify-incident-window-capture: ## 0.20.0 incident intake: the window frozen at reception, the settle merge, idempotent reposts, counted refusals, the NDJSON archive, until_ms and the last-span gauge (local binary, no cluster)
+	./scenarios/incident-window-capture/verify.sh
+
 verify-ack-lifecycle-warning: ## 0.9.28 CI acknowledgment life cycle: unmatched warning, the fixed/not-run split, and the pre-computed-report guard (local binary, no cluster)
 	./scenarios/ack-lifecycle-warning/verify.sh
 
@@ -689,7 +694,7 @@ verify-export-snapshot-scope: ## 0.13.1 export snapshot scope: the configurable 
 verify-otlp-compression-matrix: ## 0.9.28 OTLP transport x encoding matrix (gRPC/HTTP x gzip/deflate/none/zstd) with an A/B against the pre-fix image (Docker, no cluster; one cluster leg SKIPs without one)
 	./scenarios/otlp-compression-matrix/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 81 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: seed-tracegen ## Run all 82 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -738,7 +743,7 @@ verify-all-scenarios: seed-tracegen ## Run all 81 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments grouping-identity grouping-metrics-split diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture grouping-identity grouping-metrics-split diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

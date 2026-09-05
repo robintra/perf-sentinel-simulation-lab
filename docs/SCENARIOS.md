@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 81 scenarios live under `scenarios/<name>/` and each one ships a
+The 82 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -191,7 +191,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 81
+`grouping-identity` is the 0.11 contract gate. The lab now ships 82
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -1316,7 +1316,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 81 scenarios, in an order
+`make verify-all-scenarios` includes all 82 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2787,6 +2787,67 @@ probe, not a version gate: a release branch keeps the previous version
 in `Cargo.toml` until tag time, so `--version` cannot answer the
 question, and a lab pinned to a pre-0.19 image must not go red on a
 feature that image does not carry.
+
+## incident-window-capture (0.20.0 incident intake and its window)
+
+`make verify-incident-window-capture`. Self-contained: a local release binary,
+python3 and curl. No cluster, no Docker. Around 15 seconds.
+
+The question a post-mortem asks perf-sentinel is always the same: what was
+already burning on this service in the minutes before it went down.
+perf-sentinel cannot answer the first half of it. There is no OTLP metrics
+path, so an observed service's memory never arrives, `SpanEvent` carries no
+status and the `exception.*` events are read nowhere, and a saturating process
+keeps emitting spans, more slowly, so no heuristic over the traces rescues the
+case. What perf-sentinel owns is the findings of a period, and it is the only
+thing that can freeze them before the FIFO ring evicts them, which on a loaded
+fleet takes minutes. The moment comes from the operator's alerting, the window
+comes from perf-sentinel, and the capture has to be immediate.
+
+**The window closes after the incident, not at it.** A finding is stamped when
+its trace is analysed, one TTL after its last span, so the traces live at the
+crash land past `startsAt`. The window is
+`[at_ms - lookback_ms, at_ms + 2 * trace_ttl_ms]` and the scenario asserts
+those bounds against the returned `at_ms`, not against its own clock.
+
+**The settle pass has to grow the record, never replace it.** A second
+anti-pattern is seeded right after the delivery, so it is analysed after the
+reception freeze but inside the window, and the assertion is that the row
+captured at reception is still there next to the new one. Asserting only that
+the row count moved would pass on a settle that replaced the capture, which is
+the regression that matters: the ring only evicts, so a later fold can be
+missing rows the first one held.
+
+**Refusals are the blind spot.** The intake body reports `recorded`,
+`repeated` and the three rejection counts, but Alertmanager discards that body
+and never retries a 4xx, so a receiver with the wrong header or a rule with the
+wrong service label loses every capture with nothing else moving. The scenario
+drives all four reasons of `perf_sentinel_incidents_rejected_total` and checks
+the pre-warm first, before any refusal: a series that materialises only once it
+fires cannot be alerted on. The overflow leg posts 1001 alerts, which lands
+`no_service = 1000` and `overflow = 1` without paying a single ring fold.
+
+The last two legs cover the surfaces the intake is built on: the window form of
+`GET /api/findings` (`until_ms` folds over the detections inside the window
+alone, so a window closed at the incident holds fewer rows than the whole
+buffer, where an upper bound applied after the fold would keep every group
+whose lifetime overlaps), `oldest_finding_ms` on `/api/status`, which separates
+"nothing fired" from "the ring no longer reaches that far back", and
+`perf_sentinel_service_last_span_timestamp_seconds`, a Unix stamp rather than
+an age so `time() - gauge` survives a daemon restart where every counter
+resets to zero and a whole fleet looks stopped.
+
+Durability closes it. The ring dies with the daemon, and a node-level memory
+event that kills the observed service often takes a co-located daemon with it,
+destroying the record that would explain the outage. The archive holds one
+intact line per record, all under one content-derived id, the last carrying the
+end, and a symlinked `archive_path` refuses startup rather than being
+discovered at the first incident.
+
+Deliberately not asserted: that the gauge means liveness (a crash, a scale to
+zero, a deploy, a load balancer drain and a quiet cron all read the same), and
+that a finding analysed after the settle fired reaches the record (the settle
+is one pass, not a poll, and the reception capture is already on disk by then).
 
 ## Which binary a scenario runs against
 
