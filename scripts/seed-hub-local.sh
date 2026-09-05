@@ -85,6 +85,13 @@ out = re.sub(r"imagePullPolicy: \w+", "imagePullPolicy: Never", out, count=1)
 open(path, "w").write(out)
 PY
 
+# The Hub manifest reads the daemon's read key from this Secret, and the
+# reference is not optional, so a cluster bootstrapped before the incident
+# wiring landed would stall in CreateContainerConfigError with nothing saying
+# why. scripts/bootstrap.sh creates it.
+kubectl -n observability get secret perf-sentinel-api-keys >/dev/null 2>&1 \
+  || { echo "error: no perf-sentinel-api-keys Secret in observability. This cluster predates the incident wiring, re-run scripts/bootstrap.sh" >&2; exit 1; }
+
 echo "==> applying and rolling the hub"
 kubectl apply -f "${MANIFEST}" >/dev/null
 kubectl -n observability rollout status deploy/perf-sentinel-hub --timeout=180s

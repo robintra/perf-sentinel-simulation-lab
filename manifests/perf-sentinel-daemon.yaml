@@ -41,6 +41,27 @@ data:
     enabled = true
     storage_path = "/var/lib/perf-sentinel/acks.jsonl"
 
+    # Incident capture, 0.20.0. An Alertmanager webhook POSTed to
+    # /api/incidents freezes the findings of the window that preceded the
+    # alert, before the trace ring evicts them. Enabled here because the
+    # daemon-to-Hub incident chain has no coverage in either product repo:
+    # the Hub's own tests drive a fake daemon, the daemon's never see a Hub.
+    #
+    # No api_key line, and none is possible: the write key arrives as
+    # PERF_SENTINEL_INCIDENTS_API_KEY and the read-only [daemon] read_api_key
+    # as PERF_SENTINEL_READ_API_KEY, both from the perf-sentinel-api-keys
+    # Secret the Deployment mounts. An enabled section with no resolvable key
+    # exits at startup, which is why that Secret is NOT optional there.
+    [daemon.incidents]
+    enabled = true
+    # The engine default, spelled out because it is the width of the evidence
+    # a scenario asserts on: five minutes of findings frozen per incident.
+    lookback_ms = 300000
+    # Beside the ack store on the perf-sentinel-acks PVC. The ring alone dies
+    # with the pod, and a node-level memory event often kills the daemon along
+    # with the service it would explain.
+    archive_path = "/var/lib/perf-sentinel/incidents.ndjson"
+
     # Push export to PerfSentinelHub. The push is the primary path; the Hub
     # also polls this daemon on the same source id, which is deliberate: only
     # a successful poll clears the Hub's unreachable marker, a push never
@@ -304,7 +325,7 @@ metadata:
   labels:
     app.kubernetes.io/name: perf-sentinel-daemon
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "0.19.0"
+    app.kubernetes.io/version: "0.20.0"
 spec:
   replicas: 1
   strategy:
@@ -317,7 +338,7 @@ spec:
       labels:
         app.kubernetes.io/name: perf-sentinel-daemon
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "0.19.0"
+        app.kubernetes.io/version: "0.20.0"
     spec:
       automountServiceAccountToken: false
       # UID 65534 matches the upstream perf-sentinel scratch image USER.
@@ -330,7 +351,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: perf-sentinel
-          image: ghcr.io/robintra/perf-sentinel@sha256:cc3671c60911da3bdc0b745e51c4ea219fa994a3f31068a7ee7b1e34aec36387  # 0.19.0
+          image: ghcr.io/robintra/perf-sentinel@sha256:08b95c5ea1421e1b89ed017f7dfa3f9f0da54f9a21d8f02a6ef117057274e126  # 0.20.0
           imagePullPolicy: IfNotPresent
           args:
             - watch
@@ -354,6 +375,23 @@ spec:
                   name: perf-sentinel-electricity-maps
                   key: token
                   optional: true
+            # The incident write key and the read-only key, from one Secret.
+            # Neither is optional, unlike the token above: an enabled
+            # [daemon.incidents] whose key resolves to nothing exits at
+            # startup, so a missing Secret has to stop the pod at creation,
+            # with a reason `kubectl describe` prints, rather than produce a
+            # crash loop nobody reads. scripts/bootstrap.sh creates the Secret
+            # before this manifest is applied.
+            - name: PERF_SENTINEL_INCIDENTS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-api-keys
+                  key: incidents-api-key
+            - name: PERF_SENTINEL_READ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-api-keys
+                  key: read-api-key
           volumeMounts:
             - name: config
               mountPath: /etc/perf-sentinel

@@ -52,7 +52,8 @@ PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-archive-integrity-chain verify-archive-window-drops verify-config-fragments \
         verify-incident-window-capture \
         verify-disclose-archive-family-baseline verify-diff-mutated-findings \
-        seed-hub-local verify-hub-ingestion verify-hub-source-reachability \
+        seed-hub-local verify-hub-ingestion verify-hub-incidents-mirror \
+        verify-hub-source-reachability \
         verify-hub-derived-status verify-hub-lineage-mutation \
         verify-hub-retention-purge verify-hub-plugin-contract \
         verify-otlp-compression-matrix verify-ack-lifecycle-warning \
@@ -150,6 +151,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scripts/hubble-ui.sh
 	@bash -n scenarios/batch-victoria-scrape/verify.sh
 	@bash -n scenarios/hub-ingestion/verify.sh
+	@bash -n scenarios/hub-incidents-mirror/verify.sh
 	@bash -n scenarios/hub-source-reachability/verify.sh
 	@bash -n scenarios/hub-derived-status/verify.sh
 	@bash -n scenarios/hub-lineage-mutation/verify.sh
@@ -594,6 +596,9 @@ seed-hub-local: ## Build a PerfSentinelHub image from a local checkout, import i
 verify-hub-ingestion: ## daemon -> Hub over the shared pair: envelopes stay plugin-compatible, a malformed import is counted not fatal
 	./scenarios/hub-ingestion/verify.sh
 
+verify-hub-incidents-mirror: ## daemon -> Hub incident chain over the shared pair: the frozen findings copied whole, the closed filters that refuse a typo, a refused read key that spares the findings, and a copy that outlives the ring
+	./scenarios/hub-incidents-mirror/verify.sh
+
 verify-hub-source-reachability: ## push vs poll on unreachable_since, on an isolated pair partitioned by NetworkPolicy
 	./scenarios/hub-source-reachability/verify.sh
 
@@ -695,7 +700,7 @@ verify-export-snapshot-scope: ## 0.13.1 export snapshot scope: the configurable 
 verify-otlp-compression-matrix: ## 0.9.28 OTLP transport x encoding matrix (gRPC/HTTP x gzip/deflate/none/zstd) with an A/B against the pre-fix image (Docker, no cluster; one cluster leg SKIPs without one)
 	./scenarios/otlp-compression-matrix/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 82 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: seed-tracegen ## Run all 83 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -744,7 +749,12 @@ verify-all-scenarios: seed-tracegen ## Run all 82 scenarios sequentially (see do
 	@#   persistence), fully isolated from the shared observability daemon;
 	@#   grouped with chart-prometheusrule-pdb, the only other scenario that
 	@#   touches the real chart.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture grouping-identity grouping-metrics-split diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@# - hub-incidents-mirror runs in the resilience block rather than beside
+	@#   the other hub-* gates: its last leg restarts the shared daemon and
+	@#   leaves an empty findings ring behind, so it sits after the hub
+	@#   scenarios that read that ring and just before cold-start-edge-cases,
+	@#   which starts from a cold daemon anyway.
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture grouping-identity grouping-metrics-split diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability hub-incidents-mirror cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done

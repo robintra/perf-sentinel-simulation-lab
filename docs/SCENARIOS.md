@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 82 scenarios live under `scenarios/<name>/` and each one ships a
+The 83 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -191,7 +191,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 82
+`grouping-identity` is the 0.11 contract gate. The lab now ships 83
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -301,11 +301,11 @@ oversized snapshot named rather than flattened into an unreachable
 daemon, and the startup advisory that fires on the two knobs together
 but never on retained traces alone.
 
-The six `hub-*` gates are the 0.15.0 ecosystem tier, the first
-scenarios in this lab to involve anything other than perf-sentinel
-itself. `hub-ingestion` is their dependency root: the daemon's push
-export reaching PerfSentinelHub, and the envelope coming back out in a
-shape the IDE plugins parse. `hub-source-reachability` isolates a
+The seven `hub-*` gates are the ecosystem tier opened in 0.15.0, the
+first scenarios in this lab to involve anything other than
+perf-sentinel itself. `hub-ingestion` is their dependency root: the
+daemon's push export reaching PerfSentinelHub, and the envelope coming
+back out in a shape the IDE plugins parse. `hub-source-reachability` isolates a
 daemon-and-Hub pair to prove that only a successful poll clears the
 unreachable marker and a push never does. `hub-derived-status` forges
 envelopes to reach `likely_resolved`, which no organic traffic in this
@@ -319,7 +319,10 @@ while its successor keeps the original birth date, and that `backup`
 yields a database a second Hub can serve from. `hub-plugin-contract`
 captures the payload the JetBrains plugin actually parses, straight
 from a running Hub, into a fixture the plugin replays in its own
-`HubContractTest`.
+`HubContractTest`. `hub-incidents-mirror` is the 0.20.0 addition to
+the tier, the incident chain end to end, from an Alertmanager envelope
+posted to the daemon through to the frozen findings served back out of
+the Hub. It has its own section near the end of this guide.
 
 Two limits are worth stating. The Hub is not part of `make up`: the
 committed manifest pins the published image by digest, but bringing the
@@ -1322,7 +1325,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 82 scenarios, in an order
+`make verify-all-scenarios` includes all 83 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2863,6 +2866,87 @@ Deliberately not asserted: that the gauge means liveness (a crash, a scale to
 zero, a deploy, a load balancer drain and a quiet cron all read the same), and
 that a finding analysed after the settle fired reaches the record (the settle
 is one pass, not a poll, and the reception capture is already on disk by then).
+
+## hub-incidents-mirror (0.20.0 daemon-to-Hub incident chain)
+
+`make verify-hub-incidents-mirror`. Needs the cluster, `make seed-hub-local`,
+`make seed-tracegen`, `make port-forward` and the two API keys
+`scripts/bootstrap.sh` generates. Several minutes, most of it spent waiting out
+the daemon's settle pass and two rollouts.
+
+Both product repositories test one side of this seam and neither tests the
+join. The Hub's tests drive a fake daemon answering a hand-written page, the
+daemon's tests never see a Hub, `incident-window-capture` owns the capture
+against a local binary with no Hub at all, and `hub-ingestion` stops at the
+findings path because incidents did not exist when it was written. What the
+seam carries is the reason the feature exists: a pod that gets OOM-killed takes
+its findings ring with it, so the record that would explain the outage is
+destroyed by the outage, and the Hub's copy is the only thing left to read. A
+field renamed on either side, or an upsert that let a re-capture overwrite a
+full one, would ship green in both repositories.
+
+**Two keys, and only one of them can write.** The daemon gates
+`POST /api/incidents` on `[daemon.incidents] api_key` and opens the GETs to
+`[daemon] read_api_key` as well. The lab wires the two as distinct values and
+hands the Hub the read one, because nothing whose job is to read should be able
+to post an incident. The scenario posts with the write key and reads back with
+the read key, posts once with the read key to see the `401`, and that pair is
+what proves the two are distinct in the cluster rather than the same string
+twice. The window assertion takes its upper bound from the `trace_ttl_ms` that
+`/api/config` reports, so it follows whatever the daemon runs, while its lower
+bound mirrors the `lookback_ms` of the manifest: the assertion fails when the
+two drift apart, which is the drift worth catching.
+
+**The Hub holds a copy, not a re-derivation.** The refresh is forced with
+`POST /api/incidents/refresh` rather than waiting out the poll interval. The
+listing carries the record keyed per source with `source_id`, `environment`,
+`finding_count`, the relayed namespace and a `capture` verdict recomputed from
+the daemon's own `oldest_finding_ms` against the window start, and it carries
+no findings at all, because the listing query never reads them.
+`GET /api/incidents/{id}` then returns them whole, and the assertion is a
+byte-identical signature set against what the daemon froze. Comparing counts
+alone would pass on a mirror that kept the right number of the wrong rows.
+
+**A closed filter has to refuse, not return nothing.** `service`, `namespace`,
+`kind` and `source_id` each have to narrow to rows that all match and still
+contain the record. A service nobody reports is a legitimate empty page, but an
+unknown `kind`, `environment` or `source_id` answers 400. An empty incidents
+screen is the answer an operator hopes for, so a typo must not be able to
+produce it.
+
+**A refused read key stays in its lane.** The leg puts a key the daemon refuses
+on the Hub's own source entry, through a strategic merge patch on one env var
+of the Hub Deployment rather than the shared Secret, so the daemon and every
+other scenario see nothing. `incidents_state` then has to read `unauthorized`
+while the source stays reachable, keeps a null `unreachable_since_ms` and goes
+on reporting its findings, with `last_success_ms` moving past the patch to
+prove a poll really did succeed on the ungated routes. The restore is a verdict
+of its own, not a cleanup detail, so a silent failure cannot leave the pair
+degraded for the next scenario.
+
+**The copy outlives the ring, and a poorer capture never replaces it.**
+Restarting the daemon empties the ring and the id disappears from its listing,
+while the Hub still serves the record and its signatures. Reposting the
+identical envelope is the interesting half: the id is a hash over
+`service|kind|at_ms`, plus the namespace when the alert carries one as it does
+here, so the restarted daemon re-captures the same incident
+against a ring that no longer reaches the window and freezes zero findings.
+After the Hub's refresh debounce has passed, the original `finding_count` and
+signature set still have to be there. This is the richest-capture rule, proven
+within one source by making that source lose its own evidence.
+
+That last leg is why the scenario runs in the resilience block of
+`verify-all-scenarios` rather than beside the other `hub-*` gates: it leaves the
+shared daemon with an empty findings ring, the same state
+`cold-start-edge-cases` and `failure-mode-daemon-restart` leave behind.
+
+Deliberately not asserted: the capture semantics themselves, which
+`incident-window-capture` owns, a second daemon (so the per-source copy and the
+tie-break on the richest capture across sources stay untested), the poll path on
+its own interval, the reader's paging and its body cap, retention, which is
+`hub-retention-purge`'s subject, the IDE plugin's parse of an incident, which
+`hub-plugin-contract` does for the finding envelope, Alertmanager itself, and
+the daemon's NDJSON archive, which it does not replay at startup.
 
 ## Which binary a scenario runs against
 
