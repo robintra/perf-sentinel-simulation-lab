@@ -561,6 +561,59 @@ spec:
         - protocol: TCP
           port: 14318
 ---
+# 4.D.quater-bis ingress on the perf-sentinel daemon from the scenario seed
+# jobs. scenarios/ drives load with short-lived `lab-tracegen` Jobs that post
+# OTLP straight at the daemon, and they carry `app: tracegen` rather than a
+# component name. Without this rule the zero-trust default-deny drops the
+# spans, the job dies on `send failed after retries: timed out`, and every
+# scenario that seeds its own findings fails on an empty ring rather than on
+# what it means to assert.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-allow-tracegen
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: tracegen
+      ports:
+        - protocol: TCP
+          port: 14317
+        - protocol: TCP
+          port: 14318
+---
+# 4.D.quater-ter the egress half of the rule above. default-deny covers both
+# directions, so the seed jobs need their own way out, narrowed to the two
+# OTLP ports of the daemon. DNS is already granted to every pod by
+# allow-dns-egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tracegen-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app: tracegen
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 14317
+        - protocol: TCP
+          port: 14318
+---
 # 4.D.quinquies daemon egress to the Scaphandre mock for the
 # `[green.scaphandre]` scrape path. Scoped to the in-cluster mock
 # Service in the same namespace, port 9100. Without this rule, the
