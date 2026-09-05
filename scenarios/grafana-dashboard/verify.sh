@@ -49,6 +49,9 @@ SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 LAB_DASHBOARD="${LAB_ROOT}/manifests/grafana-dashboards/perf-sentinel-overview.json"
 UPSTREAM_DASHBOARD_PATH="${UPSTREAM_DASHBOARD_PATH:-${HOME}/RustroverProjects/perf-sentinel/examples/grafana-dashboard.json}"
+# The Infinity findings dashboard, a second verbatim copy checked the same way.
+LAB_FINDINGS_DASHBOARD="${LAB_ROOT}/manifests/grafana-dashboards/perf-sentinel-findings.json"
+UPSTREAM_FINDINGS_DASHBOARD_PATH="${UPSTREAM_FINDINGS_DASHBOARD_PATH:-$(dirname "${UPSTREAM_DASHBOARD_PATH}")/grafana-findings-dashboard.json}"
 EXTENDED_DASHBOARD="${SCENARIO_DIR}/dashboard-extended.json"
 POSTGRES_EXPORTER_MANIFEST="${SCENARIO_DIR}/postgres-exporter.yaml"
 ALERTRULES_MANIFEST="${SCENARIO_DIR}/alertrules.yaml"
@@ -233,6 +236,26 @@ else
   warn "  override the path via the UPSTREAM_DASHBOARD_PATH env var :"
   warn "  UPSTREAM_DASHBOARD_PATH=/path/to/perf-sentinel/examples/grafana-dashboard.json \\"
   warn "    make verify-grafana-dashboard"
+fi
+
+step "Parity check: lab findings dashboard JSON vs upstream"
+# Same rule for the Infinity dashboard: the copy is loaded by bootstrap.sh
+# like the overview one, and it must stay verbatim, the datasource URL
+# difference lives in the datasource provisioning, not in the dashboard.
+FINDINGS_PARITY_VERDICT="SKIPPED"
+if [ -f "${UPSTREAM_FINDINGS_DASHBOARD_PATH}" ]; then
+  if diff <(jq --sort-keys . "${UPSTREAM_FINDINGS_DASHBOARD_PATH}") \
+          <(jq --sort-keys . "${LAB_FINDINGS_DASHBOARD}") > "${TMP_DIR}/findings-dashboard-parity.diff" 2>&1; then
+    FINDINGS_PARITY_VERDICT="PASS"
+    ok "lab findings dashboard byte-identical to upstream (after jq normalize)"
+  else
+    FINDINGS_PARITY_VERDICT="FAIL"
+    warn "lab findings dashboard has drifted from upstream, see ${TMP_DIR}/findings-dashboard-parity.diff"
+    head -40 "${TMP_DIR}/findings-dashboard-parity.diff"
+  fi
+else
+  warn "SKIP findings parity check: upstream JSON not found at ${UPSTREAM_FINDINGS_DASHBOARD_PATH}"
+  warn "  override the path via the UPSTREAM_FINDINGS_DASHBOARD_PATH env var"
 fi
 
 step "Apply extended dashboard ConfigMap"
@@ -575,7 +598,8 @@ fi
 if [ "${EMPTY_PANELS}" -eq 0 ] \
    && [ "${RULES_LOADED}" = "all-loaded" ] \
    && [ "${TRIGGER_VERDICT}" != "FAIL" ] \
-   && [ "${PARITY_VERDICT}" != "FAIL" ]; then
+   && [ "${PARITY_VERDICT}" != "FAIL" ] \
+   && [ "${FINDINGS_PARITY_VERDICT}" != "FAIL" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -592,6 +616,7 @@ step "Write report"
   echo "## Parity check"
   echo
   echo "- lab dashboard (manifests/grafana-dashboards/perf-sentinel-overview.json) vs upstream: ${PARITY_VERDICT}"
+  echo "- lab findings dashboard (manifests/grafana-dashboards/perf-sentinel-findings.json) vs upstream: ${FINDINGS_PARITY_VERDICT}"
   echo
   echo "## Coverage audit"
   echo

@@ -119,6 +119,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@echo "==> json parse on dashboards"
 	@python3 -m json.tool < manifests/grafana-dashboards/perf-sentinel-overview.json >/dev/null
 	@python3 -m json.tool < manifests/grafana-dashboards/kubernetes-cluster.json >/dev/null
+	@python3 -m json.tool < manifests/grafana-dashboards/perf-sentinel-findings.json >/dev/null
 	@echo "==> shell syntax check"
 	@bash -n scripts/bootstrap.sh
 	@bash -n scripts/teardown.sh

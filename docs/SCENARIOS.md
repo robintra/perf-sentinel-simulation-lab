@@ -1181,6 +1181,12 @@ visible in Grafana :
   upstream, 17 panels)
 - `perf-sentinel-extended` (lab overlay, 2 postgres-exporter panels :
   Top 10 slow queries, DB query rate)
+- `perf-sentinel-findings` (loaded by `bootstrap.sh`, identical to upstream
+  `examples/grafana-findings-dashboard.json`, the Infinity dashboard on the
+  query API with its incidents panels since 0.20.0). Its parity is checked
+  the same way. It needs an Infinity datasource with `[daemon] read_api_key`
+  and a 0.20.0 daemon with `[daemon.incidents]` to show data, which the lab
+  wires at the 0.20.0 image pin.
 
 ### Watch out
 

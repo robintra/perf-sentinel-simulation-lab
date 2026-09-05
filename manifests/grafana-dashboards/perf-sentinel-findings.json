@@ -1,0 +1,1195 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_INFINITY",
+      "label": "perf-sentinel API",
+      "description": "The Infinity datasource pointing at the perf-sentinel daemon's query API, provisioned by examples/grafana-infinity-datasource.yaml.",
+      "type": "datasource",
+      "pluginId": "yesoreyeram-infinity-datasource",
+      "pluginName": "Infinity"
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "yesoreyeram-infinity-datasource",
+      "name": "Infinity",
+      "version": "2.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "table",
+      "version": ""
+    }
+  ],
+  "title": "perf-sentinel findings",
+  "uid": "perf-sentinel-findings",
+  "tags": [
+    "perf-sentinel",
+    "observability"
+  ],
+  "schemaVersion": 39,
+  "editable": true,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "description": "Findings read from the perf-sentinel query API through the Infinity plugin (yesoreyeram-infinity-datasource), provisioned by examples/grafana-infinity-datasource.yaml. Companion to 'perf-sentinel overview', which reads Prometheus: that one answers how many findings and of what kind, this one answers which operation on which endpoint. The API it reads has no embedded IAM, so scope this dashboard's folder to the people allowed to see your SQL templates and endpoint names. Since 0.20.0 an Incidents table lists what the alerting posted to POST /api/incidents and an Incident findings table shows the findings frozen for the incident clicked in it, both behind [daemon] read_api_key, which the datasource sends as X-API-Key, and both outside the time picker, since the route has no time filter.",
+  "templating": {
+    "list": [
+      {
+        "name": "DS_INFINITY",
+        "label": "perf-sentinel API",
+        "type": "datasource",
+        "query": "yesoreyeram-infinity-datasource",
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "multi": false
+      },
+      {
+        "name": "limit",
+        "label": "Max rows",
+        "type": "custom",
+        "query": "50,100,200,500,1000",
+        "current": {
+          "text": "200",
+          "value": "200"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "50",
+            "value": "50"
+          },
+          {
+            "selected": false,
+            "text": "100",
+            "value": "100"
+          },
+          {
+            "selected": true,
+            "text": "200",
+            "value": "200"
+          },
+          {
+            "selected": false,
+            "text": "500",
+            "value": "500"
+          },
+          {
+            "selected": false,
+            "text": "1000",
+            "value": "1000"
+          }
+        ],
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "description": "Server-side cap, applied after the API folds findings by signature. The daemon refuses anything above 1000."
+      },
+      {
+        "name": "include_acked",
+        "label": "Include acked",
+        "type": "custom",
+        "query": "false,true",
+        "current": {
+          "text": "false",
+          "value": "false"
+        },
+        "options": [
+          {
+            "selected": true,
+            "text": "false",
+            "value": "false"
+          },
+          {
+            "selected": false,
+            "text": "true",
+            "value": "true"
+          }
+        ],
+        "hide": 0,
+        "includeAll": false,
+        "multi": false,
+        "description": "Since 0.5.20 the API leaves acknowledged findings out by default, so a critical problem someone acked is absent from the table with nothing saying so. true asks for them back, and the 'Acked via' column names the source (toml for the CI baseline, daemon for the runtime store), the same union the acknowledgments table below lists."
+      },
+      {
+        "name": "incident",
+        "label": "Incident",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0,
+        "description": "Id of the incident whose findings the Incident findings table shows. Set by clicking a row of the Incidents table, or paste one from GET /api/incidents. Empty leaves that table without data."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Daemon status",
+      "description": "GET /api/status, the daemon's own liveness object: binary version, seconds since the process started, and the three runtime gauges each followed by its configured cap (correlation window, analysis queue, findings ring buffer). The Prometheus dashboard plots the same three pairs as headroom over time, this is the current value from the daemon itself, with the version Prometheus does not carry. Uptime resetting is a restart, which also empties the acknowledgments table below unless [daemon.ack] persists to disk.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/api/status",
+          "url_options": {
+            "method": "GET"
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "version",
+              "text": "Version",
+              "type": "string"
+            },
+            {
+              "selector": "uptime_seconds",
+              "text": "Uptime",
+              "type": "number"
+            },
+            {
+              "selector": "active_traces",
+              "text": "Active traces",
+              "type": "number"
+            },
+            {
+              "selector": "max_active_traces",
+              "text": "Active traces cap",
+              "type": "number"
+            },
+            {
+              "selector": "analysis_queue_depth",
+              "text": "Analysis queue",
+              "type": "number"
+            },
+            {
+              "selector": "analysis_queue_capacity",
+              "text": "Analysis queue cap",
+              "type": "number"
+            },
+            {
+              "selector": "stored_findings",
+              "text": "Stored findings",
+              "type": "number"
+            },
+            {
+              "selector": "max_retained_findings",
+              "text": "Stored findings cap",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Uptime"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/.*/",
+          "values": false
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Findings",
+      "description": "One row per distinct problem, not per detection: the API folds by the same signature acknowledgments use. Filter by severity, service or type with the column headers (every column is filterable) rather than a dashboard variable, so no request can ask the API for a severity it does not know.\n\n'Traces' is how many retained per-trace detections a row stands for: it falls as older ones age out of the daemon's ring buffer and resets when the daemon restarts, so read it as how present a problem is in the retained window, never as a lifetime total. 'Occurrences' is a different number, the repeats of that operation inside the single trace shown.\n\n'Est. impact (ops)' estimates each problem's aggregate avoidable I/O as Traces x Ops/trace, the same figure `query findings --sort impact` and the dashboard's impact sort rank by: an estimate, because the API folds detections and keeps one representative per signature. Click that header to rank by it. The default order stays Traces desc, which ranks every row: findings that waste no I/O (the slow_* family) have no Ops/trace, so their impact cell is blank and sorting on it would place them arbitrarily.\n\nColumns keep this order through an organize transformation, since the Infinity backend parser returns them alphabetically. 'Acked via' is empty unless the Include acked variable is true, and then names where the ack came from: toml for the CI baseline file, daemon for the runtime store.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 16,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/api/findings?limit=${limit}&include_acked=${include_acked}",
+          "url_options": {
+            "method": "GET"
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "finding.severity",
+              "text": "Severity",
+              "type": "string"
+            },
+            {
+              "selector": "finding.type",
+              "text": "Type",
+              "type": "string"
+            },
+            {
+              "selector": "finding.service",
+              "text": "Service",
+              "type": "string"
+            },
+            {
+              "selector": "finding.source_endpoint",
+              "text": "Endpoint",
+              "type": "string"
+            },
+            {
+              "selector": "seen_count",
+              "text": "Traces",
+              "type": "number"
+            },
+            {
+              "selector": "finding.pattern.occurrences",
+              "text": "Occurrences",
+              "type": "number"
+            },
+            {
+              "selector": "finding.green_impact.estimated_extra_io_ops",
+              "text": "Ops/trace",
+              "type": "number"
+            },
+            {
+              "selector": "finding.pattern.template",
+              "text": "Operation",
+              "type": "string"
+            },
+            {
+              "selector": "finding.suggestion",
+              "text": "Suggestion",
+              "type": "string"
+            },
+            {
+              "selector": "acknowledged_by.source",
+              "text": "Acked via",
+              "type": "string"
+            },
+            {
+              "selector": "finding.trace_id",
+              "text": "Trace",
+              "type": "string"
+            },
+            {
+              "selector": "stored_at_ms",
+              "text": "Last seen",
+              "type": "timestamp_epoch"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Operation"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 460
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Traces"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Occurrences"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last seen"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est. impact (ops)"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ops/trace"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Acked via"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Traces",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "binary": {
+              "left": "Traces",
+              "operator": "*",
+              "right": "Ops/trace"
+            },
+            "alias": "Est. impact (ops)"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Severity": 0,
+              "Type": 1,
+              "Service": 2,
+              "Endpoint": 3,
+              "Traces": 4,
+              "Occurrences": 5,
+              "Ops/trace": 6,
+              "Est. impact (ops)": 7,
+              "Operation": 8,
+              "Suggestion": 9,
+              "Acked via": 10,
+              "Trace": 11,
+              "Last seen": 12
+            },
+            "renameByName": {}
+          }
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Daemon acknowledgments",
+      "description": "Findings acknowledged at runtime, from GET /api/acks. An entry here is usually why a problem is absent from the table above. Empty when [daemon.ack] is disabled. If the daemon has an ack API key, the datasource needs it too, this endpoint is gated by the same key as the ack writes.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/api/acks",
+          "url_options": {
+            "method": "GET"
+          },
+          "root_selector": "",
+          "columns": [
+            {
+              "selector": "signature",
+              "text": "Signature",
+              "type": "string"
+            },
+            {
+              "selector": "by",
+              "text": "By",
+              "type": "string"
+            },
+            {
+              "selector": "reason",
+              "text": "Reason",
+              "type": "string"
+            },
+            {
+              "selector": "at",
+              "text": "Acknowledged",
+              "type": "timestamp"
+            },
+            {
+              "selector": "expires_at",
+              "text": "Expires",
+              "type": "timestamp"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Signature"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 420
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "type": "table",
+      "title": "Energy backends",
+      "description": "GET /api/energy, one row per energy or intensity backend in precedence order: whether it is configured from the [green] section frozen at startup, seconds since its last successful scrape, and its success and failure counts since daemon start. The age and the counts are omitted rather than zeroed for a backend that is not configured or not scraped (cloud_energy, electricity_maps), so an empty cell means not applicable and a 0 means fresh. A configured backend reads age 0 with 0 successes during its first scrape interval: not scraped yet, not fresh. With every row unconfigured, carbon figures come from the built-in I/O proxy.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/api/energy",
+          "url_options": {
+            "method": "GET"
+          },
+          "root_selector": "backends",
+          "columns": [
+            {
+              "selector": "backend",
+              "text": "Backend",
+              "type": "string"
+            },
+            {
+              "selector": "configured",
+              "text": "Configured",
+              "type": "boolean"
+            },
+            {
+              "selector": "last_scrape_age_seconds",
+              "text": "Last scrape age (s)",
+              "type": "number"
+            },
+            {
+              "selector": "scrapes_ok",
+              "text": "Scrapes OK",
+              "type": "number"
+            },
+            {
+              "selector": "scrapes_failed",
+              "text": "Scrapes failed",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      }
+    },
+    {
+      "type": "table",
+      "title": "Incidents",
+      "description": "GET /api/incidents, newest first, one row per incident your alerting posted, opt-in through [daemon.incidents]. The time picker does not filter this table: the route has no time filter, so it always lists the 50 most recent incidents whatever the range. 'Findings' is how many rows the daemon froze for [Window from, Window to], a window that closes two trace TTLs after the incident so the traces live at the crash are inside it once analysed. 'Capture' reads Ring reached (oldest_finding_ms) against Window from: complete when the ring still reached below the window, partial when it had already evicted part of it (the NDJSON archive may still answer), empty ring when nothing was retained. 'Ended' stays blank while the alert is still firing. Click a row to load its findings in the table below, which sets the Incident variable. The datasource sends [daemon] read_api_key as X-API-Key, never the key Alertmanager posts with. Columns keep this order through an organize transformation.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/api/incidents?limit=50",
+          "url_options": {
+            "method": "GET"
+          },
+          "root_selector": "$map($, function($i) {{\"id\": $i.id, \"service\": $i.service, \"kind\": $i.kind, \"at_ms\": $i.at_ms, \"ended_at_ms\": $i.ended_at_ms, \"window_from_ms\": $i.window_from_ms, \"window_to_ms\": $i.window_to_ms, \"oldest_finding_ms\": $i.oldest_finding_ms, \"findings_count\": $count($i.findings), \"capture\": $exists($i.oldest_finding_ms) ? ($i.oldest_finding_ms <= $i.window_from_ms ? \"complete\" : \"partial\") : \"empty ring\", \"detail\": $i.detail}})",
+          "columns": [
+            {
+              "selector": "at_ms",
+              "text": "Started",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "service",
+              "text": "Service",
+              "type": "string"
+            },
+            {
+              "selector": "kind",
+              "text": "Kind",
+              "type": "string"
+            },
+            {
+              "selector": "ended_at_ms",
+              "text": "Ended",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "window_from_ms",
+              "text": "Window from",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "window_to_ms",
+              "text": "Window to",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "findings_count",
+              "text": "Findings",
+              "type": "number"
+            },
+            {
+              "selector": "oldest_finding_ms",
+              "text": "Ring reached",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "capture",
+              "text": "Capture",
+              "type": "string"
+            },
+            {
+              "selector": "detail",
+              "text": "Detail",
+              "type": "string"
+            },
+            {
+              "selector": "id",
+              "text": "Id",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          },
+          "links": [
+            {
+              "title": "Show this incident's findings",
+              "url": "/d/perf-sentinel-findings?${__url_time_range}&var-DS_INFINITY=${DS_INFINITY}&var-limit=${limit}&var-include_acked=${include_acked}&var-incident=${__data.fields.Id}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Capture"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "complete": {
+                        "color": "green",
+                        "index": 0
+                      },
+                      "partial": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "empty ring": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Kind"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Findings"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Started",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Started": 0,
+              "Service": 1,
+              "Kind": 2,
+              "Ended": 3,
+              "Window from": 4,
+              "Window to": 5,
+              "Findings": 6,
+              "Ring reached": 7,
+              "Capture": 8,
+              "Detail": 9,
+              "Id": 10
+            },
+            "renameByName": {}
+          }
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Incident findings",
+      "description": "The findings frozen for the incident selected above (variable Incident), read from GET /api/incidents with the same limit as the Incidents table, so a clicked row is always found. One row per signature folded over the incident's window alone, so Traces and First seen describe the window and not the whole ring. Frozen at reception and merged once by the settle pass, which can add rows and raise counts but never remove. A First seen later than the incident's Started is a row that fired only after the restart. No data until a row of the Incidents table is clicked or the Incident variable holds an id, and the time picker plays no part in it, the route has no time filter. The datasource sends [daemon] read_api_key as X-API-Key. Est. impact and the column order follow the Findings table above.",
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "${DS_INFINITY}"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "${DS_INFINITY}"
+          },
+          "type": "json",
+          "source": "url",
+          "parser": "backend",
+          "format": "table",
+          "url": "/api/incidents?limit=50",
+          "url_options": {
+            "method": "GET"
+          },
+          "root_selector": "$count($[id = \"${incident}\"].findings) > 0 ? $[id = \"${incident}\"].findings[] : []",
+          "columns": [
+            {
+              "selector": "finding.severity",
+              "text": "Severity",
+              "type": "string"
+            },
+            {
+              "selector": "finding.type",
+              "text": "Type",
+              "type": "string"
+            },
+            {
+              "selector": "finding.service",
+              "text": "Service",
+              "type": "string"
+            },
+            {
+              "selector": "finding.source_endpoint",
+              "text": "Endpoint",
+              "type": "string"
+            },
+            {
+              "selector": "seen_count",
+              "text": "Traces",
+              "type": "number"
+            },
+            {
+              "selector": "finding.pattern.occurrences",
+              "text": "Occurrences",
+              "type": "number"
+            },
+            {
+              "selector": "finding.green_impact.estimated_extra_io_ops",
+              "text": "Ops/trace",
+              "type": "number"
+            },
+            {
+              "selector": "finding.pattern.template",
+              "text": "Operation",
+              "type": "string"
+            },
+            {
+              "selector": "finding.suggestion",
+              "text": "Suggestion",
+              "type": "string"
+            },
+            {
+              "selector": "first_seen_ms",
+              "text": "First seen",
+              "type": "timestamp_epoch"
+            },
+            {
+              "selector": "finding.trace_id",
+              "text": "Trace",
+              "type": "string"
+            },
+            {
+              "selector": "stored_at_ms",
+              "text": "Last seen",
+              "type": "timestamp_epoch"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "critical": {
+                        "color": "red",
+                        "index": 0
+                      },
+                      "warning": {
+                        "color": "orange",
+                        "index": 1
+                      },
+                      "info": {
+                        "color": "text",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Operation"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 460
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Traces"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Occurrences"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last seen"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Est. impact (ops)"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ops/trace"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "First seen"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "Traces",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "calculateField",
+          "options": {
+            "mode": "binary",
+            "binary": {
+              "left": "Traces",
+              "operator": "*",
+              "right": "Ops/trace"
+            },
+            "alias": "Est. impact (ops)"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Severity": 0,
+              "Type": 1,
+              "Service": 2,
+              "Endpoint": 3,
+              "Traces": 4,
+              "Occurrences": 5,
+              "Ops/trace": 6,
+              "Est. impact (ops)": 7,
+              "Operation": 8,
+              "Suggestion": 9,
+              "First seen": 10,
+              "Trace": 11,
+              "Last seen": 12
+            },
+            "renameByName": {}
+          }
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [
+        "perf-sentinel"
+      ],
+      "targetBlank": false,
+      "title": "perf-sentinel dashboards",
+      "tooltip": "The companion dashboard sharing the perf-sentinel tag: perf-sentinel overview reads Prometheus and answers how many findings, of what kind, and how the daemon is doing.",
+      "type": "dashboards",
+      "url": ""
+    }
+  ],
+  "version": 3
+}

@@ -33,7 +33,12 @@ Report lands at `/tmp/scenario-grafana-dashboard-report.md`.
 1. **Parity check**. The lab dashboard at
    `manifests/grafana-dashboards/perf-sentinel-overview.json` is
    byte-identical to upstream `examples/grafana-dashboard.json`
-   (after `jq --sort-keys` normalization). Drift fails the scenario.
+   (after `jq --sort-keys` normalization). Drift fails the scenario. The
+   same check covers `manifests/grafana-dashboards/perf-sentinel-findings.json`
+   against upstream `examples/grafana-findings-dashboard.json`, the
+   Infinity dashboard on the query API, whose incidents panels only show
+   data once the in-cluster daemon runs 0.20.0 with `[daemon.incidents]`
+   and an Infinity datasource carrying `[daemon] read_api_key`.
 2. The 17 dashboard panels render against live Prometheus (every `expr`
    returns at least one time series after `make validate-findings`).
 3. The 11 perf_sentinel_* metrics referenced by the dashboard are all
@@ -165,7 +170,9 @@ ingress are new.
 - The parity check needs the upstream perf-sentinel repo at
   `${HOME}/RustroverProjects/perf-sentinel/examples/grafana-dashboard.json`.
   Override via `UPSTREAM_DASHBOARD_PATH=...`. When absent, the parity
-  step is SKIPPED (not failed) so the scenario stays runnable.
+  step is SKIPPED (not failed) so the scenario stays runnable. The
+  findings dashboard is looked up beside it, override with
+  `UPSTREAM_FINDINGS_DASHBOARD_PATH=...`.
 
 ## Files
 
