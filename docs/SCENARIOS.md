@@ -2239,7 +2239,9 @@ against such endpoints change across the upgrade. **B** configures
 `[daemon.ack] api_key` and proves `GET /api/acks` answers 401 bare and
 200 with `X-API-Key`. It then restarts the daemon with
 `PERF_SENTINEL_ACK_API_KEY` and proves the env key beats the TOML key,
-both going through the same >=12-char validation. **C** reads
+both going through the same >=12-char validation. It also sets
+`[daemon] read_api_key` and proves that key answers 200 on
+`GET /api/acks` and 401 on `POST /api/findings/{sig}/ack`. **C** reads
 `/api/export/report` cold, with three evaluated rules and
 `passed:true`, where 0.9.14 hardcoded `rules:[]`. It reads it again
 after seeding a 12-occurrence critical N+1 SQL over the NDJSON socket
@@ -2825,7 +2827,11 @@ wrong service label loses every capture with nothing else moving. The scenario
 drives all four reasons of `perf_sentinel_incidents_rejected_total` and checks
 the pre-warm first, before any refusal: a series that materialises only once it
 fires cannot be alerted on. The overflow leg posts 1001 alerts, which lands
-`no_service = 1000` and `overflow = 1` without paying a single ring fold.
+`no_service = 1000` and `overflow = 1` without paying a single ring fold. The
+same leg sets `[daemon] read_api_key` and proves it opens `GET /api/incidents`
+and never the `POST`, whose refusal is counted like a bare one, after a startup
+check that `/api/config` reports `read_api_key_set` and `incidents_enabled`
+true.
 
 The last two legs cover the surfaces the intake is built on: the window form of
 `GET /api/findings` (`until_ms` folds over the detections inside the window

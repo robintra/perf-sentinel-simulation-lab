@@ -7,7 +7,9 @@
 #      (0.9.14 leaks "user:pass@...?token=SECRET#frag" verbatim.)
 #   B. Ack API key: GET /api/acks returns 401 without X-API-Key when a key is
 #      configured, 200 with it. PERF_SENTINEL_ACK_API_KEY overrides the TOML
-#      key. (0.9.14 served GET without any key.)
+#      key. (0.9.14 served GET without any key.) [daemon] read_api_key (0.20.0)
+#      answers 200 on GET /api/acks and 401 on POST /api/findings/{sig}/ack:
+#      a read key never writes.
 #   C. /api/export/report evaluates the real quality gate: three rules are
 #      always present (0.9.14 hardcoded passed:true, rules:[]), and a critical
 #      N+1 SQL finding with n_plus_one_sql_critical_max=0 flips passed:false.
@@ -17,7 +19,8 @@
 #   E. Non-loopback bind logs the widened advisory but the daemon still serves
 #      (warning, not a refusal).
 #
-# Self-contained: needs only the local release binary (>= feature/0.9.15).
+# Self-contained: needs only the local release binary (>= 0.20.0 for the
+# read key in leg B).
 set -euo pipefail
 
 SCENARIO="appsec-hardening"
@@ -43,6 +46,8 @@ SOCK="${SOCK:-/tmp/ps-ah-$$.sock}"
 # api_key validation requires >= 12 chars (16 recommended), env-sourced keys included
 TOML_KEY="lab-toml-key-000"
 ENV_KEY="lab-env-key-0000"
+# Must differ from both ack keys: equal to one, it would be that key.
+READ_KEY="lab-read-key-0000"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
 color_green() { printf "\033[32m%s\033[0m\n" "$*"; }
@@ -97,6 +102,7 @@ listen_port_grpc = $3
 json_socket = "$4"
 api_enabled = true
 trace_ttl_ms = 1500
+read_api_key = "${READ_KEY}"
 
 [daemon.ack]
 enabled = true
@@ -150,6 +156,17 @@ code="$(acks_code "${TOML_KEY}")"
 [ "${code}" = "200" ] || die "expected 200 with the TOML key, got ${code}"
 record "B-toml-key" "PASS" "401 bare / 200 with X-API-Key (0.9.14 served bare GET)"
 ok "GET /api/acks gated by the TOML key"
+
+step "B. [daemon] read_api_key: GET /api/acks 200, POST /api/findings/{sig}/ack 401"
+code="$(acks_code "${READ_KEY}")"
+[ "${code}" = "200" ] || die "expected 200 on GET /api/acks with the read key, got ${code}"
+# Every AckRequest field is optional, so an empty object reaches the auth check.
+code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-API-Key: ${READ_KEY}" \
+  -H "Content-Type: application/json" -d '{}' \
+  "${DAEMON_URL}/api/findings/0123456789abcdef0123456789abcdef/ack")"
+[ "${code}" = "401" ] || die "expected 401 on POST ack with the read key, got ${code}"
+record "B-read-key" "PASS" "read key: GET /api/acks 200, POST ack 401 (0.20.0)"
+ok "the read key opens GET /api/acks and never the ack POST"
 
 step "C1. cold export: real quality-gate rules evaluated, passed=true"
 # The point is that the cold envelope carries REAL evaluated rules rather than an

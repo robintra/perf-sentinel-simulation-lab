@@ -32,7 +32,9 @@
 #      the wrong header or a rule with the wrong label loses every capture in
 #      silence. `perf_sentinel_incidents_rejected_total{reason}` is the only
 #      signal, and a counter that appears once it fires cannot be alerted on,
-#      so the pre-warm is part of the contract.
+#      so the pre-warm is part of the contract. `[daemon] read_api_key` opens
+#      the GET and never the POST: a delivery signed with the read key is
+#      refused and counted like a bare one.
 #   E. Durability. The ring dies with the daemon, and a node-level memory event
 #      often takes a co-located daemon with it: the record that explains the
 #      outage is destroyed by the outage. The NDJSON archive is written by one
@@ -70,6 +72,8 @@ GRPC_PORT="${IWC_GRPC_PORT:-14561}"
 # inside a window that closes at +4 s.
 TTL_MS="${IWC_TTL_MS:-2000}"
 API_KEY="lab-incident-key"
+# The read key must differ from the write key, the daemon refuses them equal.
+READ_KEY="lab-read-key-0000"
 
 rm -rf "${TMP_DIR}"
 mkdir -p "${TMP_DIR}"
@@ -152,6 +156,7 @@ api_enabled = true
 json_socket = "${TMP_DIR}/s"
 trace_ttl_ms = ${TTL_MS}
 environment = "staging"
+read_api_key = "${READ_KEY}"
 
 [daemon.ack]
 enabled = false
@@ -217,6 +222,18 @@ metric() {  # $1 = full metric selector, prints the value or "absent"
 step "1. Daemon up, refusal and kind counters pre-warmed at zero"
 write_config "${TMP_DIR}/incidents.ndjson"
 start_daemon "d.log" || die "daemon did not start: $(tail -5 "${TMP_DIR}/d.log")"
+
+# /api/config says which gates are up, without the keys themselves.
+CFG="$(curl -s "http://127.0.0.1:${HTTP_PORT}/api/config")"
+CFG_READ="$(echo "${CFG}" | jqp "str(d.get('read_api_key_set', 'absent')).lower()")"
+CFG_INC="$(echo "${CFG}" | jqp "str(d.get('incidents_enabled', 'absent')).lower()")"
+if [ "${CFG_READ}" = "true" ] && [ "${CFG_INC}" = "true" ]; then
+  ok "/api/config reports read_api_key_set=true and incidents_enabled=true"
+  record "config reports the gates" PASS "read_api_key_set=true, incidents_enabled=true"
+else
+  fail "/api/config: read_api_key_set=${CFG_READ}, incidents_enabled=${CFG_INC}"
+  record "config reports the gates" FAIL "read_api_key_set=${CFG_READ}, incidents_enabled=${CFG_INC}"
+fi
 
 PREWARM_OK=1
 PREWARM_NOTE=""
@@ -424,6 +441,9 @@ fi
 step "D. Refusals are counted, the 401 included"
 CODE_401="$(api POST /api/incidents "$(alert_body firing "${STARTS}" "0001-01-01T00:00:00Z")" "")"
 CODE_401_GET="$(api GET /api/incidents "" "")"
+# The read key: the GET opens, the same delivery is refused and counted.
+CODE_READ_GET="$(api GET /api/incidents "" "${READ_KEY}")"
+CODE_READ_POST="$(api POST /api/incidents "$(alert_body firing "${STARTS}" "0001-01-01T00:00:00Z")" "${READ_KEY}")"
 
 NO_SVC_BODY='{"version":"4","alerts":[{"status":"firing","labels":{"perf_sentinel_kind":"restart"},"startsAt":"'"${STARTS}"'"}]}'
 api POST /api/incidents "${NO_SVC_BODY}" "${API_KEY}" >/dev/null
@@ -452,12 +472,20 @@ M_NOSVC="$(metric 'perf_sentinel_incidents_rejected_total{reason="no_service"}')
 M_TIME="$(metric 'perf_sentinel_incidents_rejected_total{reason="unparsable_time"}')"
 M_OVER="$(metric 'perf_sentinel_incidents_rejected_total{reason="overflow"}')"
 
-if [ "${CODE_401}" = "401" ] && [ "${CODE_401_GET}" = "401" ] && [ "${M_UNAUTH}" = "2" ]; then
-  ok "POST and GET both answer 401 without the key, and both are counted"
-  record "401 counted" PASS "unauthorized=2 (POST + GET)"
+if [ "${CODE_401}" = "401" ] && [ "${CODE_401_GET}" = "401" ] && [ "${M_UNAUTH}" = "3" ]; then
+  ok "POST and GET both answer 401 without the key, and every refusal is counted"
+  record "401 counted" PASS "unauthorized=3 (bare POST + bare GET + read-key POST)"
 else
-  fail "POST ${CODE_401}, GET ${CODE_401_GET}, unauthorized=${M_UNAUTH}"
+  fail "POST ${CODE_401}, GET ${CODE_401_GET}, unauthorized=${M_UNAUTH} (expected 3)"
   record "401 counted" FAIL "${CODE_401}/${CODE_401_GET}, counter ${M_UNAUTH}"
+fi
+
+if [ "${CODE_READ_GET}" = "200" ] && [ "${CODE_READ_POST}" = "401" ]; then
+  ok "the read key answers 200 on GET /api/incidents and 401 on the POST"
+  record "read key reads, never writes" PASS "GET 200, POST 401"
+else
+  fail "with the read key: GET ${CODE_READ_GET}, POST ${CODE_READ_POST}"
+  record "read key reads, never writes" FAIL "GET ${CODE_READ_GET}, POST ${CODE_READ_POST}"
 fi
 
 # no_service: 1 from the single bad alert, 1000 from the overflow delivery.

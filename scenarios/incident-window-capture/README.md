@@ -36,6 +36,8 @@ python3 and curl. No cluster, no Docker. Around 15 seconds.
 series that materialises only once it fires cannot be alerted on. The NDJSON
 archive exists with mode 0600 before the first incident, because a read-only
 filesystem or a typo has to fail the daemon, not the first delivery.
+`/api/config` reports `read_api_key_set` and `incidents_enabled` true, without
+the keys themselves.
 
 **A, the freeze at reception.** A `firing` Alertmanager envelope is accepted
 and the findings of `[at_ms - lookback_ms, at_ms + 2 * trace_ttl_ms]` are
@@ -61,11 +63,14 @@ with `recorded: 0` and leaves the settled rows alone. An `endsAt` before
 seal the record against the corrected delivery that follows.
 
 **D, every refusal counted.** `POST` and `GET` both answer 401 without the key
-and both are counted. A delivery of 1001 alerts without the service label
-lands `no_service = 1000` and `overflow = 1`, an unparsable `startsAt` lands
-`unparsable_time = 1`. The intake body says the same thing, but Alertmanager
-discards it and never retries a 4xx, so a receiver with the wrong header or a
-rule with the wrong label loses every capture with nothing else moving.
+and both are counted. `[daemon] read_api_key`, a second key that differs from
+the write key, opens `GET /api/incidents` (200) and never the `POST` (401), and
+that refusal is counted too, so `unauthorized` reads 3. A delivery of 1001
+alerts without the service label lands `no_service = 1000` and `overflow = 1`,
+an unparsable `startsAt` lands `unparsable_time = 1`. The intake body says the
+same thing, but Alertmanager discards it and never retries a 4xx, so a receiver
+with the wrong header or a rule with the wrong label loses every capture with
+nothing else moving.
 
 **E, durability.** The ring dies with the daemon, and a node-level memory event
 that kills the observed service often takes a co-located daemon with it,
