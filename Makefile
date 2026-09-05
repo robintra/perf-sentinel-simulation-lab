@@ -677,6 +677,9 @@ verify-archive-integrity-chain: ## 0.9.25 hash chain over the daemon window arch
 verify-config-fragments: ## 0.9.25 .perf-sentinel.d/ loader (merge order, rejected names, exit 75 on both config paths) plus the three deprecated [green] keys (local binary, no cluster)
 	./scenarios/config-fragments/verify.sh
 
+verify-archive-window-drops: ## 0.15.0 dropped archive windows: the four pre-warmed reasons on a healthy archive, channel_full on a saturated one (local binary, no cluster)
+	./scenarios/archive-window-drops/verify.sh
+
 verify-ack-lifecycle-warning: ## 0.9.28 CI acknowledgment life cycle: unmatched warning, the fixed/not-run split, and the pre-computed-report guard (local binary, no cluster)
 	./scenarios/ack-lifecycle-warning/verify.sh
 
