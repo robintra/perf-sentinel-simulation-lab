@@ -255,6 +255,7 @@ if [ -f "${UPSTREAM_FINDINGS_DASHBOARD_PATH}" ]; then
   fi
 else
   warn "SKIP findings parity check: upstream JSON not found at ${UPSTREAM_FINDINGS_DASHBOARD_PATH}"
+  warn "  (an upstream checkout older than 0.20.0 has no findings dashboard)"
   warn "  override the path via the UPSTREAM_FINDINGS_DASHBOARD_PATH env var"
 fi
 

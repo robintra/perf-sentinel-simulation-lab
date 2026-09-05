@@ -1174,7 +1174,7 @@ verdict.
 The lab's `manifests/grafana-dashboards/perf-sentinel-overview.json`
 is a verbatim copy of upstream `examples/grafana-dashboard.json`. The
 parity check in `verify.sh` diffs both with `jq --sort-keys` and FAILs
-on drift, so the lab tracks upstream automatically. Two dashboards
+on drift, so the lab tracks upstream automatically. Three dashboards
 visible in Grafana :
 
 - `perf-sentinel-overview` (loaded by `bootstrap.sh`, identical to
@@ -1185,8 +1185,8 @@ visible in Grafana :
   `examples/grafana-findings-dashboard.json`, the Infinity dashboard on the
   query API with its incidents panels since 0.20.0). Its parity is checked
   the same way. It needs an Infinity datasource with `[daemon] read_api_key`
-  and a 0.20.0 daemon with `[daemon.incidents]` to show data, which the lab
-  wires at the 0.20.0 image pin.
+  and a 0.20.0 daemon with `[daemon.incidents]` to show data, neither of
+  which the lab wires yet: both come with the 0.20.0 image pin.
 
 ### Watch out
 

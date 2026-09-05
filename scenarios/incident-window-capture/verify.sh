@@ -227,9 +227,14 @@ start_daemon "d.log" || die "daemon did not start: $(tail -5 "${TMP_DIR}/d.log")
 CFG="$(curl -s "http://127.0.0.1:${HTTP_PORT}/api/config")"
 CFG_READ="$(echo "${CFG}" | jqp "str(d.get('read_api_key_set', 'absent')).lower()")"
 CFG_INC="$(echo "${CFG}" | jqp "str(d.get('incidents_enabled', 'absent')).lower()")"
+# The keys themselves must never appear: the surface summarises them to
+# booleans, and a leak here would be a leak on every dashboard that reads it.
+if echo "${CFG}" | grep -q -e "${API_KEY}" -e "${READ_KEY}"; then
+  CFG_READ="leaked"
+fi
 if [ "${CFG_READ}" = "true" ] && [ "${CFG_INC}" = "true" ]; then
-  ok "/api/config reports read_api_key_set=true and incidents_enabled=true"
-  record "config reports the gates" PASS "read_api_key_set=true, incidents_enabled=true"
+  ok "/api/config reports read_api_key_set=true and incidents_enabled=true, neither key echoed"
+  record "config reports the gates" PASS "read_api_key_set=true, incidents_enabled=true, keys absent"
 else
   fail "/api/config: read_api_key_set=${CFG_READ}, incidents_enabled=${CFG_INC}"
   record "config reports the gates" FAIL "read_api_key_set=${CFG_READ}, incidents_enabled=${CFG_INC}"

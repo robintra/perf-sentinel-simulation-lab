@@ -46,7 +46,8 @@ SOCK="${SOCK:-/tmp/ps-ah-$$.sock}"
 # api_key validation requires >= 12 chars (16 recommended), env-sourced keys included
 TOML_KEY="lab-toml-key-000"
 ENV_KEY="lab-env-key-0000"
-# Must differ from both ack keys: equal to one, it would be that key.
+# Must differ from the ack key of every daemon this script starts (TOML in
+# one run, env in the other): equal to it, it would be that key.
 READ_KEY="lab-read-key-0000"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
