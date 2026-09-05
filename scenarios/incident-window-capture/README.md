@@ -48,7 +48,10 @@ stamp would miss exactly what a post-mortem wants. The service label is padded
 with spaces in the delivery and trimmed in the record, because a quoted YAML
 value keeps its space and the service is the join key to the findings.
 `oldest_finding_ms` sits above `window_from_ms`, which is what says the
-capture is complete rather than eaten into by eviction.
+capture is complete rather than eaten into by eviction. The alert also carries
+the `namespace` label kube-prometheus attaches to every pod alert, and the
+record keeps it as `namespace`: a label for reading and filtering, never a
+join key, the freeze stays by service.
 
 **B, the settle pass grows the record.** A second anti-pattern is seeded right
 after the delivery, so it is analysed after the reception freeze but inside
@@ -65,7 +68,9 @@ seal the record against the corrected delivery that follows.
 **D, every refusal counted.** `POST` and `GET` both answer 401 without the key
 and both are counted. `[daemon] read_api_key`, a second key that differs from
 the write key, opens `GET /api/incidents` (200) and never the `POST` (401), and
-that refusal is counted too, so `unauthorized` reads 3. A delivery of 1001
+that refusal is counted too, so `unauthorized` reads 3. Under the same key,
+`?namespace=shop` narrows the listing to the incident and `?namespace=nowhere`
+answers an empty list rather than a refusal. A delivery of 1001
 alerts without the service label lands `no_service = 1000` and `overflow = 1`,
 an unparsable `startsAt` lands `unparsable_time = 1`. The intake body says the
 same thing, but Alertmanager discards it and never retries a 4xx, so a receiver

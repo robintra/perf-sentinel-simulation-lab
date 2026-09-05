@@ -204,7 +204,7 @@ import json, sys
 status, starts, ends = sys.argv[1:4]
 print(json.dumps({'version': '4', 'alerts': [{
     'status': status,
-    'labels': {'service': ' shop-svc ', 'perf_sentinel_kind': 'oom_kill'},
+    'labels': {'service': ' shop-svc ', 'perf_sentinel_kind': 'oom_kill', 'namespace': 'shop'},
     'annotations': {'summary': 'container memory limit reached'},
     'startsAt': starts, 'endsAt': ends,
 }]}))
@@ -334,6 +334,14 @@ else
   record "annotation kept" FAIL "detail missing"
 fi
 
+if [ "$(echo "${CAP}" | jqp "d[0].get('namespace', 'absent')")" = "shop" ]; then
+  ok "the namespace label reached the record"
+  record "namespace kept" PASS "namespace from the alert label"
+else
+  fail "namespace is $(echo "${CAP}" | jqp "d[0].get('namespace', 'absent')")"
+  record "namespace kept" FAIL "namespace missing"
+fi
+
 # === Leg B: the settle grows the record ===
 step "B. The settle pass merges the traces live at the incident"
 # Settle is due at at_ms + 3 x ttl. Wait past it from the stamp itself, not
@@ -449,6 +457,12 @@ CODE_401_GET="$(api GET /api/incidents "" "")"
 # The read key: the GET opens, the same delivery is refused and counted.
 CODE_READ_GET="$(api GET /api/incidents "" "${READ_KEY}")"
 CODE_READ_POST="$(api POST /api/incidents "$(alert_body firing "${STARTS}" "0001-01-01T00:00:00Z")" "${READ_KEY}")"
+# The namespace filter under the read key: the label narrows the listing, and
+# an unknown one is an empty list, never a refusal.
+api GET "/api/incidents?namespace=shop" "" "${READ_KEY}" >/dev/null
+NS_HIT="$(jqp 'len(d)' < "${TMP_DIR}/body")"
+api GET "/api/incidents?namespace=nowhere" "" "${READ_KEY}" >/dev/null
+NS_MISS="$(jqp 'len(d)' < "${TMP_DIR}/body")"
 
 NO_SVC_BODY='{"version":"4","alerts":[{"status":"firing","labels":{"perf_sentinel_kind":"restart"},"startsAt":"'"${STARTS}"'"}]}'
 api POST /api/incidents "${NO_SVC_BODY}" "${API_KEY}" >/dev/null
@@ -491,6 +505,14 @@ if [ "${CODE_READ_GET}" = "200" ] && [ "${CODE_READ_POST}" = "401" ]; then
 else
   fail "with the read key: GET ${CODE_READ_GET}, POST ${CODE_READ_POST}"
   record "read key reads, never writes" FAIL "GET ${CODE_READ_GET}, POST ${CODE_READ_POST}"
+fi
+
+if [ "${NS_HIT}" -ge 1 ] && [ "${NS_MISS}" = "0" ]; then
+  ok "namespace=shop lists ${NS_HIT} incident(s), namespace=nowhere lists none"
+  record "namespace filter" PASS "shop=${NS_HIT}, nowhere=0"
+else
+  fail "namespace=shop -> ${NS_HIT}, namespace=nowhere -> ${NS_MISS}"
+  record "namespace filter" FAIL "shop=${NS_HIT}, nowhere=${NS_MISS}"
 fi
 
 # no_service: 1 from the single bad alert, 1000 from the overflow delivery.

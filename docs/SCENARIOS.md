@@ -2837,7 +2837,10 @@ fires cannot be alerted on. The overflow leg posts 1001 alerts, which lands
 same leg sets `[daemon] read_api_key` and proves it opens `GET /api/incidents`
 and never the `POST`, whose refusal is counted like a bare one, after a startup
 check that `/api/config` reports `read_api_key_set` and `incidents_enabled`
-true.
+true. The posted alert also carries the `namespace` label kube-prometheus
+attaches, which the record keeps as `namespace` and
+`GET /api/incidents?namespace=` filters on: an unknown namespace is an empty
+list, never a refusal.
 
 The last two legs cover the surfaces the intake is built on: the window form of
 `GET /api/findings` (`until_ms` folds over the detections inside the window
