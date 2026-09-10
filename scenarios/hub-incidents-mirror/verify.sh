@@ -243,7 +243,7 @@ ok "both forwards answer"
 # that predates it answers 404 and there is nothing to mirror into.
 HUB_PROBE="$(hub_api GET "/api/incidents?limit=1")"
 [ "${HUB_PROBE}" = "200" ] \
-  || die "the Hub answered HTTP ${HUB_PROBE} on GET /api/incidents. This needs a Hub from 0.1.6, which the committed manifest does not pin yet. Run: make seed-hub-local"
+  || die "the Hub answered HTTP ${HUB_PROBE} on GET /api/incidents. This route needs a Hub from 0.1.6 and the committed manifest pins a newer one, so the running pod is stale. Run: kubectl apply -f manifests/perf-sentinel-hub.yaml"
 ok "the Hub serves GET /api/incidents"
 
 CFG="$(curl -sf "http://127.0.0.1:${DAEMON_PORT}/api/config")" || die "the daemon's /api/config is unreachable"
