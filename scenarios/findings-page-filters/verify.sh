@@ -28,9 +28,12 @@
 #      page shortened by the ack screen is not the last page: the screen runs
 #      after `offset` and `limit`.
 #   D. The fold is unchanged. Same corpus into both daemons, same rows, same
-#      order, same representative, same counts. `perf(daemon)` promised a
+#      representative, same counts, batch by batch. `perf(daemon)` promised a
 #      cheaper fold, not a different one, and only this comparison holds it
-#      to that.
+#      to that. Batch by batch and not row by row: one analysis batch shares
+#      one `stored_at_ms`, the listing is ordered on that stamp, and the
+#      order inside a batch is the insertion order, which moves between two
+#      runs of the SAME binary. The first full pass caught exactly that.
 #   E. `serialized_calls` names the block instead of carrying it: at most
 #      three distinct templates, each cut at 120 characters, ` -> ...` when
 #      more follows, and the count, total and parallel estimate untouched.
@@ -413,7 +416,7 @@ fetch "${BASELINE_URL}" "include_acked=true&limit=1000" "${TMP_DIR}/fold-baselin
 fetch "${DAEMON_URL}" "include_acked=true&limit=1000" "${TMP_DIR}/fold-under-test.json"
 if python3 "${FOLD}" compare "${TMP_DIR}/fold-baseline.json" "${TMP_DIR}/fold-under-test.json" \
      > "${TMP_DIR}/fold-diff.txt" 2>&1; then
-  pass "D" "${TOTAL} rows identical to ${BASELINE_IMAGE}: same order, same representative, same counts"
+  pass "D" "${TOTAL} rows identical to ${BASELINE_IMAGE}: same batches in the same order, same representative, same counts"
 else
   fail "D" "the rewritten fold returns something the published release does not, see ${TMP_DIR}/fold-diff.txt"
   head -12 "${TMP_DIR}/fold-diff.txt"

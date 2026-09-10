@@ -11,9 +11,10 @@ Sub-commands, each reading one or two JSON page dumps:
                                    duplicate
   groupings <page>                 one effective grouping value per line, sorted unique
   suggestion <page> <type>         the suggestion of the first row of that type
-  compare <page-a> <page-b>        the fold A/B: same rows, same order, same
-                                   group metadata. Prints the first mismatches
-                                   and exits 1 on any difference.
+  compare <page-a> <page-b>        the fold A/B: the same rows carrying the
+                                   same group metadata, batch by batch, in the
+                                   same batch order. Prints the first
+                                   mismatches and exits 1 on any difference.
 
 `compare` deliberately ignores `stored_at_ms` and `first_seen_ms`: they date
 the reception, and two daemons fed the same corpus receive it at different
@@ -85,23 +86,65 @@ def cmd_suggestion(argv):
     return 1
 
 
+def batches(rows):
+    """The page split into runs of equal `stored_at_ms`, in page order.
+
+    One analysis batch stamps every finding it produces with one instant, so
+    `stored_at_ms` identifies the batch. The listing's documented order is
+    newest first on that stamp; *within* one batch the order is the order of
+    insertion, which the detectors do not fix and which moves from run to
+    run on the same binary. Comparing the two pages position by position
+    therefore fails on a reordering the contract never promised, so the
+    comparison is per batch: the sequence of batches is compared in order,
+    and the rows inside one batch as a set.
+    """
+    out = []
+    for row in rows:
+        stamp = row.get("stored_at_ms")
+        if not out or out[-1][0] != stamp:
+            out.append((stamp, []))
+        out[-1][1].append(key(row))
+    return out
+
+
 def cmd_compare(argv):
     a, b = load(argv[0]), load(argv[1])
     if len(a) != len(b):
         print("row count differs: %d vs %d" % (len(a), len(b)))
         return 1
     ka, kb = [key(r) for r in a], [key(r) for r in b]
-    if ka == kb:
+    ba, bb = batches(a), batches(b)
+
+    # Newest first, the half of the order that IS a contract. Checked on each
+    # side on its own, since the two daemons received the corpus at different
+    # instants and the stamps themselves never match.
+    for name, blocks in (("baseline", ba), ("under test", bb)):
+        stamps = [s for s, _ in blocks]
+        if stamps != sorted(stamps, reverse=True):
+            print("%s: the listing is not newest-first on stored_at_ms" % name)
+            return 1
+
+    if len(ba) != len(bb):
+        print("batch count differs: %d vs %d" % (len(ba), len(bb)))
+        return 1
+    problems = []
+    for i, ((_, rows_a), (_, rows_b)) in enumerate(zip(ba, bb)):
+        if set(rows_a) != set(rows_b):
+            problems.append((i, set(rows_a) - set(rows_b), set(rows_b) - set(rows_a)))
+    if not problems:
+        if ka != kb:
+            moved = sum(1 for x, y in zip(ka, kb) if x != y)
+            print("%d row(s) sit in a different order inside their batch, "
+                  "which the listing does not order; every batch holds the "
+                  "same rows" % moved)
         return 0
-    diffs = [(i, x, y) for i, (x, y) in enumerate(zip(ka, kb)) if x != y]
-    print("%d of %d rows differ" % (len(diffs), len(ka)))
-    # Set equality tells a reordering from a genuinely different fold, which
-    # is the first thing to know and the two have different causes.
-    print("same rows in a different order: %s" % (set(ka) == set(kb)))
-    for i, x, y in diffs[:3]:
-        print("  row %d" % i)
-        print("    baseline: %s" % (x,))
-        print("    under test: %s" % (y,))
+    print("%d of %d batches hold different rows" % (len(problems), len(ba)))
+    for i, only_a, only_b in problems[:3]:
+        print("  batch %d" % i)
+        for row in list(only_a)[:2]:
+            print("    baseline only: %s" % (row,))
+        for row in list(only_b)[:2]:
+            print("    under test only: %s" % (row,))
     return 1
 
 

@@ -69,6 +69,19 @@ and differ between two daemons fed the same corpus at different instants.
 Everything the fold itself decides is compared, the representative's
 `trace_id` and `severity` included.
 
+It compares **batch by batch**, not row by row. One analysis batch stamps
+every finding it produces with a single `stored_at_ms`, and the listing's
+documented order is newest first on that stamp; the order of rows *within* one
+batch is the order of insertion, which nothing fixes and which moves from run
+to run on the same binary. A row-by-row comparison therefore fails on a
+reordering the contract never promised, which is exactly what happened on the
+first full pass: two adjacent rows sharing a stamp had swapped, on a leg that
+had passed in isolation minutes earlier. So the sequence of batches is
+compared in order, each side is separately checked to be newest-first, and the
+rows inside a batch are compared as a set. A row that moves to a *different*
+batch, a changed `seen_count` and a changed representative are all still
+caught.
+
 The corpus is `tracegen` at a fixed seed **and a fixed `--run-nonce`**: the
 nonce is what the service names derive from, and tracegen picks a fresh one
 per process, so two runs of the same seed otherwise differ on every `service`
