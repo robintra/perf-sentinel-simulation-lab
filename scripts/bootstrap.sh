@@ -186,6 +186,43 @@ generate_postgres_secret() {
   ok "secret postgres-credentials applied"
 }
 
+# Echo the secret held in ${1}, generating and persisting it on first call.
+# Nothing else may reach stdout: callers capture it.
+persist_secret() {
+  local file="$1"
+  if [ ! -s "${file}" ]; then
+    umask 077
+    openssl rand -hex 24 > "${file}"
+    chmod 0600 "${file}"
+  fi
+  tr -d '\n\r' < "${file}"
+}
+
+generate_perf_sentinel_api_keys() {
+  step "Generating perf-sentinel API keys"
+  # Two distinct keys in one Secret, both read by the daemon from the
+  # environment. The incidents key gates POST /api/incidents, the read key
+  # only opens the GETs that write key gates and is the one the Hub is handed,
+  # so a poller can never fabricate an incident. Unlike the Electricity Maps
+  # token these are not optional: the daemon exits at startup when
+  # [daemon.incidents] is enabled and its key resolves to nothing, so the
+  # Secret has to exist before the daemon is applied.
+  # The files are named *.key because .gitignore already covers that suffix.
+  local incidents_key read_key
+  incidents_key="$(persist_secret "${REPO_ROOT}/.perf-sentinel-incidents.key")"
+  read_key="$(persist_secret "${REPO_ROOT}/.perf-sentinel-read.key")"
+  [ -n "${incidents_key}" ] && [ -n "${read_key}" ] || die "a generated perf-sentinel API key is empty"
+  # The daemon refuses the pair when the two match, and it refuses it by
+  # exiting, so catch it here where the message can say which file to delete.
+  [ "${incidents_key}" != "${read_key}" ] \
+    || die ".perf-sentinel-incidents.key and .perf-sentinel-read.key hold the same value. Delete one and re-run."
+  kubectl -n observability create secret generic perf-sentinel-api-keys \
+    --from-literal=incidents-api-key="${incidents_key}" \
+    --from-literal=read-api-key="${read_key}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  ok "secret perf-sentinel-api-keys applied in observability"
+}
+
 deploy_postgres() {
   step "Deploying PostgreSQL"
   kubectl apply -f "${REPO_ROOT}/manifests/postgres-init-schemas.yaml"
@@ -366,6 +403,7 @@ main() {
   apply_namespaces
   generate_rabbitmq_secret
   generate_postgres_secret
+  generate_perf_sentinel_api_keys
   deploy_postgres
   deploy_messaging
   deploy_kube_prometheus_stack

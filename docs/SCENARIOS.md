@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 81 scenarios live under `scenarios/<name>/` and each one ships a
+The 84 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -188,10 +188,11 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 | [`grouping-identity`](#grouping-identity)                  | 0.11 grouping identity across ingest, detection and outputs    | local binary + Docker + Chrome                    | PASS   |
+| [`findings-page-filters`](#findings-page-filters-0210-findings-page-contract-and-its-fold) | 0.21.0 findings page filters, paging and fold, against the published release | local binary + Docker | PASS   |
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 81
+`grouping-identity` is the 0.11 contract gate. The lab now ships 84
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -301,11 +302,11 @@ oversized snapshot named rather than flattened into an unreachable
 daemon, and the startup advisory that fires on the two knobs together
 but never on retained traces alone.
 
-The six `hub-*` gates are the 0.15.0 ecosystem tier, the first
-scenarios in this lab to involve anything other than perf-sentinel
-itself. `hub-ingestion` is their dependency root: the daemon's push
-export reaching PerfSentinelHub, and the envelope coming back out in a
-shape the IDE plugins parse. `hub-source-reachability` isolates a
+The seven `hub-*` gates are the ecosystem tier opened in 0.15.0, the
+first scenarios in this lab to involve anything other than
+perf-sentinel itself. `hub-ingestion` is their dependency root: the
+daemon's push export reaching PerfSentinelHub, and the envelope coming
+back out in a shape the IDE plugins parse. `hub-source-reachability` isolates a
 daemon-and-Hub pair to prove that only a successful poll clears the
 unreachable marker and a push never does. `hub-derived-status` forges
 envelopes to reach `likely_resolved`, which no organic traffic in this
@@ -319,7 +320,10 @@ while its successor keeps the original birth date, and that `backup`
 yields a database a second Hub can serve from. `hub-plugin-contract`
 captures the payload the JetBrains plugin actually parses, straight
 from a running Hub, into a fixture the plugin replays in its own
-`HubContractTest`.
+`HubContractTest`. `hub-incidents-mirror` is the 0.20.0 addition to
+the tier, the incident chain end to end, from an Alertmanager envelope
+posted to the daemon through to the frozen findings served back out of
+the Hub. It has its own section near the end of this guide.
 
 Two limits are worth stating. The Hub is not part of `make up`: the
 committed manifest pins the published image by digest, but bringing the
@@ -1174,13 +1178,19 @@ verdict.
 The lab's `manifests/grafana-dashboards/perf-sentinel-overview.json`
 is a verbatim copy of upstream `examples/grafana-dashboard.json`. The
 parity check in `verify.sh` diffs both with `jq --sort-keys` and FAILs
-on drift, so the lab tracks upstream automatically. Two dashboards
+on drift, so the lab tracks upstream automatically. Three dashboards
 visible in Grafana :
 
 - `perf-sentinel-overview` (loaded by `bootstrap.sh`, identical to
   upstream, 17 panels)
 - `perf-sentinel-extended` (lab overlay, 2 postgres-exporter panels :
   Top 10 slow queries, DB query rate)
+- `perf-sentinel-findings` (loaded by `bootstrap.sh`, identical to upstream
+  `examples/grafana-findings-dashboard.json`, the Infinity dashboard on the
+  query API with its incidents panels since 0.20.0). Its parity is checked
+  the same way. It needs an Infinity datasource with `[daemon] read_api_key`
+  and a 0.20.0 daemon with `[daemon.incidents]` to show data, neither of
+  which the lab wires yet: both come with the 0.20.0 image pin.
 
 ### Watch out
 
@@ -1316,7 +1326,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 81 scenarios, in an order
+`make verify-all-scenarios` includes all 84 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2239,7 +2249,9 @@ against such endpoints change across the upgrade. **B** configures
 `[daemon.ack] api_key` and proves `GET /api/acks` answers 401 bare and
 200 with `X-API-Key`. It then restarts the daemon with
 `PERF_SENTINEL_ACK_API_KEY` and proves the env key beats the TOML key,
-both going through the same >=12-char validation. **C** reads
+both going through the same >=12-char validation. It also sets
+`[daemon] read_api_key` and proves that key answers 200 on
+`GET /api/acks` and 401 on `POST /api/findings/{sig}/ack`. **C** reads
 `/api/export/report` cold, with three evaluated rules and
 `passed:true`, where 0.9.14 hardcoded `rules:[]`. It reads it again
 after seeding a 12-occurrence critical N+1 SQL over the NDJSON socket
@@ -2787,6 +2799,234 @@ probe, not a version gate: a release branch keeps the previous version
 in `Cargo.toml` until tag time, so `--version` cannot answer the
 question, and a lab pinned to a pre-0.19 image must not go red on a
 feature that image does not carry.
+
+## findings-page-filters (0.21.0 findings page contract and its fold)
+
+`make verify-findings-page-filters`. Self-contained: the local release
+binary, Docker, python3 and curl. No cluster, no Prometheus. About a
+minute.
+
+0.21.0 changes how a page of findings is read. `?grouping=` filters on
+the finding's effective grouping, the value the `grouping` Prometheus
+label has carried since 0.19.0, so one Grafana variable drives both
+shipped dashboards. `?offset=` skips folded rows, so a fleet whose
+distinct signatures outgrow the 1000-row cap is readable past its
+newest thousand. An empty filter value now means no filter, which is
+what lets a Grafana `All` option reach an exact-match API. And the fold
+materialises only the rows a page keeps, instead of cloning the first
+instance of every distinct signature and dropping most of them.
+
+Nothing here covered any of it: the only query forms in the lab were
+`service`, `type`, `severity`, `limit`, `since_ms`, `until_ms` and
+`include_acked`, and no scenario had ever compared what the fold
+returns against a published release. `grouping-identity` pins the
+grouping *value* across ingestion boundaries and the output contracts
+and never reads the API's filters; `grouping-metrics-split` pins the
+same value on `/metrics` and never reads the API; `query-monitor-api`
+asserts `/api/config`, `/api/status` and `/api/energy`, never a
+findings page.
+
+- **A, grouping.** Two namespaces in the corpus, and
+  `?grouping=<value>` partitions the listing exactly between them. The
+  values it accepts are the ones
+  `label_values(perf_sentinel_findings_total, grouping)` offers, read
+  off `/metrics` in the same run and diffed, since a dashboard variable
+  that needs a conversion filters on nothing.
+- **B, empty is absent.** Twelve forms, the empty, blank and `+` value
+  of each of the four string filters, all return the whole listing, and
+  a space-padded value is trimmed to match.
+- **C, paging.** The listing walked 25 rows at a time reproduces the
+  single read, in order; no `(signature, grouping)` row appears twice;
+  an offset past the end is an empty `200`. Then the trap written
+  nowhere else: the ack screen runs *after* `offset` and `limit`, so a
+  page shortened by an acked row is not the last page, and a client
+  reading `len() < limit` as the end of the listing stops at the first
+  acked row.
+- **D, the fold is unchanged.** The same corpus into a daemon on the
+  published release and one on the build under test returns the same
+  rows in the same order, with the same representative and the same
+  counts. `stored_at_ms` and `first_seen_ms` are excluded, they date
+  the reception; everything the fold decides is compared.
+- **E, `serialized_calls`.** On a 40-call sequential block of
+  four-kilobyte statements, the suggestion names at most three distinct
+  templates, each cut at 120 characters, ends in ` -> ...`, and keeps
+  the block's real count, total and parallel estimate.
+
+Legs A, B, C and E each carry a counter-proof against
+`ghcr.io/robintra/perf-sentinel:0.20.2`, and leg D is one. That is the
+point of the scenario, not extra caution: 0.20.2 ignores an unknown
+query parameter and answers the whole listing, so with a single tenant
+leg A would read the same number on both builds and pass on either.
+`?severity=` returns nothing there and everything here, which leg B
+records as the behaviour change it is. And the same fixture that gives
+653 bytes of suggestion here gives 153 KB there, so leg E fails if the
+baseline sentence is not at least ten times the new one, which is what
+separates "the bound works" from "this fixture never produced a long
+sentence".
+
+The corpus is tracegen at a fixed seed **and a fixed `--run-nonce`**.
+The nonce is what the service names derive from and tracegen picks a
+fresh one per process, so two runs of the same seed differ on every
+`service` field and leg D would compare nothing else.
+
+Unlike the other local-binary scenarios this one fails, rather than
+skips, without Docker or the baseline image, and again when the binary
+under test ignores `?grouping=`. A release branch keeps the previous
+version in `Cargo.toml` until tag time, so `--version` cannot answer
+whether a build carries the parameter and the probe asks the daemon
+instead; from 0.21.0 on, a build that ignores it is a moved contract,
+not an old binary. A gate that skips forever is indistinguishable from
+one that passes, and the 0.20.2 ledger entry records a release whose
+only change no scenario here could see.
+
+## incident-window-capture (0.20.0 incident intake and its window)
+
+`make verify-incident-window-capture`. Self-contained: a local release binary,
+python3 and curl. No cluster, no Docker. Around 15 seconds.
+
+The question a post-mortem asks perf-sentinel is always the same: what was
+already burning on this service in the minutes before it went down.
+perf-sentinel cannot answer the first half of it. There is no OTLP metrics
+path, so an observed service's memory never arrives, `SpanEvent` carries no
+status and the `exception.*` events are read nowhere, and a saturating process
+keeps emitting spans, more slowly, so no heuristic over the traces rescues the
+case. What perf-sentinel owns is the findings of a period, and it is the only
+thing that can freeze them before the FIFO ring evicts them, which on a loaded
+fleet takes minutes. The moment comes from the operator's alerting, the window
+comes from perf-sentinel, and the capture has to be immediate.
+
+**The window closes after the incident, not at it.** A finding is stamped when
+its trace is analysed, one TTL after its last span, so the traces live at the
+crash land past `startsAt`. The window is
+`[at_ms - lookback_ms, at_ms + 2 * trace_ttl_ms]` and the scenario asserts
+those bounds against the returned `at_ms`, not against its own clock.
+
+**The settle pass has to grow the record, never replace it.** A second
+anti-pattern is seeded right after the delivery, so it is analysed after the
+reception freeze but inside the window, and the assertion is that the row
+captured at reception is still there next to the new one. Asserting only that
+the row count moved would pass on a settle that replaced the capture, which is
+the regression that matters: the ring only evicts, so a later fold can be
+missing rows the first one held.
+
+**Refusals are the blind spot.** The intake body reports `recorded`,
+`repeated` and the three rejection counts, but Alertmanager discards that body
+and never retries a 4xx, so a receiver with the wrong header or a rule with the
+wrong service label loses every capture with nothing else moving. The scenario
+drives all four reasons of `perf_sentinel_incidents_rejected_total` and checks
+the pre-warm first, before any refusal: a series that materialises only once it
+fires cannot be alerted on. The overflow leg posts 1001 alerts, which lands
+`no_service = 1000` and `overflow = 1` without paying a single ring fold. The
+same leg sets `[daemon] read_api_key` and proves it opens `GET /api/incidents`
+and never the `POST`, whose refusal is counted like a bare one, after a startup
+check that `/api/config` reports `read_api_key_set` and `incidents_enabled`
+true. The posted alert also carries the `namespace` label kube-prometheus
+attaches, which the record keeps as `namespace` and
+`GET /api/incidents?namespace=` filters on: an unknown namespace is an empty
+list, never a refusal.
+
+The last two legs cover the surfaces the intake is built on: the window form of
+`GET /api/findings` (`until_ms` folds over the detections inside the window
+alone, so a window closed at the incident holds fewer rows than the whole
+buffer, where an upper bound applied after the fold would keep every group
+whose lifetime overlaps), `oldest_finding_ms` on `/api/status`, which separates
+"nothing fired" from "the ring no longer reaches that far back", and
+`perf_sentinel_service_last_span_timestamp_seconds`, a Unix stamp rather than
+an age so `time() - gauge` survives a daemon restart where every counter
+resets to zero and a whole fleet looks stopped.
+
+Durability closes it. The ring dies with the daemon, and a node-level memory
+event that kills the observed service often takes a co-located daemon with it,
+destroying the record that would explain the outage. The archive holds one
+intact line per record, all under one content-derived id, the last carrying the
+end, and a symlinked `archive_path` refuses startup rather than being
+discovered at the first incident.
+
+Deliberately not asserted: that the gauge means liveness (a crash, a scale to
+zero, a deploy, a load balancer drain and a quiet cron all read the same), and
+that a finding analysed after the settle fired reaches the record (the settle
+is one pass, not a poll, and the reception capture is already on disk by then).
+
+## hub-incidents-mirror (0.20.0 daemon-to-Hub incident chain)
+
+`make verify-hub-incidents-mirror`. Needs the cluster, `make seed-hub-local`,
+`make seed-tracegen`, `make port-forward` and the two API keys
+`scripts/bootstrap.sh` generates. Several minutes, most of it spent waiting out
+the daemon's settle pass and two rollouts.
+
+Both product repositories test one side of this seam and neither tests the
+join. The Hub's tests drive a fake daemon answering a hand-written page, the
+daemon's tests never see a Hub, `incident-window-capture` owns the capture
+against a local binary with no Hub at all, and `hub-ingestion` stops at the
+findings path because incidents did not exist when it was written. What the
+seam carries is the reason the feature exists: a pod that gets OOM-killed takes
+its findings ring with it, so the record that would explain the outage is
+destroyed by the outage, and the Hub's copy is the only thing left to read. A
+field renamed on either side, or an upsert that let a re-capture overwrite a
+full one, would ship green in both repositories.
+
+**Two keys, and only one of them can write.** The daemon gates
+`POST /api/incidents` on `[daemon.incidents] api_key` and opens the GETs to
+`[daemon] read_api_key` as well. The lab wires the two as distinct values and
+hands the Hub the read one, because nothing whose job is to read should be able
+to post an incident. The scenario posts with the write key and reads back with
+the read key, posts once with the read key to see the `401`, and that pair is
+what proves the two are distinct in the cluster rather than the same string
+twice. The window assertion takes its upper bound from the `trace_ttl_ms` that
+`/api/config` reports, so it follows whatever the daemon runs, while its lower
+bound mirrors the `lookback_ms` of the manifest: the assertion fails when the
+two drift apart, which is the drift worth catching.
+
+**The Hub holds a copy, not a re-derivation.** The refresh is forced with
+`POST /api/incidents/refresh` rather than waiting out the poll interval. The
+listing carries the record keyed per source with `source_id`, `environment`,
+`finding_count`, the relayed namespace and a `capture` verdict recomputed from
+the daemon's own `oldest_finding_ms` against the window start, and it carries
+no findings at all, because the listing query never reads them.
+`GET /api/incidents/{id}` then returns them whole, and the assertion is a
+byte-identical signature set against what the daemon froze. Comparing counts
+alone would pass on a mirror that kept the right number of the wrong rows.
+
+**A closed filter has to refuse, not return nothing.** `service`, `namespace`,
+`kind` and `source_id` each have to narrow to rows that all match and still
+contain the record. A service nobody reports is a legitimate empty page, but an
+unknown `kind`, `environment` or `source_id` answers 400. An empty incidents
+screen is the answer an operator hopes for, so a typo must not be able to
+produce it.
+
+**A refused read key stays in its lane.** The leg puts a key the daemon refuses
+on the Hub's own source entry, through a strategic merge patch on one env var
+of the Hub Deployment rather than the shared Secret, so the daemon and every
+other scenario see nothing. `incidents_state` then has to read `unauthorized`
+while the source stays reachable, keeps a null `unreachable_since_ms` and goes
+on reporting its findings, with `last_success_ms` moving past the patch to
+prove a poll really did succeed on the ungated routes. The restore is a verdict
+of its own, not a cleanup detail, so a silent failure cannot leave the pair
+degraded for the next scenario.
+
+**The copy outlives the ring, and a poorer capture never replaces it.**
+Restarting the daemon empties the ring and the id disappears from its listing,
+while the Hub still serves the record and its signatures. Reposting the
+identical envelope is the interesting half: the id is a hash over
+`service|kind|at_ms`, plus the namespace when the alert carries one as it does
+here, so the restarted daemon re-captures the same incident
+against a ring that no longer reaches the window and freezes zero findings.
+After the Hub's refresh debounce has passed, the original `finding_count` and
+signature set still have to be there. This is the richest-capture rule, proven
+within one source by making that source lose its own evidence.
+
+That last leg is why the scenario runs in the resilience block of
+`verify-all-scenarios` rather than beside the other `hub-*` gates: it leaves the
+shared daemon with an empty findings ring, the same state
+`cold-start-edge-cases` and `failure-mode-daemon-restart` leave behind.
+
+Deliberately not asserted: the capture semantics themselves, which
+`incident-window-capture` owns, a second daemon (so the per-source copy and the
+tie-break on the richest capture across sources stay untested), the poll path on
+its own interval, the reader's paging and its body cap, retention, which is
+`hub-retention-purge`'s subject, the IDE plugin's parse of an incident, which
+`hub-plugin-contract` does for the finding envelope, Alertmanager itself, and
+the daemon's NDJSON archive, which it does not replay at startup.
 
 ## Which binary a scenario runs against
 

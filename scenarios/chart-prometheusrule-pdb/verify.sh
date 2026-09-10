@@ -45,18 +45,35 @@ die()  { color_red   "    error: $*"; exit 1; }
 declare -a NAMES=() VERDICTS=() NOTES=()
 record() { NAMES+=("$1"); VERDICTS+=("$2"); NOTES+=("$3"); }
 
+# The shipped alerts, and the doctrine behind the split. The chart alerts on
+# data the daemon lost and cannot recover, plus the freshness of every energy
+# scraper it can be configured with. Saturation, service cardinality and
+# correlator eviction are deliberately NOT alerts: `values.yaml` says they are
+# dashboard panels, "because each one fires on a state the daemon reaches
+# while working normally" (docs/METRICS.md), and chart 0.17.0 removed them in
+# `fix(chart): alert only on data the daemon lost irrecoverably`.
 REQUIRED_METRICS=(
-  perf_sentinel_active_traces
   perf_sentinel_otlp_rejected_total
   perf_sentinel_analysis_shed_traces_total
-  perf_sentinel_analysis_queue_depth
-  perf_sentinel_analysis_queue_capacity
-  perf_sentinel_correlator_pairs_evicted_total
-  perf_sentinel_service_io_ops_overflow_total
+  perf_sentinel_archive_windows_dropped_total
+  perf_sentinel_ingest_memory_pressure
   perf_sentinel_scaphandre_last_scrape_age_seconds
   perf_sentinel_kepler_last_scrape_age_seconds
   perf_sentinel_redfish_last_scrape_age_seconds
   perf_sentinel_cloud_energy_last_scrape_age_seconds
+  perf_sentinel_alumet_last_scrape_age_seconds
+)
+
+# The other half of the same rule, asserted rather than assumed. Dropping the
+# five from the list above would leave a scenario that passes whether or not
+# the doctrine holds; these must stay OUT of the rules, and an alert added on
+# one of them has to fail here rather than reach an operator's pager.
+FORBIDDEN_METRICS=(
+  perf_sentinel_active_traces
+  perf_sentinel_analysis_queue_depth
+  perf_sentinel_analysis_queue_capacity
+  perf_sentinel_correlator_pairs_evicted_total
+  perf_sentinel_service_io_ops_overflow_total
 )
 
 step "0. Pre-flight"
@@ -111,13 +128,22 @@ else
 fi
 
 # === 3. every required metric appears in the rendered rules ===
-step "3. alert exprs reference real daemon metrics (11)"
+step "3. the rules alert on lost data and scraper freshness, and on nothing else"
 miss=0
 for m in "${REQUIRED_METRICS[@]}"; do
   if grep -q "$m" "${TMP_DIR}/pr.yaml"; then ok "$m"; else fail "MISSING $m"; miss=$((miss+1)); fi
 done
-if [ "$miss" -eq 0 ]; then record "metrics" "PASS" "all ${#REQUIRED_METRICS[@]} metrics present"
-else record "metrics" "FAIL" "$miss metric(s) missing"; fi
+for m in "${FORBIDDEN_METRICS[@]}"; do
+  if grep -q "$m" "${TMP_DIR}/pr.yaml"; then
+    fail "ALERTS ON $m, which values.yaml calls a dashboard panel, not an alert"
+    miss=$((miss+1))
+  else
+    ok "not alerted on: $m"
+  fi
+done
+if [ "$miss" -eq 0 ]; then
+  record "metrics" "PASS" "${#REQUIRED_METRICS[@]} alerted, ${#FORBIDDEN_METRICS[@]} deliberately not"
+else record "metrics" "FAIL" "$miss metric(s) on the wrong side of the alert/panel split"; fi
 
 step "4. PodDisruptionBudget edge cases"
 PDB0="$(helm template t "${CHART}" --set podDisruptionBudget.enabled=true --set podDisruptionBudget.minAvailable=0 --show-only templates/poddisruptionbudget.yaml 2>/dev/null)"

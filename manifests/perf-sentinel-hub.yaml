@@ -52,7 +52,8 @@ data:
             "Id": "lab-daemon",
             "Name": "lab shared daemon",
             "Environment": "lab",
-            "BaseUrl": "http://perf-sentinel-daemon.observability.svc.cluster.local:14318"
+            "BaseUrl": "http://perf-sentinel-daemon.observability.svc.cluster.local:14318",
+            "AuthHeaderName": "X-API-Key"
           }
         ]
       }
@@ -126,7 +127,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: perf-sentinel-hub
-          image: ghcr.io/robintra/perf-sentinel-hub@sha256:6fa7a1784ed53d65bc6377f7dc7ba2840290fa141646062fc4f42abf038471bf  # 0.1.5
+          image: ghcr.io/robintra/perf-sentinel-hub@sha256:b09967df4f1e6b9725d08f64c52d603b4bc42ac3a8f2900499e5cc24d51e158a  # 0.1.6
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -144,6 +145,18 @@ spec:
                 secretKeyRef:
                   name: perf-sentinel-hub-import-key
                   key: import-key
+            # The header value that goes with AuthHeaderName above, sent on
+            # every request this source is polled with, and the only way the
+            # Hub gets past the gate on the daemon's GET /api/incidents. This
+            # is the daemon's READ key, never its incidents write key: nothing
+            # that only reads should be able to post an incident. The
+            # HubOptionsValidator refuses a header name without a value, so
+            # the Secret is not optional here either.
+            - name: Hub__Sources__0__AuthHeaderValue
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-api-keys
+                  key: read-api-key
           volumeMounts:
             - name: config
               mountPath: /app/appsettings.Production.json
