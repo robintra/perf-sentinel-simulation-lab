@@ -12,7 +12,7 @@
 # Build with:  docker build -t dotnet-svc:s1 services/dotnet-svc
 
 # ---- builder ----
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS builder
 WORKDIR /src
 
 # Restore first for layer cache. Copy the project and lock file so the
