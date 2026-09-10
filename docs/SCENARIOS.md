@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 83 scenarios live under `scenarios/<name>/` and each one ships a
+The 84 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -188,10 +188,11 @@ Findings produced by the standard rule omit the field.
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 | [`grouping-identity`](#grouping-identity)                  | 0.11 grouping identity across ingest, detection and outputs    | local binary + Docker + Chrome                    | PASS   |
+| [`findings-page-filters`](#findings-page-filters-0210-findings-page-contract-and-its-fold) | 0.21.0 findings page filters, paging and fold, against the published release | local binary + Docker | PASS   |
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 83
+`grouping-identity` is the 0.11 contract gate. The lab now ships 84
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -1325,7 +1326,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 83 scenarios, in an order
+`make verify-all-scenarios` includes all 84 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2798,6 +2799,85 @@ probe, not a version gate: a release branch keeps the previous version
 in `Cargo.toml` until tag time, so `--version` cannot answer the
 question, and a lab pinned to a pre-0.19 image must not go red on a
 feature that image does not carry.
+
+## findings-page-filters (0.21.0 findings page contract and its fold)
+
+`make verify-findings-page-filters`. Self-contained: the local release
+binary, Docker, python3 and curl. No cluster, no Prometheus. About a
+minute.
+
+0.21.0 changes how a page of findings is read. `?grouping=` filters on
+the finding's effective grouping, the value the `grouping` Prometheus
+label has carried since 0.19.0, so one Grafana variable drives both
+shipped dashboards. `?offset=` skips folded rows, so a fleet whose
+distinct signatures outgrow the 1000-row cap is readable past its
+newest thousand. An empty filter value now means no filter, which is
+what lets a Grafana `All` option reach an exact-match API. And the fold
+materialises only the rows a page keeps, instead of cloning the first
+instance of every distinct signature and dropping most of them.
+
+Nothing here covered any of it: the only query forms in the lab were
+`service`, `type`, `severity`, `limit`, `since_ms`, `until_ms` and
+`include_acked`, and no scenario had ever compared what the fold
+returns against a published release. `grouping-identity` pins the
+grouping *value* across ingestion boundaries and the output contracts
+and never reads the API's filters; `grouping-metrics-split` pins the
+same value on `/metrics` and never reads the API; `query-monitor-api`
+asserts `/api/config`, `/api/status` and `/api/energy`, never a
+findings page.
+
+- **A, grouping.** Two namespaces in the corpus, and
+  `?grouping=<value>` partitions the listing exactly between them. The
+  values it accepts are the ones
+  `label_values(perf_sentinel_findings_total, grouping)` offers, read
+  off `/metrics` in the same run and diffed, since a dashboard variable
+  that needs a conversion filters on nothing.
+- **B, empty is absent.** Twelve forms, the empty, blank and `+` value
+  of each of the four string filters, all return the whole listing, and
+  a space-padded value is trimmed to match.
+- **C, paging.** The listing walked 25 rows at a time reproduces the
+  single read, in order; no `(signature, grouping)` row appears twice;
+  an offset past the end is an empty `200`. Then the trap written
+  nowhere else: the ack screen runs *after* `offset` and `limit`, so a
+  page shortened by an acked row is not the last page, and a client
+  reading `len() < limit` as the end of the listing stops at the first
+  acked row.
+- **D, the fold is unchanged.** The same corpus into a daemon on the
+  published release and one on the build under test returns the same
+  rows in the same order, with the same representative and the same
+  counts. `stored_at_ms` and `first_seen_ms` are excluded, they date
+  the reception; everything the fold decides is compared.
+- **E, `serialized_calls`.** On a 40-call sequential block of
+  four-kilobyte statements, the suggestion names at most three distinct
+  templates, each cut at 120 characters, ends in ` -> ...`, and keeps
+  the block's real count, total and parallel estimate.
+
+Legs A, B, C and E each carry a counter-proof against
+`ghcr.io/robintra/perf-sentinel:0.20.2`, and leg D is one. That is the
+point of the scenario, not extra caution: 0.20.2 ignores an unknown
+query parameter and answers the whole listing, so with a single tenant
+leg A would read the same number on both builds and pass on either.
+`?severity=` returns nothing there and everything here, which leg B
+records as the behaviour change it is. And the same fixture that gives
+653 bytes of suggestion here gives 153 KB there, so leg E fails if the
+baseline sentence is not at least ten times the new one, which is what
+separates "the bound works" from "this fixture never produced a long
+sentence".
+
+The corpus is tracegen at a fixed seed **and a fixed `--run-nonce`**.
+The nonce is what the service names derive from and tracegen picks a
+fresh one per process, so two runs of the same seed differ on every
+`service` field and leg D would compare nothing else.
+
+Unlike the other local-binary scenarios this one fails, rather than
+skips, without Docker or the baseline image, and again when the binary
+under test ignores `?grouping=`. A release branch keeps the previous
+version in `Cargo.toml` until tag time, so `--version` cannot answer
+whether a build carries the parameter and the probe asks the daemon
+instead; from 0.21.0 on, a build that ignores it is a moved contract,
+not an old binary. A gate that skips forever is indistinguishable from
+one that passes, and the 0.20.2 ledger entry records a release whose
+only change no scenario here could see.
 
 ## incident-window-capture (0.20.0 incident intake and its window)
 
