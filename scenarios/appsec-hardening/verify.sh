@@ -148,6 +148,23 @@ acks_code() {  # $1 = optional api key ("" = no header)
   fi
 }
 
+acks_auth() {  # $1 = raw Authorization header value
+  curl -s -o /dev/null -w '%{http_code}' -H "Authorization: $1" "${DAEMON_URL}/api/acks"
+}
+
+ack_post() {  # $1 = header name, $2 = header value
+  curl -s -o /dev/null -w '%{http_code}' -X POST -H "$1: $2" \
+    -H "Content-Type: application/json" -d '{}' \
+    "${DAEMON_URL}/api/findings/0123456789abcdef0123456789abcdef/ack"
+}
+
+# Sum every unauthorized ack failure, whatever the action label, so the
+# assertion does not pin a label spelling that is not its subject.
+ack_unauth() {
+  curl -s "${DAEMON_URL}/metrics" \
+    | awk '/^perf_sentinel_ack_operations_failed_total\{.*reason="unauthorized".*\}/ {n += $2} END {print n + 0}'
+}
+
 step "B1/B2. ack key from TOML: GET /api/acks 401 bare, 200 with the key"
 write_daemon_toml "127.0.0.1" "${DAEMON_HTTP_PORT}" "${DAEMON_GRPC_PORT}" "${SOCK}"
 start_daemon env -u PERF_SENTINEL_ACK_API_KEY
@@ -168,6 +185,46 @@ code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "X-API-Key: ${READ_KEY
 [ "${code}" = "401" ] || die "expected 401 on POST ack with the read key, got ${code}"
 record "B-read-key" "PASS" "read key: GET /api/acks 200, POST ack 401 (0.20.0)"
 ok "the read key opens GET /api/acks and never the ack POST"
+
+step "B5. The same ack gate, reached by a bearer token (0.22.0)"
+# The ack routes gained `Authorization: Bearer` alongside `X-API-Key` in the
+# same change that gave it to the incidents route. Same key, same constant-time
+# comparison, and the read key keeps its read-only shape in bearer form too.
+code="$(acks_auth "Bearer ${TOML_KEY}")"
+[ "${code}" = "200" ] || die "expected 200 on GET /api/acks with the ack key as bearer, got ${code}"
+code="$(acks_auth "Bearer ${READ_KEY}")"
+[ "${code}" = "200" ] || die "expected 200 on GET /api/acks with the read key as bearer, got ${code}"
+code="$(acks_auth "Basic ${TOML_KEY}")"
+[ "${code}" = "401" ] || die "Basic accepted on GET /api/acks, got ${code}"
+code="$(ack_post "Authorization" "Bearer ${READ_KEY}")"
+[ "${code}" = "401" ] || die "the read key wrote an ack in bearer form, got ${code}"
+
+# The write verb: both credentials must decide the SAME way. The signature does
+# not exist, so the status is the store's business and not this leg's subject.
+c_hdr="$(ack_post "X-API-Key" "${TOML_KEY}")"
+c_bearer="$(ack_post "Authorization" "Bearer ${TOML_KEY}")"
+[ "${c_hdr}" = "${c_bearer}" ] \
+  || die "header and bearer disagree on POST ack: ${c_hdr} vs ${c_bearer}"
+[ "${c_hdr}" != "401" ] || die "the ack key was refused on POST ack under both headers"
+record "B-bearer" "PASS" "GET 200 under both keys as bearer, Basic 401, read key never writes, POST ack agrees (${c_hdr})"
+ok "bearer opens the ack gate exactly where the header does"
+
+step "B6. A refused read is not an ack failure, and a refused write is"
+# Deliberate asymmetry, stated in query_api/mod.rs: a denied GET /api/acks is
+# not an ack mutation and has no AckAction to be recorded under, so it moves no
+# counter. Someone debugging a 401 on the read path will find nothing in
+# /metrics, and that is by design rather than an oversight.
+U0="$(ack_unauth)"
+acks_auth "Basic ${TOML_KEY}" >/dev/null
+U1="$(ack_unauth)"
+ack_post "Authorization" "Bearer wrong-key-0000" >/dev/null
+U2="$(ack_unauth)"
+if [ "${U1}" = "${U0}" ] && [ "${U2}" -gt "${U1}" ]; then
+  record "B-metric-asymmetry" "PASS" "refused GET moves nothing (${U0}), refused POST does (${U2})"
+  ok "a refused read is silent in /metrics, a refused write is counted"
+else
+  die "ack_operations_failed_total{reason=unauthorized}: ${U0} -> ${U1} (GET) -> ${U2} (POST)"
+fi
 
 step "C1. cold export: real quality-gate rules evaluated, passed=true"
 # The point is that the cold envelope carries REAL evaluated rules rather than an
@@ -214,6 +271,12 @@ code="$(acks_code "${ENV_KEY}")"
 [ "${code}" = "200" ] || die "env key rejected, got ${code}"
 record "B-env-key" "PASS" "env var beats the TOML key (Secret-friendly)"
 ok "env key wins over the TOML key"
+code="$(acks_auth "Bearer ${ENV_KEY}")"
+[ "${code}" = "200" ] || die "env key refused as bearer, got ${code}"
+code="$(acks_auth "Bearer ${TOML_KEY}")"
+[ "${code}" = "401" ] || die "TOML key still accepted as bearer, env override lost on that path"
+record "B-env-bearer" "PASS" "the env override governs the bearer path too"
+ok "the env override wins on the bearer path as well"
 kill "${DAEMON_PID}" 2>/dev/null || true; DAEMON_PID=""
 
 # =============================================================================
