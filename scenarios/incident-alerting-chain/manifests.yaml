@@ -1,0 +1,260 @@
+# Fixtures for the incident-alerting-chain scenario. Applied and torn down by
+# verify.sh, never part of `make up`.
+#
+# Two pieces, and the shape of each one is load-bearing.
+#
+# THE VICTIM. A Deployment whose container is named literally `app`, because
+# that is what the four shipped rules select. No other workload in this lab
+# names a container `app` (the charts all use their own chart name), so the
+# rules can be applied BYTE FOR BYTE, unedited, and still match exactly one
+# pod: this one. Validating an adapted copy of an example file validates the
+# copy, not the file.
+#
+# Its name is the one tracegen derives from `--service-prefix=psbearer
+# --run-nonce=probe --services=1`, so the pod is
+# `psbearer-probe-0000-<rs hash>-<pod hash>` and the rules' label_replace
+# regex reduces it to `psbearer-probe-0000`, which is exactly the OTLP
+# service.name the findings carry. The join key is right by construction
+# rather than by coincidence.
+#
+# It lives in `incident-lab`, NOT in `observability`. That is required, not
+# tidiness: the namespace matcher the operator injects by default would
+# otherwise match by accident and the leg that proves that trap would prove
+# its opposite.
+#
+# THE TWIN. A second daemon on the released 0.21.0 digest, sharing the ConfigMap
+# and the Secret of the daemon under test, so the ONLY difference between them
+# is the image. The receiver posts to both, which means one Alertmanager
+# notification, one startsAt, one bearer credential, at the same millisecond,
+# decided differently by two binaries. A sequential rollout instead of a twin
+# would wipe the findings ring (strategy: Recreate, the ring is in memory) and
+# drift startsAt out of its own freeze window, landing an incident with an
+# empty findings array: a green run asserting nothing.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: incident-lab
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: psbearer-probe-0000
+  namespace: incident-lab
+  labels:
+    app.kubernetes.io/name: psbearer-probe-0000
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: psbearer-probe-0000
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: psbearer-probe-0000
+        app.kubernetes.io/part-of: perf-sentinel-lab
+    spec:
+      automountServiceAccountToken: false
+      # No network at all: kube-state-metrics reads the API server and cAdvisor
+      # is scraped off the kubelet, so nothing here has to reach anything. That
+      # is why `incident-lab` needs no NetworkPolicy of its own.
+      containers:
+        # The name the shipped rules select. Do not rename it.
+        - name: app
+          image: lab-tracegen:1
+          imagePullPolicy: Never
+          command:
+            - python3
+            - -c
+            # Allocate a mebibyte at a time until the cgroup limit kills it.
+            # Deterministic, under a second, and the kernel reports OOMKilled
+            # rather than a plain non-zero exit, which is what separates
+            # PerfSentinelOomKill from PerfSentinelRestart.
+            - |
+              b = bytearray()
+              while True:
+                  b.extend(b"x" * (1 << 20))
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: perf-sentinel-daemon-ab
+  namespace: observability
+  labels:
+    # Deliberately NOT `perf-sentinel-daemon`: the main Service selects on that
+    # label, and a twin carrying it would silently join the load balancer for
+    # every OTel export and every Prometheus scrape in the cluster. verify.sh
+    # asserts the main Service still has exactly one endpoint.
+    app.kubernetes.io/name: perf-sentinel-daemon-ab
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon-ab
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: perf-sentinel-daemon-ab
+        app.kubernetes.io/part-of: perf-sentinel-lab
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: perf-sentinel
+          # The released 0.21.0, pinned here by hand rather than read from
+          # manifests/perf-sentinel-daemon.yaml. That file carries an
+          # uncommitted local pin during a pre-release pass, and deriving the
+          # twin from it would turn this A/B into an A/A that asserts the
+          # opposite of the truth while staying green.
+          image: ghcr.io/robintra/perf-sentinel@sha256:548352300575e73e38adfb80f9b2c3f3974442108a2a34b2a360a2275adef4fa
+          imagePullPolicy: IfNotPresent
+          args: ["watch", "--config", "/etc/perf-sentinel/config.toml"]
+          ports:
+            - name: http
+              containerPort: 14318
+            - name: grpc
+              containerPort: 14317
+          env:
+            - name: PERF_SENTINEL_INCIDENTS_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-api-keys
+                  key: incidents-api-key
+            - name: PERF_SENTINEL_READ_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-api-keys
+                  key: read-api-key
+            - name: PERF_SENTINEL_EMAPS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: perf-sentinel-electricity-maps
+                  key: token
+                  optional: true
+          volumeMounts:
+            - name: config
+              mountPath: /etc/perf-sentinel
+              readOnly: true
+            # The main daemon's PVC is ReadWriteOnce and already claimed. The
+            # twin only has to answer, never to survive, so its ack store and
+            # incident archive live in an emptyDir.
+            - name: state
+              mountPath: /var/lib/perf-sentinel
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 14318
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 14318
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            # The same ConfigMap the daemon under test reads. Configuration
+            # parity is then structural rather than a thing someone re-reads.
+            name: perf-sentinel-daemon-config
+        - name: state
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: perf-sentinel-daemon-ab
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: perf-sentinel-daemon-ab
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: perf-sentinel-daemon-ab
+  ports:
+    - name: http
+      port: 14318
+      targetPort: 14318
+    - name: grpc
+      port: 14317
+      targetPort: 14317
+---
+# The twin's half of the zero-trust policies. The daemon under test gets its
+# own pair in manifests/network-policies.yaml, because Alertmanager reaching it
+# is now part of the lab's baseline topology rather than this scenario's.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-ab-allow-alertmanager
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon-ab
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 14318
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-daemon-ab-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon-ab
+      ports:
+        - protocol: TCP
+          port: 14318

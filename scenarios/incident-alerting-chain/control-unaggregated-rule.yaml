@@ -1,0 +1,54 @@
+# The negative control for the one review fix on this branch that changes
+# behaviour rather than prose.
+#
+# `PerfSentinelDeploy` joins a replicaset's creation time to its owner with a
+# many-to-one `group_left`. Before the fix, the right-hand side was not
+# aggregated. A kube-state-metrics scraped on two instances then publishes
+# `kube_replicaset_owner` twice per (namespace, replicaset), and PromQL refuses
+# the match: the rule does not alert late, it FAILS TO EVALUATE, increments
+# prometheus_rule_evaluation_failures_total, and posts nothing, forever.
+#
+# fixtures/rules-unit-tests.yaml proves the same thing offline and
+# deterministically. This file proves it against a real Prometheus, on real
+# kube-state-metrics series, which is the only place the claim "a replicated
+# kube-state-metrics breaks it" is tested rather than reasoned about. Both are
+# worth having: the unit test always runs, this one needs a cluster.
+#
+# Two deliberate differences from the shipped rule, so this control can never
+# reach the daemon and be mistaken for a real incident:
+#   - a different alert name,
+#   - NO perf_sentinel_kind label, which is exactly what the receiver's route
+#     matches on (`perf_sentinel_kind =~ ".+"`).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: perf-sentinel-incidents-control
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: perf-sentinel-incidents-control
+      rules:
+        # Byte for byte the expression that shipped in b81397eb, before the
+        # review aggregated both sides of the join.
+        - alert: PerfSentinelDeployUnaggregatedControl
+          expr: |
+            max by (namespace, service) (
+              label_replace(
+                (time() - kube_replicaset_created < 300)
+                * on (namespace, replicaset) group_left (owner_name)
+                kube_replicaset_owner{owner_kind="Deployment"},
+                "service", "$1", "owner_name", "(.*)")
+            )
+            and on (namespace, service)
+            count by (namespace, service) (
+              label_replace(
+                max by (namespace, pod) (kube_pod_container_info{container="app"}),
+                "service", "$1", "pod", "^(.*)-[^-]+-[^-]+$")
+            )
+          labels:
+            severity: none
+          annotations:
+            summary: 'negative control, never routed to perf-sentinel'

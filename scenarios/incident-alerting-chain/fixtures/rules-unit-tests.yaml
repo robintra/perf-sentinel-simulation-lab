@@ -1,0 +1,187 @@
+# promtool unit tests for the four incident rules perf-sentinel ships in
+# examples/incident-alerts-prometheus-operator.yaml.
+#
+# These assert what the file's own comments claim but cannot prove: that the
+# OOM and restart rules are mutually exclusive, that the saturation rule is
+# silent when the container carries no memory limit, and that both many-to-one
+# joins survive a kube-state-metrics scraped on two instances. A real cluster
+# proves none of them better, and this lab's cluster proves none of them at
+# all: its containers are named after their chart, never `app`.
+#
+# `rules.yaml` is written next to this file at run time by verify.sh, from the
+# shipped example's spec.groups.
+#
+# Time base: promtool's synthetic clock starts at 0, so `time()` at eval_time
+# 10m is 600. That is why kube_replicaset_created sits at 400 rather than at a
+# realistic Unix stamp: 600 - 400 = 200, inside the rule's 300-second window.
+rule_files:
+  - rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # === 1. The nominal OOM kill, and the restart rule staying out of it ===
+  - interval: 1m
+    name: an OOM-killed container fires oom_kill alone
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'kube_pod_container_status_last_terminated_reason{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", reason="OOMKilled"}'
+        values: '1+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PerfSentinelOomKill
+        exp_alerts:
+          - exp_labels:
+              namespace: shop
+              pod: order-service-7d4b8c9f5-x2kqp
+              service: order-service
+              severity: info
+              perf_sentinel_kind: oom_kill
+            exp_annotations:
+              summary: 'shop/order-service: container OOM-killed (order-service-7d4b8c9f5-x2kqp)'
+      # The `unless` is what keeps one restart from being posted twice.
+      - eval_time: 6m
+        alertname: PerfSentinelRestart
+        exp_alerts: []
+
+  # === 2. A restart with no OOM reason fires restart alone ===
+  - interval: 1m
+    name: a plain restart fires restart alone
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="shop", pod="payment-service-6c8f7d5b4-mn9wz", container="app"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PerfSentinelRestart
+        exp_alerts:
+          - exp_labels:
+              namespace: shop
+              pod: payment-service-6c8f7d5b4-mn9wz
+              service: payment-service
+              severity: info
+              perf_sentinel_kind: restart
+            exp_annotations:
+              summary: 'shop/payment-service: container restarted (payment-service-6c8f7d5b4-mn9wz)'
+      - eval_time: 6m
+        alertname: PerfSentinelOomKill
+        exp_alerts: []
+
+  # === 3. Saturation respects its `for: 5m` ===
+  - interval: 1m
+    name: saturation waits out its for clause
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab"}'
+        values: '740000000+0x12'
+      - series: 'kube_pod_container_resource_limits{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", resource="memory", unit="byte"}'
+        values: '805306368+0x12'
+    alert_rule_test:
+      # 740/768 = 0.963, over the 0.9 floor, but three minutes is not five.
+      - eval_time: 3m
+        alertname: PerfSentinelMemorySaturation
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: PerfSentinelMemorySaturation
+        exp_alerts:
+          - exp_labels:
+              namespace: shop
+              pod: order-service-7d4b8c9f5-x2kqp
+              service: order-service
+              severity: info
+              perf_sentinel_kind: memory_saturation
+            exp_annotations:
+              summary: 'shop/order-service: working set above 90% of its memory limit'
+
+  # === 4. No memory limit, no alert, no error, ever ===
+  # The rule the example file calls "the one that fires BEFORE the crash" is
+  # permanently dead on a container that sets requests but not limits: the
+  # division matches nothing. Nothing anywhere says so, which is why it is
+  # asserted here and stated in the file's assumptions.
+  - interval: 1m
+    name: a container with no memory limit never saturates
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="shop", pod="notification-service-5b9c6d8f7-qr3tv", container="app", image="notification-service:lab"}'
+        values: '900000000+0x12'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PerfSentinelMemorySaturation
+        exp_alerts: []
+
+  # === 5. Saturation survives a duplicated limits series ===
+  # kube-state-metrics scraped on two instances publishes the same limit twice.
+  # The `max by (namespace, pod, container)` on each side is what keeps the
+  # division a one-to-one match instead of a failed many-to-many.
+  - interval: 1m
+    name: saturation survives a kube-state-metrics scraped twice
+    input_series:
+      - series: 'container_memory_working_set_bytes{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab"}'
+        values: '740000000+0x12'
+      - series: 'kube_pod_container_resource_limits{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", resource="memory", unit="byte", instance="ksm-a"}'
+        values: '805306368+0x12'
+      - series: 'kube_pod_container_resource_limits{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", resource="memory", unit="byte", instance="ksm-b"}'
+        values: '805306368+0x12'
+    alert_rule_test:
+      - eval_time: 8m
+        alertname: PerfSentinelMemorySaturation
+        exp_alerts:
+          - exp_labels:
+              namespace: shop
+              pod: order-service-7d4b8c9f5-x2kqp
+              service: order-service
+              severity: info
+              perf_sentinel_kind: memory_saturation
+            exp_annotations:
+              summary: 'shop/order-service: working set above 90% of its memory limit'
+
+  # === 6. Deploy survives a duplicated owner series ===
+  # The one that matters most. An unaggregated right-hand side of the
+  # group_left does not alert late, it fails to evaluate: Prometheus answers
+  # "found duplicate series for the match group ... on the right hand-side",
+  # increments prometheus_rule_evaluation_failures_total, and no deploy is ever
+  # posted. Two kube-state-metrics replicas are enough to trigger it.
+  - interval: 1m
+    name: deploy survives a kube-state-metrics scraped twice
+    input_series:
+      - series: 'kube_replicaset_created{namespace="shop", replicaset="order-service-7d4b8c9f5"}'
+        values: '400+0x12'
+      - series: 'kube_replicaset_owner{namespace="shop", replicaset="order-service-7d4b8c9f5", owner_kind="Deployment", owner_name="order-service", instance="ksm-a"}'
+        values: '1+0x12'
+      - series: 'kube_replicaset_owner{namespace="shop", replicaset="order-service-7d4b8c9f5", owner_kind="Deployment", owner_name="order-service", instance="ksm-b"}'
+        values: '1+0x12'
+      - series: 'kube_pod_container_info{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab"}'
+        values: '1+0x12'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PerfSentinelDeploy
+        exp_alerts:
+          - exp_labels:
+              namespace: shop
+              service: order-service
+              severity: info
+              perf_sentinel_kind: deploy
+            exp_annotations:
+              summary: 'shop/order-service: new deployment'
+
+  # === 7. A pod shape the regex does not fit loses its service label ===
+  # Assumption 2 of the example file, from the other side: a StatefulSet pod is
+  # `<name>-<ordinal>`, the regex wants two trailing segments, so label_replace
+  # leaves the label alone. The alert still fires, carries no `service`, and the
+  # daemon refuses it into rejected_no_service rather than joining it to the
+  # wrong findings. That refusal is the safety net, and it only works because
+  # every rule drops the scrape target's own labels first.
+  - interval: 1m
+    name: a StatefulSet pod fires without a service label
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="db", pod="postgres-0", container="app"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PerfSentinelRestart
+        exp_alerts:
+          - exp_labels:
+              namespace: db
+              pod: postgres-0
+              severity: info
+              perf_sentinel_kind: restart
+            exp_annotations:
+              summary: 'db/: container restarted (postgres-0)'

@@ -1,0 +1,44 @@
+# Seeds findings for the exact service the shipped rules derive from the pod
+# name, so the freeze window has something to freeze.
+#
+# `--service-prefix=psbearer --run-nonce=probe --services=1` makes tracegen emit
+# under `psbearer-probe-0000`, which is the victim Deployment's name, which is
+# what the rules' label_replace regex reduces its pod name to. The join key is
+# right by construction rather than by coincidence.
+#
+# The `app: tracegen` pod label is not decoration: it is what
+# manifests/network-policies.yaml allows through to the daemon. Without it the
+# zero-trust default-deny drops the spans, the Job dies on a send timeout, and
+# the scenario fails on an empty ring instead of on what it means to assert.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tracegen-psbearer
+  namespace: observability
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: tracegen
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: tracegen
+          image: lab-tracegen:1
+          imagePullPolicy: Never
+          args:
+            - "--endpoint=http://perf-sentinel-daemon.observability.svc.cluster.local:14318"
+            - "--protocol=http-pb"
+            - "--services=1"
+            - "--service-prefix=psbearer"
+            - "--run-nonce=probe"
+            - "--tps=25"
+            - "--duration=20"
+            - "--mix=n_plus_one:100"
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+            limits: { cpu: "1", memory: 192Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }

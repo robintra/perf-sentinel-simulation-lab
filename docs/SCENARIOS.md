@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 84 scenarios live under `scenarios/<name>/` and each one ships a
+The 85 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -192,7 +192,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 84
+`grouping-identity` is the 0.11 contract gate. The lab now ships 85
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -1326,7 +1326,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 84 scenarios, in an order
+`make verify-all-scenarios` includes all 85 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2879,6 +2879,71 @@ not an old binary. A gate that skips forever is indistinguishable from
 one that passes, and the 0.20.2 ledger entry records a release whose
 only change no scenario here could see.
 
+## incident-alerting-chain (0.22.0, where the delivery comes from)
+
+`make verify-incident-alerting-chain`. Legs A to F are self-contained (python3,
+promtool, kubeconform) and take seconds. Legs G to I need the cluster, a daemon
+under test from `make seed-daemon-local`, and the image from
+`make seed-tracegen`. Around ten minutes, most of it spent waiting on
+Alertmanager's own group intervals.
+
+`incident-window-capture` owns what the daemon does with a delivery. This one
+owns where the delivery comes from, which until 0.22.0 nothing did: both
+incident scenarios build the Alertmanager envelope by hand in python, and three
+of the four links in the real chain live outside the product repo, in the CRD
+schema, the operator that renders it and the Alertmanager that sends it.
+
+**The rules, without a cluster.** promtool accepts both example files, the
+prometheus-operator and VictoriaMetrics files carry byte-identical rules, and
+seven unit tests over synthetic kube-state-metrics series settle the three
+claims the files make in prose and cannot demonstrate: the oom and restart
+rules exclude each other, the saturation rule is permanently silent on a
+container with no memory limit, and both many-to-one joins survive a
+kube-state-metrics scraped twice.
+
+**The schema.** The example file asserts that `AlertmanagerConfig`'s
+`httpConfig` carries no arbitrary-header field and does carry a bearer token.
+That claim is about a third-party operator and is read back out of the CRD the
+cluster admits. `proxyConnectHeader` is named as the non-counter-example it is:
+it reaches a proxy, never the receiver. kubeconform is recorded as a SKIP, not
+a PASS, because with no CRD schema it skips all four resources and exits 0.
+
+**The A/B.** A twin daemon runs on the released 0.21.0 digest beside the one
+under test, sharing its ConfigMap and Secret so the image is the only
+difference, and both are reached by the same receiver. `Cargo.toml` still
+carries 0.21.0 on the branch, so `/api/status` cannot tell them apart and the
+401 body is the discriminant. The twin has to answer 200 to the header key
+before its 401 on a bearer proves anything.
+
+**The group_left fix.** kube-state-metrics scaled to two publishes
+`kube_replicaset_owner` twice per (namespace, replicaset). The shipped deploy
+rule runs beside a copy of its pre-review expression, and
+`prometheus_rule_evaluation_failures_total` separates them: the unaggregated
+one does not alert late, it fails to evaluate and posts nothing.
+
+**The chain.** The `PrometheusRule` is applied byte for byte, which is possible
+because the scenario's victim names its container `app` and no other workload
+in this lab does. At the chart's default matcher strategy the operator appends
+a matcher on the resource's namespace while the alert carries the observed
+workload's: the route resolves to `null`, no incident arrives, and no refusal is
+counted either, so an operator has nothing anywhere to read. Disabled, the same
+alert reaches the receiver, a real Alertmanager sends the bearer credential, and
+the incident comes back with its window frozen. Findings are seeded before any
+alert fires and a non-empty `findings` array is asserted, because an incident
+that freezes nothing is recorded all the same and reports no error.
+
+Two cluster-wide settings are changed and restored by a trap, which the
+pre-flight also resets on the way in: Alertmanager's
+`alertmanagerConfigMatcherStrategy` and the kube-state-metrics replica count.
+The scenario's README lists the manual restoration if the trap never ran.
+
+Deliberately not asserted: the VictoriaMetrics rendering (no VM operator runs
+here, and its converter would collide with every selector this lab leaves
+open), `PerfSentinelMemorySaturation` in-cluster (its `for: 5m` and the
+instability of holding a container just under its limit, both covered by the
+unit tests), the chart's `inhibit_rules` trap on `severity: info` (invisible
+while `defaultRules.create` is false), and Alertmanager in HA.
+
 ## incident-window-capture (0.20.0 incident intake and its window)
 
 `make verify-incident-window-capture`. Self-contained: a local release binary,
@@ -3025,8 +3090,10 @@ Deliberately not asserted: the capture semantics themselves, which
 tie-break on the richest capture across sources stay untested), the poll path on
 its own interval, the reader's paging and its body cap, retention, which is
 `hub-retention-purge`'s subject, the IDE plugin's parse of an incident, which
-`hub-plugin-contract` does for the finding envelope, Alertmanager itself, and
-the daemon's NDJSON archive, which it does not replay at startup.
+`hub-plugin-contract` does for the finding envelope, and the daemon's NDJSON
+archive, which it does not replay at startup. Alertmanager itself used to be on
+that list and no longer is: `incident-alerting-chain` runs a real one since
+0.22.0 shipped the rules and the receiver that feed this route.
 
 ## Which binary a scenario runs against
 
