@@ -135,7 +135,7 @@ Allocate at least 12 GiB to Docker Desktop when chaining S1 + S2 + S3.
 | Cilium | 1.19.4 | helm repo cilium |
 | PostgreSQL | 18.3-alpine | docker.io/library/postgres |
 | Tempo (binary) | 3.0.0 | image grafana/tempo:3.0.0, direct manifest |
-| kube-prometheus-stack | 86.1.0 | helm repo prometheus-community |
+| kube-prometheus-stack | 90.0.0 | helm repo prometheus-community |
 | Grafana | 13.0.1 | explicit image override |
 | opentelemetry-collector (chart) | 0.158.0 | helm repo open-telemetry |
 | OTel Collector contrib (image) | 0.153.0 | bundled |

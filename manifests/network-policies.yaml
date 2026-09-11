@@ -978,6 +978,57 @@ spec:
           port: 9252
         - protocol: TCP
           port: 9187
+        # Alertmanager. Prometheus both pushes its firing alerts here and
+        # scrapes it. Leave this out and the push fails silently: no
+        # NetworkPolicy event, no Prometheus error worth the name, just an
+        # Alertmanager that never receives anything and an incident chain that
+        # dies one hop upstream of perf-sentinel.
+        - protocol: TCP
+          port: 9093
+---
+# 4.D.quinquies Alertmanager delivers incidents to the perf-sentinel daemon.
+# perf-sentinel 0.22.0 ships ready-made rules and an AlertmanagerConfig whose
+# receiver posts to POST /api/incidents, so Alertmanager reaching the daemon is
+# part of this lab's baseline topology rather than one scenario's fixture. Both
+# halves are needed: `observability` is default-deny on Ingress AND Egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-allow-alertmanager
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: alertmanager
+      ports:
+        - protocol: TCP
+          port: 14318
+---
+# 4.D.quinquies-bis the egress half of the rule above.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: alertmanager-daemon-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: alertmanager
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 14318
 ---
 # 4.G Prometheus scrapes targets across namespaces. Authorize the
 # Prometheus pod (label app.kubernetes.io/name=prometheus, instance=
