@@ -190,10 +190,11 @@ stop_daemon() {
   DAEMON_PID=""
 }
 
-api() {  # $1 = method, $2 = path, $3 = body ("" for none), $4 = key ("" for none)
+api() {  # $1 = method, $2 = path, $3 = body (""), $4 = key (""), $5 = raw Authorization ("")
   local args=(-s -o "${TMP_DIR}/body" -w '%{http_code}' -X "$1")
   [ -n "${3:-}" ] && args+=(-H "content-type: application/json" -d "$3")
   [ -n "${4:-}" ] && args+=(-H "X-API-Key: $4")
+  [ -n "${5:-}" ] && args+=(-H "Authorization: $5")
   curl "${args[@]}" "http://127.0.0.1:${HTTP_PORT}$2"
 }
 
@@ -527,6 +528,87 @@ else
   fail "bodies ${NO_SVC} / ${BAD_TIME} / ${OVER} (HTTP ${OVER_CODE})"
   fail "counters no_service=${M_NOSVC}, unparsable_time=${M_TIME}, overflow=${M_OVER}"
   record "alert refusals counted" FAIL "${M_NOSVC}/${M_TIME}/${M_OVER}"
+fi
+
+# === Leg D2: the same gate, reached by a bearer token ===
+# 0.22.0 accepts `Authorization: Bearer <key>` beside `X-API-Key`, because
+# neither Kubernetes operator that generates an Alertmanager receiver can send
+# an arbitrary header. Inserted AFTER leg D reads its counters, so the exact
+# `unauthorized == 3` above keeps its meaning, and it creates no incident, so
+# leg E still finds exactly one id in the archive.
+step "D2. A bearer token opens the same gate as the header, and closes on the same refusals"
+
+# --- Accepted. GET, except P7 which proves the write verb.
+P1="$(api GET /api/incidents "" "" "Bearer ${API_KEY}")"
+P2="$(api GET /api/incidents "" "" "Bearer ${READ_KEY}")"
+P3="$(api GET /api/incidents "" "" "bearer ${API_KEY}")"
+# Two spaces: split_once(' ') cuts at the first, trim_start eats the rest.
+P4="$(api GET /api/incidents "" "" "Bearer  ${API_KEY}")"
+# A trailing space is accepted, and not by the daemon: hyper strips the optional
+# whitespace around a header value before axum ever sees it (RFC 9110 5.5). The
+# assertion is 200 on purpose. Expecting 401 here reads plausible and fails a
+# correct daemon.
+P5="$(api GET /api/incidents "" "" "Bearer ${API_KEY} ")"
+# Both credentials present: either one alone decides, the other is not consulted.
+P6="$(api GET /api/incidents "" "${API_KEY}" "Bearer not-the-key-000")"
+P7="$(api GET /api/incidents "" "not-the-key-000" "Bearer ${API_KEY}")"
+# The write verb, without leaving a record: the credential is accepted, then the
+# alert is refused for want of a service. Leg E asserts one id in the archive.
+P8="$(api POST /api/incidents "${NO_SVC_BODY}" "" "Bearer ${API_KEY}")"
+P8_NOSVC="$(jqp "d['rejected_no_service']" < "${TMP_DIR}/body")"
+
+# --- Refused. Each one counts.
+N1="$(api GET /api/incidents "" "" "Bearer")"
+N2="$(api GET /api/incidents "" "" "Basic ${API_KEY}")"
+N3="$(api GET /api/incidents "" "" "${API_KEY}")"
+N4="$(api GET /api/incidents "" "" "Bearer ${API_KEY}x")"
+# Only the FIRST Authorization header is read. A proxy that prepends its own
+# leaves the daemon comparing the proxy's value, and nothing says which it read.
+N5="$(curl -s -o "${TMP_DIR}/body" -w '%{http_code}' \
+  -H "Authorization: Bearer not-the-key-000" \
+  -H "Authorization: Bearer ${API_KEY}" \
+  "http://127.0.0.1:${HTTP_PORT}/api/incidents")"
+N5_BODY="$(cat "${TMP_DIR}/body")"
+# The read key reads in bearer form too, and still never writes.
+N6="$(api POST /api/incidents "$(alert_body firing "${STARTS}" "0001-01-01T00:00:00Z")" "" "Bearer ${READ_KEY}")"
+
+M_UNAUTH_B="$(metric 'perf_sentinel_incidents_rejected_total{reason="unauthorized"}')"
+
+if [ "${P1}${P2}${P3}${P4}${P5}${P6}${P7}" = "200200200200200200200" ]; then
+  ok "accepted: write key, read key on the GET, any schema case, padded and"
+  ok "trailing space, and either credential deciding alone"
+  record "bearer accepted" PASS "7 accepted shapes, all 200"
+else
+  fail "P1..P7 = ${P1} ${P2} ${P3} ${P4} ${P5} ${P6} ${P7} (expected all 200)"
+  record "bearer accepted" FAIL "${P1} ${P2} ${P3} ${P4} ${P5} ${P6} ${P7}"
+fi
+
+if [ "${P8}" = "200" ] && [ "${P8_NOSVC}" = "1" ]; then
+  ok "the write verb in bearer form is authorized, then refused for want of a service"
+  record "bearer writes" PASS "POST 200, rejected_no_service=1, no record created"
+else
+  fail "POST in bearer form: ${P8}, rejected_no_service=${P8_NOSVC}"
+  record "bearer writes" FAIL "${P8} / ${P8_NOSVC}"
+fi
+
+# 3 from leg D, plus the six refusals above.
+if [ "${N1}${N2}${N3}${N4}${N5}${N6}" = "401401401401401401" ] && [ "${M_UNAUTH_B}" = "9" ]; then
+  ok "refused and counted: bare scheme, Basic, no scheme, wrong key, a second"
+  ok "Authorization header, and the read key on a write. unauthorized=9"
+  record "bearer refused" PASS "unauthorized=9 (3 from leg D + 6 bearer refusals)"
+else
+  fail "N1..N6 = ${N1} ${N2} ${N3} ${N4} ${N5} ${N6}, unauthorized=${M_UNAUTH_B} (expected 9)"
+  record "bearer refused" FAIL "${N1} ${N2} ${N3} ${N4} ${N5} ${N6}, counter ${M_UNAUTH_B}"
+fi
+
+# The 401 body names both credentials now. An operator reading it is told what
+# the route will take, which is the whole reason the string changed.
+if echo "${N5_BODY}" | grep -q 'missing or invalid X-API-Key or Authorization: Bearer'; then
+  ok "the 401 body names both credentials"
+  record "401 names both" PASS "${N5_BODY}"
+else
+  fail "401 body: ${N5_BODY}"
+  record "401 names both" FAIL "${N5_BODY}"
 fi
 
 # === Leg E: the archive on disk ===
