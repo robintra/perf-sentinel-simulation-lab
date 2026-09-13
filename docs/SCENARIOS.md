@@ -1451,7 +1451,7 @@ comes from `process_resident_memory_bytes` and FDs from
 `process_open_fds` directly via `/metrics`, with a `kubectl top pod`
 fallback when the surfaces are absent (older daemons or cfg-gated
 builds). Drift is the percent change of average RSS between the warm
-window `[10-30 %]` of samples and the tail window `[70-100 %]`. PASS
+window `[30-50 %]` of samples and the tail window `[70-100 %]`. PASS
 requires analyzable RPC traffic (`events_processed` delta > 0), drift below
 `DRIFT_PCT_LIMIT` (default 10 %), `active_traces` not monotonically growing,
 and `fds_delta < 50` when the FDs column is populated (skipped in fallback

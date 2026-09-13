@@ -39,8 +39,10 @@ drift detection).
 ```
 
 Drift is computed as the percent change of average RSS between the warm
-window `[10-30 %]` of samples and the tail window `[70-100 %]`. The 10 %
-prefix is dropped to exclude cold-start effects.
+window `[30-50 %]` of samples and the tail window `[70-100 %]`. The 30 %
+prefix is dropped because the daemon RSS ramps for ~45-60 min before it
+plateaus: a `[10-30 %]` window caught ramp samples and reported 11 % drift on
+a flat 5 h soak.
 
 ## Inputs
 

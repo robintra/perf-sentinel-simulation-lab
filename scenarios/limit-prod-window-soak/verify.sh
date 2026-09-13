@@ -5,7 +5,7 @@
 # production values (ttl 30000, max_active_traces 10000), drives a steady
 # realistic mix, and asserts the window reaches a healthy plateau:
 #   - active_traces plateaus near tps x 30s and stays far from the cap;
-#   - RSS drift between the warm window [10-30%] and the tail [70-100%]
+#   - RSS drift between the warm window [50-70%] and the tail [80-100%]
 #     of samples stays under DRIFT_PCT_LIMIT (long-running-drift analysis);
 #   - zero shed and zero channel_full at this rate (clean prod operation);
 #   - 90s after the load stops, active_traces drains below 100.

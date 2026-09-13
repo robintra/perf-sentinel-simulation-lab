@@ -2,7 +2,7 @@
 # long-running-drift: detect slow memory leaks and FD leaks invisible
 # on short runs. Continuous traffic at TRAFFIC_MULTIPLIER x baseline,
 # periodic sampling of RSS/FDs/active_traces, drift comparison between
-# the warm-up window [10-30 %] and the tail window [70-100 %] of the
+# the warm-up window [30-50 %] and the tail window [70-100 %] of the
 # run. Default 2h, LONG_RUN=1 stretches to 24h.
 #
 # Inputs:
@@ -117,7 +117,7 @@ EVENTS_AFTER=$(curl -fsS "http://localhost:${DAEMON_LOCAL_PORT}/api/export/repor
 DELTA_EVENTS=$(( EVENTS_AFTER - EVENTS_BEFORE ))
 ok "events_after=${EVENTS_AFTER} delta_events=${DELTA_EVENTS}"
 
-step "Compute drift between warm window [10-30 %] and tail window [70-100 %]"
+step "Compute drift between warm window [30-50 %] and tail window [70-100 %]"
 ANALYSIS=$(python3 - "${SAMPLES_FILE}" <<'PYEOF'
 import sys, statistics
 path = sys.argv[1]
@@ -132,7 +132,13 @@ n = len(rows)
 if n < 4:
     print("0\t0\t0\t0\t0\t0\t0\t0\tinsufficient_samples")
     sys.exit(0)
-warm = rows[max(1, n // 10):max(2, (3 * n) // 10) or 2]
+# Warm window starts at 30 %, not 10 %: the daemon RSS keeps ramping for
+# ~45-60 min before it plateaus, so on the 5h weekly soak a [10-30 %] window
+# averaged a 51 MB ramp sample against a flat ~72 MB tail and reported 11 %
+# drift with no leak (run 34746988910).
+# ponytail: percentage-based, runs under ~3h can still catch the ramp; switch
+# to a time-based warm-up floor if short soaks start flaking.
+warm = rows[max(1, (3 * n) // 10):max(2, n // 2)]
 tail = rows[max(2, (7 * n) // 10):]
 def avg(seq, idx):
     vals = [r[idx] for r in seq]
@@ -199,7 +205,7 @@ step "Write report"
   echo
   echo "## Windows"
   echo
-  echo "- warm window [10-30 %]: rss=${WARM_RSS}B fds=${WARM_FDS} active_traces=${WARM_AT}"
+  echo "- warm window [30-50 %]: rss=${WARM_RSS}B fds=${WARM_FDS} active_traces=${WARM_AT}"
   echo "- tail window [70-100 %]: rss=${TAIL_RSS}B fds=${TAIL_FDS} active_traces=${TAIL_AT}"
   echo "- drift RSS: ${DRIFT_PCT}%"
   echo "- drift FDs: ${FDS_DELTA}"
