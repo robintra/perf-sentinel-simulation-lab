@@ -5,7 +5,7 @@ CLUSTER_NAME := perf-sentinel-lab
 DAEMON_URL   := http://localhost:14318
 GRAFANA_URL  := http://localhost:3000
 PERF_SENTINEL_REPO_PATH ?= $(HOME)/RustroverProjects/perf-sentinel
-PERF_SENTINEL_LOCAL_BIN := $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentinel
+PERF_SENTINEL_LOCAL_BIN ?= $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentinel
 
 .DEFAULT_GOAL := help
 
