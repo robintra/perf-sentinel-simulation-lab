@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 85 scenarios live under `scenarios/<name>/` and each one ships a
+The 86 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -184,6 +184,7 @@ Findings produced by the standard rule omit the field.
 | [`calibrate-mode`](#calibrate-energy-coefficients)        | calibrate energy coefficients                                  | none (fixture + synthetic CSV)                   | PASS   |
 | [`sidecar-pattern`](#sidecar-pattern)                     | sidecar pattern (1 daemon per pod)                             | sidecar pod                                      | PASS   |
 | [`correlation-finding`](#cross-trace-correlation-finding) | cross-trace correlation finding                                | running daemon + cross-service traffic           | PASS   |
+| [`consumer-endpoint`](#consumer-endpoint)                 | 0.22.2 consumer destination as `source.endpoint` on the daemon path | running daemon + RabbitMQ + k6              | PASS   |
 | [`pg-stat`](#pg_stat-live-integration)                    | `report --pg-stat` live integration                            | running daemon + Postgres `pg_stat_statements`   | PASS   |
 | [`grafana-dashboard`](#grafana-dashboard-validation)      | upstream dashboard import + audit + alerts + postgres-exporter | running daemon + Prometheus + Grafana + Postgres | PASS   |
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
@@ -192,7 +193,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 85
+`grouping-identity` is the 0.11 contract gate. The lab now ships 86
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -261,11 +262,24 @@ ancestor walk. It covers the inbound route resolved through ancestors
 rather than the direct parent, the CLIENT skip that stops an outbound
 URL naming a finding, the outermost-not-nearest code frame, and the
 per-language spelling parity that keeps one origin on one
-acknowledgment signature. The `appsec-hardening` gate locks the 0.9.15
+acknowledgment signature. Since 0.22.2 its F family adds the consumer
+destination: template over name, the legacy key, the nearest consumer,
+a route or a frame ranking above it, and the temporary, generated,
+placeholder and unsanitizable destinations refused. The
+`appsec-hardening` gate locks the 0.9.15
 AppSec remediation: source_endpoint redaction, ack API-key enforcement
 on reads with the `PERF_SENTINEL_ACK_API_KEY` override, the real
 quality gate on `/api/export/report`, the verify-hash attestation
 PARTIAL cap, and the non-loopback bind advisory.
+
+The `consumer-endpoint` gate locks the same rule on the daemon path.
+notification-service consumes the `perfsim.order-service` queue under
+the Java agent and runs one N+1 SQL per message, so the
+`n-plus-one-messaging` traffic yields findings whose only same-service
+ancestor is a CONSUMER span. The gate asserts they name
+`rabbitmq order-service`, the received routing key the agent's
+spring-rabbit instrumentation writes to `messaging.destination.name`,
+and never `unknown`.
 
 The `broker-messaging-waste` gate covers OTel messaging ingestion and
 the broker energy attribution. At its centre is the two-source
@@ -950,6 +964,88 @@ min_confidence = 0.5
 
 ---
 
+## Consumer endpoint
+
+A finding rooted in a message CONSUMER span has no inbound route and,
+under Spring AMQP, no application frame above the I/O. Since 0.22.2 the
+daemon names it `<messaging.system> <destination>`, ranked below a route
+and a code frame, so the destination only names what would otherwise be
+`"unknown"`. `endpoint-resolution` family F pins the rule on batch
+fixtures, this scenario pins it on a real consumer.
+
+### Architecture
+
+```mermaid
+flowchart LR
+    K6[k6 n-plus-one-messaging] -- "POST /api/fault/n-plus-one-messaging" --> ORDER[order-service<br/>SERVER route -> PRODUCER basicPublish]
+    ORDER -- "AMQP headers carry the producer context" --> MQ[(RabbitMQ<br/>perfsim.order-service)]
+    MQ -- "routing key order-service" --> NOTIF[notification-service<br/>CONSUMER span -> 12 SELECT count]
+    NOTIF --> COL[OTel Collector] --> DAEMON[[perf-sentinel daemon<br/>source_endpoint = rabbitmq order-service]]
+    classDef sentinel stroke:#1a73e8,stroke-width:2px
+    class DAEMON sentinel
+```
+
+The chain, in four lines: the k6 job hits the order-service route, the
+agent injects the producer's context into the AMQP headers on
+`basicPublish`, the spring-rabbit CONSUMER span on notification-service
+adopts that context as parent, and the reads hang under the CONSUMER
+span. The ancestor walk is per service, so on the consumer side the
+CONSUMER span is the outermost same-service ancestor.
+
+### Adoption notes
+
+- A listener inside the publishing service resolves to the publisher's
+  HTTP route, by design: the walk climbs through the PRODUCER span to
+  the SERVER span at depth 3 and the route wins. Only a service
+  boundary makes the CONSUMER span the root of the finding.
+- The destination is what the instrumentation writes, not the queue
+  you think you consume: spring-rabbit reports the received routing
+  key, amqp-client's delivery span reports the exchange. Read the
+  CONSUMER span once before pinning an expected spelling.
+- A PRODUCER root never names an entry point, so a publish-only
+  service keeps `"unknown"` until a consumer exists.
+
+### Configuration
+
+notification-service, `application.yml`, no toggle, the listener only
+runs under messaging traffic:
+
+```yaml
+spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq.messaging.svc.cluster.local}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    listener:
+      simple:
+        default-requeue-rejected: false
+```
+
+The Helm chart reads `messaging.host` and `messaging.port` and the
+`rabbitmq-credentials` Secret that `scripts/bootstrap.sh` creates in
+`shop`. The listener declares the queue, exchange and binding with the
+same arguments as order-service, RabbitMQ rejects a redeclaration whose
+arguments differ.
+
+### Watch out
+
+- `make seed-services` rebuilds at the same `s2` tag with
+  `IfNotPresent`. The new env values force the rollout, the cheap proof
+  the new image runs is
+  `kubectl -n shop logs deployment/notification-service | grep -m1 "Attempting to connect to: \[rabbitmq"`,
+  which the scenario's pre-flight also checks.
+- C2 asserts one spelling across every fresh finding. A mix of
+  `unknown` and `rabbitmq order-service` means the reads that flushed
+  before the CONSUMER span ended were not repaired, a product finding
+  to report, not a tolerance to add to the lab.
+- The k6 job publishes about 60 messages/s for 30 s and one consumer
+  drains them inside the queue's 60 s `x-message-ttl`. If a backlog
+  ever outlives the TTL, `spring.rabbitmq.listener.simple.concurrency`
+  is the knob.
+
+---
+
 ## pg_stat live integration
 
 Pair the trace-derived anti-pattern findings with database hotspot
@@ -1067,8 +1163,9 @@ The upstream perf-sentinel repo ships
 lab has never validated it end-to-end. This scenario does, audits
 which daemon metrics it does and does not cover, ships a
 postgres-exporter-specific overlay (the daemon metric panels live
-upstream now), loads 5 PrometheusRules, and deploys `postgres-exporter`
-so the `--pg-stat-prometheus` path becomes available.
+upstream now), loads 5 PrometheusRules, deploys `postgres-exporter`
+so the `--pg-stat-prometheus` path becomes available, and runs the
+findings dashboard's Infinity targets through Grafana's `/api/ds/query`.
 
 ### Use case
 
@@ -1187,10 +1284,12 @@ visible in Grafana :
   Top 10 slow queries, DB query rate)
 - `perf-sentinel-findings` (loaded by `bootstrap.sh`, identical to upstream
   `examples/grafana-findings-dashboard.json`, the Infinity dashboard on the
-  query API with its incidents panels since 0.20.0). Its parity is checked
-  the same way. It needs an Infinity datasource with `[daemon] read_api_key`
-  and a 0.20.0 daemon with `[daemon.incidents]` to show data, neither of
-  which the lab wires yet: both come with the 0.20.0 image pin.
+  query API). Its parity is checked the same way. The lab provisions its
+  datasource (`perf-sentinel-api`, plugin pinned in
+  `helm/values/kube-prometheus-stack.yaml`) with the daemon's read key from
+  the `perf-sentinel-api-keys` Secret, and `verify.sh` runs the Findings,
+  Correlations, Daemon status and Daemon acknowledgments targets through
+  `POST /api/ds/query`, so the four tables are asserted server side.
 
 ### Watch out
 
@@ -1199,6 +1298,12 @@ visible in Grafana :
   the rules into a production stack.
 - postgres-exporter reuses the `lab` Postgres user. In production,
   prefer a dedicated read-only role.
+- The Infinity plugin is downloaded by Grafana at every start
+  (`grafana.plugins` lands in `GF_PLUGINS_PREINSTALL_SYNC`, the plugins
+  dir is an emptyDir). The `grafana-plugin-egress` CiliumNetworkPolicy
+  is what keeps a Grafana rollout working under deny-all: apply the
+  policies before a `helm upgrade`, or the download is denied and the
+  pod never becomes ready.
 - The parity check needs the upstream perf-sentinel repo at
   `${HOME}/RustroverProjects/perf-sentinel`. Override the path via
   `UPSTREAM_DASHBOARD_PATH=...`. When absent, the parity step is
@@ -1326,7 +1431,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 85 scenarios, in an order
+`make verify-all-scenarios` includes all 86 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
