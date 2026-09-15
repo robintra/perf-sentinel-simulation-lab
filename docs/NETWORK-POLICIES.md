@@ -81,7 +81,7 @@ underlying cluster state is otherwise healthy.
 | --- | --- | --- | --- |
 | `shop` | deny-all | DNS, Postgres in `db`, OTel collector in `observability` | Prometheus scrape |
 | `db` | deny-all | DNS | Postgres from `shop` lab pods, Prometheus scrape |
-| `observability` | deny-all | DNS, Tempo intra-ns, daemon intra-ns, Electricity Maps API (FQDN) | OTel from `shop`, Prometheus scrape |
+| `observability` | deny-all | DNS, Tempo intra-ns, daemon intra-ns, daemon 14318 from Grafana, Electricity Maps API (FQDN), grafana.com + storage.googleapis.com (FQDN, Grafana only) | OTel from `shop`, Prometheus scrape |
 | `gitlab-ce` | deny-all | DNS, full intra-ns mesh (release=gitlab + bitnami sub-charts), GitHub + registry.gitlab.com (FQDN, runner only) | webservice 8181 from any pod, Prometheus scrape |
 
 The `manifests/network-policies.yaml` file lists the rules in the

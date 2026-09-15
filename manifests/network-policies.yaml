@@ -859,6 +859,51 @@ spec:
         - protocol: TCP
           port: 14318
 ---
+# 4.D.quindecies Grafana egress to the daemon's query API: the Infinity
+# datasource provisioned in helm/values/kube-prometheus-stack.yaml reads
+# /api/findings, /api/correlations, /api/acks, /api/status, /api/energy and
+# /api/incidents from Grafana's backend, in cluster, no port-forward. Both
+# halves are needed: observability is default-deny on Ingress AND Egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana-daemon-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: perf-sentinel-daemon
+      ports:
+        - protocol: TCP
+          port: 14318
+---
+# 4.D.sexdecies ingress on the daemon's HTTP port for Grafana's Infinity
+# datasource.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: perf-sentinel-daemon-allow-grafana
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: perf-sentinel-daemon
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - protocol: TCP
+          port: 14318
+---
 # 4.E perf-sentinel daemon egress to Electricity Maps.
 # Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
 # replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).
@@ -880,6 +925,41 @@ spec:
               protocol: TCP
     # DNS resolution path: Cilium intercepts on UDP/53, but the
     # destination is still kube-dns in kube-system.
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: UDP
+          rules:
+            dns:
+              - matchPattern: "*"
+---
+# 4.E.bis Grafana egress to the plugin catalog. GF_PLUGINS_PREINSTALL_SYNC
+# (grafana.plugins in the helm values) makes Grafana download the Infinity
+# plugin at EVERY start: the plugins dir is the chart's storage emptyDir. The
+# catalog on grafana.com answers 302 to storage.googleapis.com, so both hosts
+# are listed. Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
+# replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: grafana-plugin-egress
+  namespace: observability
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  egress:
+    - toFQDNs:
+        - matchName: "grafana.com"
+        - matchName: "storage.googleapis.com"
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
     - toEndpoints:
         - matchLabels:
             "k8s:io.kubernetes.pod.namespace": kube-system

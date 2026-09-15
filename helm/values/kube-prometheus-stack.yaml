@@ -66,6 +66,25 @@ grafana:
   # Lab credentials. Do not reuse anywhere else.
   adminUser: admin
   adminPassword: admin
+  # Infinity datasource for the findings dashboard
+  # (manifests/grafana-dashboards/perf-sentinel-findings.json, verbatim upstream
+  # examples/grafana-findings-dashboard.json). The chart hands this list to
+  # Grafana as GF_PLUGINS_PREINSTALL_SYNC: Grafana downloads it itself at every
+  # start, into the storage emptyDir, from grafana.com with a redirect to
+  # storage.googleapis.com. Both hosts are opened by the grafana-plugin-egress
+  # CiliumNetworkPolicy. Pinned because the four tables' columns come from the
+  # plugin's backend parser, and a major bump can empty a table silently.
+  plugins:
+    - yesoreyeram-infinity-datasource@4.0.0
+  # The daemon's read key, expanded by Grafana into the datasource below
+  # through $__env{}. Read key only: it opens GET /api/incidents and GET
+  # /api/acks and can never POST, DELETE or ack. Same Secret the daemon
+  # mounts, created by bootstrap.sh before this chart is installed.
+  envValueFrom:
+    PERF_SENTINEL_READ_API_KEY:
+      secretKeyRef:
+        name: perf-sentinel-api-keys
+        key: read-api-key
   service:
     type: ClusterIP
     port: 3000
@@ -96,6 +115,24 @@ grafana:
           tags: ["service.name", "k8s.namespace.name"]
         nodeGraph:
           enabled: true
+    # upstream examples/grafana-infinity-datasource.yaml with the lab's
+    # Service. Keep the two URLs identical, Infinity refuses any host not in
+    # allowedHosts once a header is configured.
+    - name: perf-sentinel API
+      uid: perf-sentinel-api
+      type: yesoreyeram-infinity-datasource
+      access: proxy
+      isDefault: false
+      url: http://perf-sentinel-daemon.observability.svc.cluster.local:14318
+      jsonData:
+        auth_method: apiKey
+        apiKeyKey: X-API-Key
+        apiKeyType: header
+        allowedHosts:
+          - http://perf-sentinel-daemon.observability.svc.cluster.local:14318
+        timeoutInSeconds: 30
+      secureJsonData:
+        apiKeyValue: $__env{PERF_SENTINEL_READ_API_KEY}
 
 prometheus:
   prometheusSpec:
