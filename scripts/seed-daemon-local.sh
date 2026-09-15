@@ -35,7 +35,10 @@ git -C "${PERF_SENTINEL_REPO_PATH}" archive "${REV}" | tar -x -C "${CTX_DIR}"
 rm -f "${CTX_DIR}/.dockerignore"
 
 echo "==> building ${TAG} from ${PERF_SENTINEL_REPO_PATH}@${SHA} (musl static, FROM scratch)"
-docker build -q -f "${REPO_ROOT}/tools/daemon-image/Dockerfile" -t "${TAG}" "${CTX_DIR}"
+# DAEMON_BUILD_JOBS caps rustc parallelism inside the build: a 24 GiB host running
+# the k3d nodes beside it dies on the default of one job per CPU.
+docker build -q ${DAEMON_BUILD_JOBS:+--build-arg "CARGO_BUILD_JOBS=${DAEMON_BUILD_JOBS}"} \
+  -f "${REPO_ROOT}/tools/daemon-image/Dockerfile" -t "${TAG}" "${CTX_DIR}"
 
 echo "==> importing ${TAG} into k3d cluster ${CLUSTER_NAME}"
 k3d image import "${TAG}" -c "${CLUSTER_NAME}"
