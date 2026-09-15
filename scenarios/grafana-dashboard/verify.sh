@@ -27,6 +27,12 @@
 #    `pg_stat_statements_seconds_total` is exposed and Prometheus
 #    scrapes it. Unlocks the `--pg-stat-prometheus` path validated by
 #    `scenarios/pg-stat/verify.sh`.
+# 7. Infinity datasource. Runs the findings dashboard's Findings,
+#    Correlations, Daemon status and Daemon acknowledgments targets
+#    through Grafana's `POST /api/ds/query` against the provisioned
+#    `perf-sentinel-api` datasource (helm/values/kube-prometheus-stack.yaml)
+#    and asserts status 200, the expected frame fields and, when traffic
+#    ran, at least one `java jpa` finding and one correlation row.
 #
 # Optional knobs:
 #   SKIP_TRIGGER_TEST=1      skip the ~3 min daemon-down alert trigger.
@@ -499,6 +505,117 @@ print('|'.join(titles))
 " 2>/dev/null || echo error)
 ok "Grafana sees: ${GRAFANA_DASHBOARDS}"
 
+step "Infinity datasource: run each findings-dashboard target through POST /api/ds/query"
+# Value mappings, renameByRegex and organize are frontend transformations,
+# so the server-side truth is /api/ds/query with the dashboard's own targets.
+# Grafana does not interpolate dashboard variables on this route, so the
+# ${...} of the Findings URL are substituted here with the dashboard's
+# defaults, an empty grouping and service meaning no filter on the API.
+# Row assertions need the ring populated: they are gated on SKIP_TRAFFIC.
+# Must run before the trigger test, which scales the daemon to 0 and
+# empties the findings ring and the correlator pairs.
+# ponytail: leg lives in grafana-dashboard, split into its own scenario when it needs its own traffic
+GRAFANA_URL="${GRAFANA_URL:-http://localhost:3000}"
+INFINITY_VERDICT=$(GRAFANA_URL="${GRAFANA_URL}" GRAFANA_PASS="${GRAFANA_PASS}" \
+  LAB_FINDINGS_DASHBOARD="${LAB_FINDINGS_DASHBOARD}" \
+  EXPECT_ROWS="$([ "${SKIP_TRAFFIC:-0}" != "1" ] && echo 1 || echo 0)" \
+  python3 - <<'PY' 2>&1 | tee "${TMP_DIR}/infinity.log" | tail -1 || true
+import base64, json, os, urllib.error, urllib.request
+
+url = os.environ["GRAFANA_URL"] + "/api/ds/query"
+auth = base64.b64encode(("admin:" + os.environ["GRAFANA_PASS"]).encode()).decode()
+dash = json.load(open(os.environ["LAB_FINDINGS_DASHBOARD"]))
+expect_rows = os.environ["EXPECT_ROWS"] == "1"
+DS = {"type": "yesoreyeram-infinity-datasource", "uid": "perf-sentinel-api"}
+SUBS = {"${limit}": "200", "${offset}": "0", "${grouping}": "", "${service}": "", "${include_acked}": "false"}
+failures = []
+
+def target(title, service=None):
+    p = next(p for p in dash["panels"] if p.get("title") == title)
+    t = json.loads(json.dumps(p["targets"][0]))
+    t["datasource"] = DS
+    u = t["url"]
+    for k, v in SUBS.items():
+        u = u.replace(k, v)
+    if service is not None:
+        u = u.replace("service=", "service=" + service)
+    t["url"] = u
+    return t
+
+def query(title, service=None):
+    body = json.dumps({"from": "now-6h", "to": "now", "queries": [target(title, service)]}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Content-Type": "application/json", "Authorization": "Basic " + auth})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            code, payload = r.status, json.load(r)
+    except urllib.error.HTTPError as e:
+        code, payload = e.code, json.loads(e.read() or b"{}")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        code, payload = 0, {"results": {"A": {"error": str(e)}}}
+    res = payload.get("results", {}).get("A", {})
+    frames = res.get("frames") or []
+    fields = [f["name"] for f in frames[0]["schema"]["fields"]] if frames else []
+    rows = len(frames[0]["data"]["values"][0]) if frames and frames[0]["data"]["values"] else 0
+    err = res.get("error", "")
+    print(f"{title}: http={code} status={res.get('status')} rows={rows} fields={fields} error={err!r}")
+    if code != 200 or res.get("status") != 200 or err:
+        failures.append(f"{title}: http={code} status={res.get('status')} error={err!r}")
+    return frames, fields, rows
+
+def column(frames, fields, name):
+    i = fields.index(name)
+    return [v for v in frames[0]["data"]["values"][i] if v not in (None, "")]
+
+# Field assertions only on a non-empty frame: whether Infinity's backend
+# parser emits the declared columns on an empty array is not asserted.
+# ponytail: field check gated on rows>0, tighten once a run shows the empty frame keeps its schema
+
+# Findings: the two JSONata-built columns, and at least one java jpa row
+# (validate-findings' n-plus-one-sql on order-service through spring-data).
+frames, fields, rows = query("Findings")
+if rows > 0:
+    for f in ("Fix for", "Suggestion"):
+        if f not in fields:
+            failures.append(f"Findings: field {f!r} missing from {fields}")
+if expect_rows:
+    if rows == 0:
+        failures.append("Findings: 0 rows after validate-findings")
+    elif "Fix for" in fields and not column(frames, fields, "Fix for"):
+        failures.append("Findings: no row with a non-empty 'Fix for' (expected 'java jpa')")
+
+# Empty selection: a service nobody runs makes the API answer [] and the
+# JSONata ternary must yield No data, not Infinity's 'no results found'.
+query("Findings", service="no-such-service")
+
+# Correlations: the 14 columns, one row at least once chatty and fanout ran.
+frames, fields, rows = query("Correlations")
+expected = [c["text"] for c in target("Correlations")["columns"]]
+missing = [c for c in expected if c not in fields]
+if len(expected) != 14 or (rows > 0 and missing):
+    failures.append(f"Correlations: expected 14 fields, missing {missing} in {fields}")
+if expect_rows and rows == 0:
+    failures.append("Correlations: 0 rows after validate-findings (chatty + fanout)")
+
+frames, fields, rows = query("Daemon status")
+if rows != 1 or "Version" not in fields:
+    failures.append(f"Daemon status: expected 1 row with Version, got rows={rows} fields={fields}")
+
+query("Daemon acknowledgments")
+
+for f in failures:
+    print("FAIL " + f)
+print("PASS" if not failures else "FAIL")
+PY
+)
+sed '$d' "${TMP_DIR}/infinity.log" | sed 's/^/    /'
+if [ "${INFINITY_VERDICT}" = "PASS" ]; then
+  ok "Infinity targets answer 200 with the expected frames"
+else
+  warn "Infinity datasource leg FAILED, see ${TMP_DIR}/infinity.log"
+  INFINITY_VERDICT="FAIL"
+fi
+
 if [ "${SKIP_TRIGGER_TEST:-0}" != "1" ]; then
   step "Trigger test: scale daemon to 0, expect PerfSentinelDaemonDown to fire"
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=0 >/dev/null
@@ -600,7 +717,8 @@ if [ "${EMPTY_PANELS}" -eq 0 ] \
    && [ "${RULES_LOADED}" = "all-loaded" ] \
    && [ "${TRIGGER_VERDICT}" != "FAIL" ] \
    && [ "${PARITY_VERDICT}" != "FAIL" ] \
-   && [ "${FINDINGS_PARITY_VERDICT}" != "FAIL" ]; then
+   && [ "${FINDINGS_PARITY_VERDICT}" != "FAIL" ] \
+   && [ "${INFINITY_VERDICT}" = "PASS" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -618,6 +736,7 @@ step "Write report"
   echo
   echo "- lab dashboard (manifests/grafana-dashboards/perf-sentinel-overview.json) vs upstream: ${PARITY_VERDICT}"
   echo "- lab findings dashboard (manifests/grafana-dashboards/perf-sentinel-findings.json) vs upstream: ${FINDINGS_PARITY_VERDICT}"
+  echo "- Infinity datasource (perf-sentinel-api) targets through /api/ds/query: ${INFINITY_VERDICT}"
   echo
   echo "## Coverage audit"
   echo
