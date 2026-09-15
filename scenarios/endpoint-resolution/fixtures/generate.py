@@ -34,10 +34,13 @@ import os
 
 BASE_NS = 1_780_000_000_000_000_000
 INTERNAL, SERVER, CLIENT, UNSPEC = 1, 2, 3, 0
+PRODUCER, CONSUMER = 4, 5
 OUT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def attr(key, value):
+    if isinstance(value, bool):
+        return {"key": key, "value": {"boolValue": value}}
     return {"key": key, "value": {"stringValue": value}}
 
 
@@ -93,6 +96,13 @@ REPORT_SVC = (INTERNAL, {"code.namespace": "com.shop.ReportService",
 SHARED_DAO = (INTERNAL, {"code.namespace": "com.shop.OrderDao",
                          "code.function": "findAll"})
 
+
+def consumer(destination, **extra):
+    """A rabbitmq CONSUMER layer, `extra` overrides or adds attributes."""
+    return (CONSUMER, {"messaging.system": "rabbitmq",
+                       "messaging.destination.name": destination, **extra})
+
+
 # name -> ancestor chain, outermost first
 SHAPES = {
     # A. the inbound route, found by walking rather than reading the direct parent
@@ -119,6 +129,32 @@ SHAPES = {
     "framework-above-entry-b": [TOMCAT, REPORT_SVC, SHARED_DAO],
     "app-entry-a": [ORDER_SVC, SHARED_DAO],
     "app-entry-b": [REPORT_SVC, SHARED_DAO],
+    # F. a message-driven entry point names its consumer destination, which
+    #    ranks below a route and a frame and is the NEAREST consumer
+    "consumer-name": [consumer("crm.dossiers")],
+    "consumer-template-over-name": [
+        consumer("crm.eu", **{"messaging.destination.template": "crm.{region}"})],
+    "consumer-legacy-destination": [(CONSUMER, {"messaging.system": "rabbitmq",
+                                                "messaging.destination": "legacy.queue"})],
+    "consumer-nested-nearest": [consumer("orders.topic"), consumer("crm.dossiers")],
+    "consumer-below-route": [(SERVER, {"http.route": "/api/import"}),
+                             consumer("crm.dossiers")],
+    "consumer-above-frame": [consumer("crm.dossiers"),
+                             (INTERNAL, {"code.namespace": "com.shop.DossierListener",
+                                         "code.function": "onDossier"})],
+    "consumer-temporary-bool": [
+        consumer("reply.queue", **{"messaging.destination.temporary": True})],
+    "consumer-temporary-string": [
+        consumer("reply.queue", **{"messaging.destination.temporary": "true"})],
+    "consumer-generated-name": [consumer("amq.gen-JzTY20BRgKO-HjmUJj0wLg")],
+    "consumer-default-exchange": [consumer("<default>")],
+    "consumer-query-in-name": [consumer("orders?v2")],
+    "consumer-system-uppercase": [consumer("crm.dossiers", **{"messaging.system": "RabbitMQ"})],
+    "consumer-kafka-template": [(CONSUMER, {"messaging.system": "kafka",
+                                            "messaging.destination.template": "orders.{tenant}",
+                                            "messaging.destination.name": "orders.acme"})],
+    "producer-root": [(PRODUCER, {"messaging.system": "rabbitmq",
+                                  "messaging.destination.name": "crm.dossiers"})],
 }
 
 # name -> code attributes on a single entry-point span carrying no HTTP attribute

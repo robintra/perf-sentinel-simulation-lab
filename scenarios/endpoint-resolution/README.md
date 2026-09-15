@@ -4,7 +4,8 @@ Pins how perf-sentinel resolves `source.endpoint` at OTLP ingestion, the field
 that decides which findings share an acknowledgment.
 
 **Prerequisites:** none beyond a local `perf-sentinel` release binary. No
-cluster, no daemon, no Docker. Requires product **>= 0.9.22**.
+cluster, no daemon, no Docker. Requires product **>= 0.9.22**, and
+**>= 0.22.2** for family F.
 
 ```bash
 make verify-endpoint-resolution
@@ -21,7 +22,9 @@ parent chain (`CODE_ATTRS_MAX_DEPTH = 8`) that resolves, in order:
    `http.url` / `url.full` on any kind **except** CLIENT, blank values
    skipped.
 2. otherwise the **outermost** usable `code.*` frame found along that walk.
-3. otherwise the literal `"unknown"`.
+3. otherwise the nearest CONSUMER span's `<messaging.system> <destination>`
+   (since 0.22.2).
+4. otherwise the literal `"unknown"`.
 
 The acknowledgment signature is
 `type : service : endpoint : hash(template)`. Every rule above therefore
@@ -127,9 +130,33 @@ survive: `com.myshop.springboard.OrderJob.run`,
 `IlluminateMetrics\Collector::gather`. A substring match would swallow all
 three, which is the failure mode a rejection list invites.
 
+### F: the consumer destination
+
+| id     | assertion                                                           | 0.22.2                               | 0.22.1 baseline |
+|--------|---------------------------------------------------------------------|--------------------------------------|-----------------|
+| F1     | a CONSUMER root names its rabbitmq destination                      | `rabbitmq crm.dossiers`              | `unknown`       |
+| F2     | `messaging.destination.template` beats the name                     | `rabbitmq crm.{region}`              | `unknown`       |
+| F3     | the legacy `messaging.destination` key resolves                     | `rabbitmq legacy.queue`              | `unknown`       |
+| F4     | nested consumers, the nearest wins                                  | `rabbitmq crm.dossiers`              | `unknown`       |
+| F5     | a route above the consumer wins                                     | `/api/import`                        | same            |
+| F6     | a code frame between consumer and I/O wins                          | `com.shop.DossierListener.onDossier` | same            |
+| F7-F11 | temporary (bool), temporary ("true"), `amq.gen-*`, `<default>`, `?` | `unknown`                            | same            |
+| F12    | `messaging.system` is lowercased                                    | `rabbitmq crm.dossiers`              | `unknown`       |
+| F13    | a kafka template keeps its placeholder                              | `kafka orders.{tenant}`              | `unknown`       |
+| F14    | a PRODUCER root is not an entry point                               | `unknown`                            | same            |
+
+F1 is the layout the Java agent's spring-rabbit instrumentation emits (the
+CONSUMER span is the trace root on the consumer side, the repository call sits
+beside the I/O). F4 is what amqp-client plus spring-rabbit emit together. F5
+and F6 pin the rank: the destination only names what would otherwise be
+`"unknown"`. F7 to F11 pin the refusals, since an accepted `orders?v2` would
+reach the acknowledgment signature as `orders`. F14 pins that this lab's
+eighteen producers keep `"unknown"` until a consumer exists (see
+`consumer-endpoint`).
+
 ### Discrimination
 
-39/39 on the fixed branch, 23/39 on 0.9.17.
+53/53 on the fixed branch, 47/53 on 0.22.1, 23/39 on 0.9.17 for A to E.
 
 ## Fixtures
 

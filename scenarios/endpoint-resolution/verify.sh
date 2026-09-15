@@ -21,6 +21,11 @@
 #                              and the stable code.function.name must spell one
 #                              origin identically, or an agent upgrade re-keys
 #                              every acknowledgment on that frame
+#   F  the consumer destination  a CONSUMER root names "<system> <destination>",
+#                              template over name, legacy key, nearest consumer,
+#                              below a route and a frame, temporary, generated,
+#                              placeholder and unsanitizable destinations refused
+#                              (product >= 0.22.2, "unknown" on 0.22.1)
 #
 # Requires product >= 0.9.22: on 0.9.17 every A/C/D endpoint is "unknown" (or,
 # for a blank route, three literal spaces) and every B endpoint names the
@@ -201,6 +206,43 @@ for tid, desc, key, want in [
      "near-illuminate", "IlluminateMetrics\\Collector::gather"),
 ]:
     check(tid, f"{desc} survives the prefix list", frames.get(key), want)
+
+# --- F. the consumer destination ----------------------------------------------
+# A trace rooted in a CONSUMER span has no route and, under Spring AMQP, no
+# application frame above the I/O. Since 0.22.2 the nearest consumer names it
+# "<messaging.system> <destination>", ranked below a route and a frame so it
+# only names what would otherwise be "unknown".
+check("F1", "a CONSUMER root names its rabbitmq destination",
+      shapes.get("consumer-name"), "rabbitmq crm.dossiers")
+check("F2", "messaging.destination.template beats the name",
+      shapes.get("consumer-template-over-name"), "rabbitmq crm.{region}")
+check("F3", "the legacy messaging.destination key still resolves",
+      shapes.get("consumer-legacy-destination"), "rabbitmq legacy.queue")
+check("F4", "nested consumers: the nearest names the finding",
+      shapes.get("consumer-nested-nearest"), "rabbitmq crm.dossiers")
+check("F5", "an inbound route above the consumer wins",
+      shapes.get("consumer-below-route"), "/api/import")
+check("F6", "a code frame between the consumer and the I/O wins",
+      shapes.get("consumer-above-frame"), "com.shop.DossierListener.onDossier")
+# Destinations that name no stable origin, or that strip_endpoint_secrets
+# would truncate into a colliding spelling, yield unknown rather than a
+# signature per queue.
+check("F7", "a temporary destination (OTLP bool) yields unknown",
+      shapes.get("consumer-temporary-bool"), "unknown")
+check("F8", "a temporary flag spelled \"true\" yields unknown",
+      shapes.get("consumer-temporary-string"), "unknown")
+check("F9", "a server-named amq.gen-* queue yields unknown",
+      shapes.get("consumer-generated-name"), "unknown")
+check("F10", "the <default> exchange placeholder yields unknown",
+      shapes.get("consumer-default-exchange"), "unknown")
+check("F11", "a destination holding '?' yields unknown",
+      shapes.get("consumer-query-in-name"), "unknown")
+check("F12", "messaging.system is lowercased",
+      shapes.get("consumer-system-uppercase"), "rabbitmq crm.dossiers")
+check("F13", "a kafka topic template keeps its placeholder",
+      shapes.get("consumer-kafka-template"), "kafka orders.{tenant}")
+check("F14", "a PRODUCER root is an outbound publish, not an entry point",
+      shapes.get("producer-root"), "unknown")
 
 with open(report_path, "w", encoding="utf-8") as fh:
     fh.write("# Scenario report: endpoint-resolution\n\n")
