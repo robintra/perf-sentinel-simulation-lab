@@ -50,7 +50,7 @@ drives `scenarios/n-plus-one-messaging.js` and reads `/api/findings`.
 | C1 | a fresh `n_plus_one_sql` on notification-service names the destination | PASS                      | FAIL                 |
 | C2 | every fresh consumer finding carries the same destination              | `['rabbitmq order-service']` | FAIL, `['unknown']` |
 | C3 | each finding carries at least the 12 reads of one message              | PASS                      | same                 |
-| C4 | the findings sit on several fresh traces                               | PASS                      | same                 |
+| C4 | the row folds several fresh traces (`seen_count`)                      | PASS                      | same                 |
 
 C2 exercises the daemon work of the branch: consumer destinations are
 retained across exports so the reads that flush before the CONSUMER span

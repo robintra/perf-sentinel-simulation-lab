@@ -57,13 +57,14 @@ import sys
 
 path, started_at_ms, expected, status, count, report_path = (
     sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], int(sys.argv[5]), sys.argv[6])
-fresh = []
+fresh, folded = [], []
 for item in json.load(open(path)):
     finding = item.get("finding", item)
     if (item.get("stored_at_ms", 0) > started_at_ms
             and finding.get("type") == "n_plus_one_sql"
             and finding.get("service") == "notification-service"):
         fresh.append(finding)
+        folded.append(item.get("seen_count", 1))
 by_endpoint = {}
 for f in fresh:
     by_endpoint.setdefault(f["source_endpoint"], []).append(f)
@@ -90,8 +91,10 @@ check("C2", "every fresh consumer finding carries the same destination",
       sorted(by_endpoint), [expected])
 check("C3", "each finding carries at least the 12 reads of one message",
       bool(fresh) and min(f["pattern"]["occurrences"] for f in fresh) >= 12, True)
-check("C4", "the findings sit on several fresh traces",
-      len({f["trace_id"] for f in fresh}) >= 2, True)
+# /api/findings folds by signature, one row per problem: the traces behind the
+# row are its seen_count, not distinct trace ids.
+check("C4", "the row folds several fresh traces",
+      bool(folded) and max(folded) >= 2, True)
 
 with open(report_path, "w", encoding="utf-8") as fh:
     fh.write("# Scenario report: consumer-endpoint\n\n")
