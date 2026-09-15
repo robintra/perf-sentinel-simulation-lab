@@ -11,6 +11,10 @@ database:
   username: lab
   password: changeme
 
+messaging:
+  host: rabbitmq.messaging.svc.cluster.local
+  port: 5672
+
 otel:
   serviceName: notification-service
   endpoint: http://otel-collector-opentelemetry-collector.observability.svc.cluster.local:4318

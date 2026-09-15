@@ -21,6 +21,15 @@ spring:
     schemas: notifications
     default-schema: notifications
     baseline-on-migrate: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq.messaging.svc.cluster.local}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME}
+    password: ${RABBITMQ_PASSWORD}
+    listener:
+      simple:
+        # A failing read must not requeue forever.
+        default-requeue-rejected: false
 
 server:
   port: ${SERVER_PORT:8082}
