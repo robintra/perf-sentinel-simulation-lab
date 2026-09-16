@@ -96,9 +96,15 @@ spec:
               value: "none"
             - name: OTEL_METRICS_EXPORTER
               value: "none"
-            # Flush spans into the lab's ~15s validation window (mirrors rails' 1000ms).
+            # php -S runs the SDK per request and its shutdown handler exports at the
+            # end of each one, so this delay never speeds delivery up. It only decides
+            # whether a request running past it exports its early spans on their own,
+            # ahead of the root SERVER span. The daemon walks the scope chain inside
+            # one OTLP request, so the split spans lose the framework scope the root
+            # carries (laravel redundant_http reported framework=None, issue 143).
+            # 30s sits above the slowest fault request on a loaded runner.
             - name: OTEL_BSP_SCHEDULE_DELAY
-              value: "1000"
+              value: "30000"
           resources:
 {{ toYaml .Values.resources | indent 12 }}
           securityContext:

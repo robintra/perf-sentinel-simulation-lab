@@ -53,6 +53,12 @@ class FaultController extends AbstractController
         $start = hrtime(true);
         $total = 0;
         $repo = $this->em->getRepository(Payment::class);
+        // php -S opens a fresh PostgreSQL backend per request, so the first query
+        // pays the connection and a cold catalog cache. Inside the group that
+        // outlier lifts the duration CV past sanitizer_aware_min_cv and strict
+        // mode reports the ten repeats as n_plus_one_sql (issues 124 and 143).
+        // A different template on the same table takes that cost outside it.
+        $repo->count(['customerId' => 1]);
         for ($i = 0; $i < $repeats; $i++) {
             $total += count($repo->findBy(['customerId' => 1]));
         }

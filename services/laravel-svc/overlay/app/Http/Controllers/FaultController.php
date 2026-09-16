@@ -45,6 +45,12 @@ class FaultController extends Controller
         $repeats = $this->intParam($r, 'repeats', 10);
         $start = hrtime(true);
         $total = 0;
+        // php -S opens a fresh PostgreSQL backend per request, so the first query
+        // pays the connection and a cold catalog cache. Inside the group that
+        // outlier lifts the duration CV past sanitizer_aware_min_cv and strict
+        // mode reports the ten repeats as n_plus_one_sql (issues 124 and 143).
+        // A different template on the same table takes that cost outside it.
+        Payment::where('customer_id', 1)->count();
         for ($i = 0; $i < $repeats; $i++) {
             $total += Payment::where('customer_id', 1)->get()->count();
         }

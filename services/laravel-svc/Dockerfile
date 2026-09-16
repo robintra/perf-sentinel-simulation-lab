@@ -79,6 +79,6 @@ ENV HTTP_PORT=8095 \
     OTEL_TRACES_SAMPLER=always_on \
     OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf \
     OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
-    OTEL_BSP_SCHEDULE_DELAY=1000
+    OTEL_BSP_SCHEDULE_DELAY=30000
 
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
