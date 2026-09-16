@@ -39,4 +39,4 @@ GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
 It used to default to a hardcoded old tag, so the scenario ran green on
 every release without ever touching the version under validation. The gate
 reported a PASS for code it had not executed. The 0.9.25 round is what
-surfaced that, and the eight image scenarios now share this resolution.
+surfaced that, and every image-based scenario now shares this resolution.

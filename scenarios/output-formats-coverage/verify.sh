@@ -49,7 +49,7 @@ CISL_CONFIG="${LAB_ROOT}/scenarios/ci-shift-left/.perf-sentinel.toml"
 # PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
 # This scenario is where that rule was first written, after it sat on a
 # hardcoded 0.5.17 for several minor releases and kept reporting a SARIF gap the
-# product had closed in 0.9.0. It is now shared by the eight image scenarios.
+# product had closed in 0.9.0. It is now shared by every image-based scenario.
 # shellcheck source=../../scripts/resolve-image.sh
 . "${LAB_ROOT}/scripts/resolve-image.sh"
 
