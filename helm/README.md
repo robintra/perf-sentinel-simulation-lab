@@ -1,13 +1,14 @@
 # Helm values
 
 This directory holds the Helm values files consumed by
-`scripts/bootstrap.sh`. Chart versions are pinned in the bootstrap
-script and repeated in a comment at the top of each file.
+`scripts/bootstrap.sh`, which is the single source of truth for chart
+versions. Each values file points back to it rather than repeating a
+version that would go stale.
 
 | File                         | Chart                                        | Pinned version | Role                                                                     |
 |------------------------------|----------------------------------------------|----------------|--------------------------------------------------------------------------|
 | `kube-prometheus-stack.yaml` | `prometheus-community/kube-prometheus-stack` | see `KPS_CHART_VERSION` | Prometheus + Grafana + operator + Alertmanager, no Thanos. |
-| `otel-collector.yaml`        | `open-telemetry/opentelemetry-collector`     | 0.158.0        | DaemonSet contrib Collector, exports to Tempo and the daemon.            |
+| `otel-collector.yaml`        | `open-telemetry/opentelemetry-collector`     | see `OTEL_CHART_VERSION` | DaemonSet contrib Collector, exports to Tempo and the daemon.  |
 | `perf-sentinel-daemon.yaml`  | (reserved)                                   | n/a            | Placeholder. The daemon ships via `manifests/perf-sentinel-daemon.yaml`. |
 
 Tempo and the perf-sentinel daemon are deployed via direct manifests
