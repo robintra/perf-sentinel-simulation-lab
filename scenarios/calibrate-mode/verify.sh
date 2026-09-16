@@ -9,9 +9,15 @@ set -euo pipefail
 
 SCENARIO="calibrate-mode"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
-IMAGE="ghcr.io/robintra/perf-sentinel:0.5.21"
 TMP_DIR="/tmp/${SCENARIO}"
-TRACES_FIXTURE="$(cd "$(dirname "$0")/../.." && pwd)/artifacts/fixtures/em-real-time-traces.json"
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# It used to be hardcoded to 0.5.21, so the gate reported a PASS for a version
+# this scenario had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
+TRACES_FIXTURE="${LAB_ROOT}/artifacts/fixtures/em-real-time-traces.json"
 mkdir -p "${TMP_DIR}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }

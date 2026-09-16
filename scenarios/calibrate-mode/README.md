@@ -40,6 +40,16 @@ is much higher than 1.0x default and the daemon prints warnings about
 "factor > 10x default, possible measurement error". This is expected
 with synthetic data.
 
+## Which binary this runs against
+
+`scripts/resolve-image.sh` picks the image: `PERF_SENTINEL_IMAGE` (a full
+reference, for a locally built pre-release), then `PERF_SENTINEL_VERSION` (a
+GHCR tag), then the pin in `manifests/perf-sentinel-daemon.yaml`.
+
+It used to be hardcoded to `ghcr.io/robintra/perf-sentinel:0.5.21`, so the
+scenario ran green on every release without ever touching the version under
+validation. The gate reported a PASS for code it had not executed.
+
 ## Output
 
 `/tmp/scenario-calibrate-mode-report.md` plus the TOML at
