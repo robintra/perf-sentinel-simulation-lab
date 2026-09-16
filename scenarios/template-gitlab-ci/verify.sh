@@ -33,7 +33,14 @@ LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 LAB_FIXTURE="${LAB_ROOT}/artifacts/fixtures/gitlab-ci-from-upstream.yml"
 GITLAB_VERIFY="${LAB_ROOT}/scripts/verify-gitlab-perf-sentinel.sh"
 
-UPSTREAM_VERSION="${UPSTREAM_VERSION:-0.13.1}"
+# The tag whose template is fetched, derived from the fixture's own pin so a
+# bump happens in one place. Both have to name a PUBLISHED release: the seeded
+# pipeline downloads that release binary from GitHub, and step 3 fails when the
+# two disagree. It sat on 0.13.1 here against 0.5.17 in the fixture, and nothing
+# compared them.
+FIXTURE_PIN="$(grep -oE 'PERF_SENTINEL_VERSION:[[:space:]]*"[0-9.]+"' "${LAB_FIXTURE}" \
+  | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)"
+UPSTREAM_VERSION="${UPSTREAM_VERSION:-${FIXTURE_PIN:-0.22.2}}"
 UPSTREAM_URL="https://raw.githubusercontent.com/robintra/perf-sentinel/v${UPSTREAM_VERSION}/docs/ci-templates/gitlab-ci.yml"
 GITLAB_URL="${GITLAB_URL:-http://localhost:8181}"
 PAT_FILE="${PAT_FILE:-/tmp/gitlab-pat.txt}"
@@ -52,6 +59,11 @@ verdict="UNKNOWN"
 
 step "1. Fetch upstream template at v${UPSTREAM_VERSION}"
 
+# Only a template really fetched at the tag can be compared on its version pin.
+# A local working copy carries the unreleased version, which the fixture must
+# not follow.
+UPSTREAM_SOURCE="local"
+
 if [ -n "${UPSTREAM_PATH:-}" ] && [ -f "${UPSTREAM_PATH}" ]; then
   cp "${UPSTREAM_PATH}" "${TMP_DIR}/upstream-gitlab-ci.yml"
   ok "using local upstream copy at ${UPSTREAM_PATH}"
@@ -59,6 +71,7 @@ else
   # First try curl (online), then fall back to the user's perf-sentinel
   # clone if curl fails (offline-friendly).
   if curl -sSLf -o "${TMP_DIR}/upstream-gitlab-ci.yml" "${UPSTREAM_URL}" 2>/dev/null; then
+    UPSTREAM_SOURCE="tag"
     ok "fetched ${UPSTREAM_URL}"
   elif [ -f "${HOME}/RustroverProjects/perf-sentinel/docs/ci-templates/gitlab-ci.yml" ]; then
     cp "${HOME}/RustroverProjects/perf-sentinel/docs/ci-templates/gitlab-ci.yml" \
@@ -157,7 +170,17 @@ fi
 
 UPSTREAM_VERSION_PINNED=$(grep -oE 'PERF_SENTINEL_VERSION:\s*"[0-9.]+"' "${TMP_DIR}/upstream-gitlab-ci.yml" || true)
 FIXTURE_VERSION_PINNED=$(grep -oE 'PERF_SENTINEL_VERSION:\s*"[0-9.]+"' "${LAB_FIXTURE}" || true)
-ok "version pin: upstream=${UPSTREAM_VERSION_PINNED:-?}, fixture=${FIXTURE_VERSION_PINNED:-?}"
+# The seeded pipeline downloads and runs the release binary the FIXTURE names, so
+# a stale pin here means every assertion below it grades a binary nobody ships.
+# This read both pins and asserted nothing while they were 9 minor versions apart.
+if [ "${UPSTREAM_SOURCE}" != "tag" ]; then
+  ok "version pin: fixture=${FIXTURE_VERSION_PINNED:-?}, upstream not compared (template did not come from a tag)"
+elif [ -n "${UPSTREAM_VERSION_PINNED}" ] && [ "${UPSTREAM_VERSION_PINNED}" = "${FIXTURE_VERSION_PINNED}" ]; then
+  ok "version pin: upstream and fixture agree on ${FIXTURE_VERSION_PINNED}"
+else
+  PARITY_VERDICT="FAIL"
+  warn "version pin drift: upstream=${UPSTREAM_VERSION_PINNED:-?}, fixture=${FIXTURE_VERSION_PINNED:-?}"
+fi
 
 step "4. End-to-end: delegate to verify-gitlab-perf-sentinel.sh"
 

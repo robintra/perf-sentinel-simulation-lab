@@ -2,8 +2,11 @@
 #
 # Derived from docs/ci-templates/gitlab-ci.yml in the perf-sentinel
 # repo. Differences vs the upstream template:
-#   - PERF_SENTINEL_VERSION pinned to 0.5.17 (matches upstream default,
-#     bumped from 0.5.14 alongside the B1 sprint)
+#   - PERF_SENTINEL_VERSION pinned to the upstream template's own default.
+#     The seeded pipeline downloads that release binary from GitHub, so it
+#     has to name a PUBLISHED version. scenarios/template-gitlab-ci asserts
+#     the two pins agree, because a stale one here means the gate validates
+#     a binary nobody ships.
 #   - integration-tests dummy job that publishes test-traces.json so
 #     the perf-sentinel job picks it up via dependencies
 #   - dependencies: [integration-tests] uncommented on perf-sentinel
@@ -19,7 +22,7 @@ stages:
   - perf-sentinel
 
 variables:
-  PERF_SENTINEL_VERSION: "0.5.17"
+  PERF_SENTINEL_VERSION: "0.22.2"
   PERF_SENTINEL_TRACES: "test-traces.json"
   PERF_SENTINEL_CONFIG: ".perf-sentinel.toml"
 

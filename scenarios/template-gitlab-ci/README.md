@@ -10,7 +10,7 @@ the existing `scripts/verify-gitlab-perf-sentinel.sh` end-to-end check.
 make verify-template-gitlab-ci
 
 # Override version:
-UPSTREAM_VERSION=0.5.18 make verify-template-gitlab-ci
+UPSTREAM_VERSION=0.22.1 make verify-template-gitlab-ci
 
 # Use a local copy (offline):
 UPSTREAM_PATH=~/perf-sentinel/docs/ci-templates/gitlab-ci.yml \
@@ -58,9 +58,13 @@ Report at `/tmp/scenario-template-gitlab-ci-report.md`.
 
 ## Limitations
 
-- The lab fixture pins an older version (currently 0.5.14, may
-  drift). This scenario does not auto-bump the fixture. That
-  stays a deliberate decision.
+- The lab fixture has to name a PUBLISHED release, because the seeded
+  pipeline downloads that binary from GitHub Releases. It therefore
+  cannot follow an unreleased version under validation, and it is
+  bumped by hand at release time. Step 3 fails when the fixture pin and
+  the fetched template's pin disagree, so the drift cannot stay silent:
+  it sat on 0.5.17 against a 0.13.1 template for several releases while
+  the scenario reported PASS.
 - `verify-gitlab-perf-sentinel.sh` requires `make up-gitlab && make
   seed-gitlab-project` to have run beforehand. If the fixture project
   doesn't exist yet, the E2E step skips with a clear message.
