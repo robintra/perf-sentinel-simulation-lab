@@ -1289,7 +1289,13 @@ visible in Grafana :
   `helm/values/kube-prometheus-stack.yaml`) with the daemon's read key from
   the `perf-sentinel-api-keys` Secret, and `verify.sh` runs the Findings,
   Correlations, Daemon status and Daemon acknowledgments targets through
-  `POST /api/ds/query`, so the four tables are asserted server side.
+  `POST /api/ds/query`, so the four tables are asserted server side. A last
+  leg runs the `Compatibility` badge of each dashboard, the findings one
+  through the same Infinity datasource and the overview one through
+  Grafana's Prometheus datasource, and asserts the daemon reads compatible.
+  The overview half is the only check here that goes through Grafana rather
+  than straight to Prometheus over a port-forward, which is what makes it
+  catch a missing `grafana-prometheus-egress` NetworkPolicy.
 
 ### Watch out
 
