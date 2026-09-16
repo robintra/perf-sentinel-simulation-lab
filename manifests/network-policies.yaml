@@ -904,6 +904,54 @@ spec:
         - protocol: TCP
           port: 14318
 ---
+# 4.D.septdecies Grafana egress to Prometheus. The overview dashboard
+# (manifests/grafana-dashboards/perf-sentinel-overview.json) is queried by
+# Grafana's backend, so without this every one of its panels times out,
+# including its `Compatibility` badge, while the scenario's own panel-render
+# check keeps passing because that one talks to Prometheus directly over a
+# port-forward. Both halves are needed: observability is default-deny on
+# Ingress AND Egress.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: grafana-prometheus-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: grafana
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# 4.D.duodevicies the ingress half of the rule above. `allow-prometheus-scrape`
+# opens every pod to traffic coming FROM Prometheus, which is the opposite
+# direction and does not cover this.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prometheus-allow-grafana
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prometheus
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: grafana
+      ports:
+        - protocol: TCP
+          port: 9090
+---
 # 4.E perf-sentinel daemon egress to Electricity Maps.
 # Cilium-only: toFQDNs requires the Cilium DNS proxy. With Calico,
 # replace with CIDR-based egress (see docs/NETWORK-POLICIES.md).
