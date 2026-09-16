@@ -8,7 +8,7 @@
 # dense-vs-sparse continuity signal, and the v1.2 validator rules.
 #
 # Hermetic CLI scenario (same family as disclose / intent-validator):
-# `docker run ...:${PERF_SENTINEL_VERSION} disclose` over committed fixtures, no
+# `docker run "${IMAGE}" disclose` over committed fixtures, no
 # cluster. The two fixtures are fabricated from a real 0.8.3-daemon archive line
 # by varying ONLY `ts` (findings trimmed; the tiers/energy live in
 # disclosure_waste + green_summary, temporal_coverage is derived from the ts
@@ -17,9 +17,11 @@
 #   - reports-sparse.ndjson  3 windows (2026-05-08/05-22/06-06) -> coverage 0.1,
 #                            largest_gap 14 (missing days in the 05-22..06-06 span)
 #
-# 5 sub-tests run inside `ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}`
-# (defaults to `latest` so it tracks the current binary; CI drives the release
-# version via the PERF_SENTINEL_VERSION env):
+# 5 sub-tests run inside the image scripts/resolve-image.sh picks:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the pin in
+# manifests/perf-sentinel-daemon.yaml. It used to default to `latest`, which is
+# the published release and therefore NOT the binary under validation during a
+# pre-release round:
 #
 #   1. recognized schema + continuity fields: schema_version is
 #      perf-sentinel-report/v1.x, temporal_coverage (4 subfields), coverage_basis
@@ -35,7 +37,7 @@
 #
 # Fixtures under fixtures/: reports-dense.ndjson, reports-sparse.ndjson, org-config.toml
 # (org-config specpower_table_version tracks the pinned image's embedded CCF
-#  vintage; bump it alongside PERF_SENTINEL_VERSION if the vintage changes.)
+#  vintage, bump it alongside the image if the vintage changes.)
 
 set -euo pipefail
 
@@ -45,8 +47,9 @@ TMP_DIR="/tmp/${SCENARIO}"
 SCENARIO_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIXTURES_DIR="${SCENARIO_DIR}/fixtures"
 
-PERF_SENTINEL_VERSION="${PERF_SENTINEL_VERSION:-latest}"
-IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
+LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 
 mkdir -p "${TMP_DIR}"
 
