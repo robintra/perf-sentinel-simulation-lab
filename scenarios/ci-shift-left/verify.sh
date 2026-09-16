@@ -38,7 +38,8 @@
 #   /tmp/ci-shift-left/.perf-sentinel-acknowledgments.toml
 #
 # Optional knobs:
-#   PERF_SENTINEL_VERSION  override CLI image tag (default 0.5.17)
+#   PERF_SENTINEL_IMAGE    override the CLI image outright (a full reference)
+#   PERF_SENTINEL_VERSION  override the CLI image tag (a GHCR tag)
 #   SKIP_DAEMON_CHECK=1    skip the cluster sanity ping (run offline)
 
 set -euo pipefail
@@ -51,27 +52,15 @@ LAB_ROOT="$(cd "${SCENARIO_DIR}/../.." && pwd)"
 CONFIG_TOML="${SCENARIO_DIR}/.perf-sentinel.toml"
 TRACES_FIXTURE="${LAB_ROOT}/artifacts/fixtures/em-real-time-traces.json"
 
-# Default to the image the lab's daemon manifest pins, so these scenarios track
-# the version under validation instead of drifting away from it. They sat on a
-# hardcoded 0.5.17 for several minor releases, which meant the CI path was never
-# exercised against the version being validated, and it kept reporting a SARIF
-# gap the product had closed in 0.9.0.
-#
-# PERF_SENTINEL_VERSION still overrides, as a GHCR tag. The manifest reference is
-# used verbatim otherwise: it may be a digest pin or a local pre-release tag left
-# by scripts/seed-daemon-local.sh, and neither can be rebuilt from a version
-# string.
-if [ -n "${PERF_SENTINEL_VERSION:-}" ]; then
-  IMAGE="ghcr.io/robintra/perf-sentinel:${PERF_SENTINEL_VERSION}"
-else
-  IMAGE="$(awk '/^[[:space:]]*image:[[:space:]]*(ghcr\.io\/robintra\/)?perf-sentinel[:@]/ { print $2; exit }' \
-    "${LAB_ROOT}/manifests/perf-sentinel-daemon.yaml")"
-  # Not `die`: the colour helpers are defined further down in both scenarios.
-  [ -n "${IMAGE}" ] || {
-    printf "    error: cannot derive the perf-sentinel image from manifests/perf-sentinel-daemon.yaml\n" >&2
-    exit 1
-  }
-fi
+# The image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+# This scenario sat on a hardcoded 0.5.17 for several minor releases, which meant
+# the CI path was never exercised against the version being validated, and it
+# kept reporting a SARIF gap the product had closed in 0.9.0. It then carried its
+# own copy of the resolution, which had already lost the PERF_SENTINEL_IMAGE
+# branch.
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 DAEMON_PORT_LOCAL=14318
 
 mkdir -p "${TMP_DIR}"
