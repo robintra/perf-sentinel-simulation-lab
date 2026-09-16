@@ -242,6 +242,9 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/rgesn-crosswalk/verify.sh
 	@bash -n scenarios/sci-functional-unit/verify.sh
 	@bash -n scenarios/verify-hash-fail-closed/verify.sh
+	@bash -n scenarios/archive-window-drops/verify.sh
+	@bash -n scenarios/diff-mutated-findings/verify.sh
+	@bash -n scenarios/disclose-archive-family-baseline/verify.sh
 	@bash -n scripts/seed-tracegen.sh
 	@bash -n scripts/seed-daemon-local.sh
 	@echo "==> yaml parse on resilience scenario manifests"
