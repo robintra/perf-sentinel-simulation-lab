@@ -120,7 +120,7 @@ evaluate_findings() {
     printf '%s' "${findings_json}" | EXPECTED_TYPE="${pattern}" EXPECTED_SERVICE="${SERVICE}" \
         EXPECTED_ENDPOINT="${endpoint}" EXPECTED_FRAMEWORK="${expected_framework}" EXPECTED_RECOMMENDATION="${expected_recommendation}" BASELINE_FILE="${baseline_file}" STARTED_AT_MS="${started_at_ms}" \
         python3 -c '
-import json, os, sys
+import collections, json, os, sys
 try:
     items = json.load(sys.stdin)
     baseline_pairs = json.load(open(os.environ["BASELINE_FILE"]))
@@ -176,7 +176,11 @@ if not matched:
         # Distinguish "the daemon never produced it" from "it was there but not fresh"
         # (pre-existing trace id, or stored before the k6 job started).
         same = [item for item, finding in records if finding.get("type") == kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint]
-        print("0|no fresh type/service/source finding (same type+service+source in store: %d)" % len(same))
+        # A reclassified group lands under another type on the same source (issue 143:
+        # symfony redundant_sql reported as n_plus_one_sql), so name what did arrive.
+        others = collections.Counter(str(finding.get("type")) for item, finding in records if finding.get("type") != kind and finding.get("service") == service and finding.get("source_endpoint") == endpoint and finding.get("trace_id") not in baseline_trace_ids and isinstance(item.get("stored_at_ms"), (int, float)) and item["stored_at_ms"] > started)
+        print("0|no fresh type/service/source finding (same type+service+source in store: %d; other fresh types on this source: %s)" % (
+            len(same), ", ".join("%s=%d" % pair for pair in sorted(others.items())) or "none"))
 else:
     finding = matched[0]
     pattern = finding.get("pattern") or {}
