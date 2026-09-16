@@ -3,15 +3,17 @@ name: pr checks (lightweight, no cluster)
 # Fast gate for pull requests (notably Renovate base-image / chart bumps).
 # The full lab validation (validate-on-release.yml) only runs on main via
 # schedule / dispatch, so PRs would otherwise merge with no signal at all.
-# This builds only the service images whose directory changed and lints the
-# Helm charts: no k3d cluster, no observability stack, no seeding.
+# This runs `make validate` (the offline lint), builds only the service images
+# whose directory changed and lints the Helm charts: no k3d cluster, no
+# observability stack, no seeding.
+#
+# No `paths:` filter on purpose. `make validate` reads the Makefile, scripts/,
+# scenarios/, cluster/ and manifests/, and Renovate's customManagers write
+# chart versions into scripts/*.sh, so any filter listed here is one more copy
+# to keep in sync. The jobs are cheap and `build` self-skips via `detect`.
 
 on:
   pull_request:
-    paths:
-      - 'services/**'
-      - 'manifests/**'
-      - 'helm/**'
 
 permissions:
   contents: read
@@ -74,7 +76,7 @@ jobs:
             -t "ci-${{ matrix.service }}:pr" \
             "services/${{ matrix.service }}"
 
-  helm-lint:
+  offline-checks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -82,6 +84,13 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310  # v5.0.1
         with:
           version: 'v4.3.0'
+      - name: Add helm repos used by make validate
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+          helm repo update
+      - name: make validate (offline)
+        run: make validate
       - name: helm lint service charts
         run: |
           set -euo pipefail
