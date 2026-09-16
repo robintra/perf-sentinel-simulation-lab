@@ -52,6 +52,20 @@ The verify script uses `kubectl top pod` to print the cumulative memory
 of the 2-container pod. Adoption guideline: the daemon adds roughly
 60-150 MiB on top of the application container.
 
+## Which binary this runs against
+
+`scripts/resolve-image.sh` picks the image and `verify.sh` rewrites the
+perf-sentinel line of `manifests.yaml` on the way to `kubectl apply`:
+`PERF_SENTINEL_IMAGE` (a full reference, for a locally built pre-release), then
+`PERF_SENTINEL_VERSION` (a GHCR tag), then the pin in
+`manifests/perf-sentinel-daemon.yaml`. The digest committed in `manifests.yaml`
+is only a placeholder, and the script stops if the rewrite matches nothing.
+
+The manifest used to be applied unmodified, so the sidecar ran the frozen
+`0.5.21` digest and the scenario went green on every release without ever
+touching the version under validation. The gate reported a PASS for code it
+had not executed.
+
 ## Output
 
 `/tmp/scenario-sidecar-pattern-report.md` plus

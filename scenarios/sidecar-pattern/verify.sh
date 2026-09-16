@@ -10,6 +10,14 @@ NS="b2-6-sidecar"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
 TMP_DIR="/tmp/${SCENARIO}"
 MANIFESTS="$(cd "$(dirname "$0")" && pwd)/manifests.yaml"
+# The co-located daemon runs the image under validation, resolved by
+# scripts/resolve-image.sh: PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then
+# the daemon manifest pin. The manifest carries its own frozen digest and used to
+# be applied unmodified, so the gate reported a PASS for a version this scenario
+# had never executed.
+LAB_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${LAB_ROOT}/scripts/resolve-image.sh"
 mkdir -p "${TMP_DIR}"
 
 color_blue()  { printf "\033[34m%s\033[0m\n" "$*"; }
@@ -44,8 +52,15 @@ kubectl -n shop get secret order-service-db -o yaml \
 ok "secret order-service-db mirrored from shop"
 
 step "Apply manifests"
-kubectl apply -f "${MANIFESTS}" > "${TMP_DIR}/apply.log" 2>&1
-ok "manifests applied"
+# Rendered to a file rather than piped, so the rewrite can be asserted. A sed that
+# matches nothing would silently run the digest frozen in manifests.yaml, which is
+# the failure this resolution exists to prevent.
+sed -e "s#image: ghcr.io/robintra/perf-sentinel@sha256:[0-9a-f]*.*#image: ${IMAGE}#" "${MANIFESTS}" \
+  > "${TMP_DIR}/manifests.rendered.yaml"
+grep -qF "image: ${IMAGE}" "${TMP_DIR}/manifests.rendered.yaml" \
+  || die "the perf-sentinel image rewrite matched nothing, the pod would run the digest frozen in manifests.yaml"
+kubectl apply -f "${TMP_DIR}/manifests.rendered.yaml" > "${TMP_DIR}/apply.log" 2>&1
+ok "manifests applied (sidecar daemon image ${IMAGE})"
 
 step "Wait for the sidecar pod to become Ready (Spring Boot needs ~30s)"
 kubectl -n "${NS}" rollout status deploy/order-service-sidecar --timeout=240s
@@ -114,6 +129,7 @@ step "Write report"
   echo
   echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "Namespace: ${NS} (cleaned up after run unless KEEP_NAMESPACE=yes)"
+  echo "Sidecar daemon image: ${IMAGE}"
   echo
   echo "Architecture:"
   echo "- 1 pod with 2 containers (order-service + perf-sentinel daemon)"
