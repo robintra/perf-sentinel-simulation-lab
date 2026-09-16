@@ -57,8 +57,14 @@ done
 ok "secrets order-service-db and rabbitmq-credentials mirrored from shop"
 
 step "Apply manifests"
+# Rendered to a file rather than piped, so the rewrite can be asserted. A sed that
+# matches nothing would silently run the digest frozen in manifests.yaml, which is
+# the failure this resolution exists to prevent.
 sed -e "s#image: ghcr.io/robintra/perf-sentinel@sha256:[0-9a-f]*.*#image: ${IMAGE}#" "${MANIFESTS}" \
-  | kubectl apply -f - > "${TMP_DIR}/apply.log" 2>&1
+  > "${TMP_DIR}/manifests.rendered.yaml"
+grep -qF "image: ${IMAGE}" "${TMP_DIR}/manifests.rendered.yaml" \
+  || die "the perf-sentinel image rewrite matched nothing, the pod would run the digest frozen in manifests.yaml"
+kubectl apply -f "${TMP_DIR}/manifests.rendered.yaml" > "${TMP_DIR}/apply.log" 2>&1
 ok "manifests applied (daemon image ${IMAGE})"
 
 step "Wait for the dedicated daemon to become Ready"
