@@ -616,6 +616,89 @@ else
   INFINITY_VERDICT="FAIL"
 fi
 
+step "Compatibility badges: both dashboards through Grafana's own datasources"
+# The badges are the only panels that answer a question about the daemon
+# rather than about the workload, and each reads a different source: the
+# findings one the `version` of GET /api/status, the overview one the
+# presence of two metrics. The overview half goes through Grafana rather
+# than straight to Prometheus on purpose, it is the only check in this
+# scenario that exercises the Grafana to Prometheus path.
+COMPAT_VERDICT=$(GRAFANA_URL="${GRAFANA_URL}" GRAFANA_PASS="${GRAFANA_PASS}" \
+  LAB_DASHBOARD="${LAB_DASHBOARD}" LAB_FINDINGS_DASHBOARD="${LAB_FINDINGS_DASHBOARD}" \
+  python3 - <<'PY' 2>&1 | tee "${TMP_DIR}/compat.log" | tail -1 || true
+import base64, json, os, re, urllib.error, urllib.request
+
+url = os.environ["GRAFANA_URL"] + "/api/ds/query"
+auth = base64.b64encode(("admin:" + os.environ["GRAFANA_PASS"]).encode()).decode()
+failures = []
+
+
+def query(label, target):
+    body = json.dumps({"from": "now-15m", "to": "now", "queries": [target]}).encode()
+    req = urllib.request.Request(url, data=body, method="POST", headers={
+        "Content-Type": "application/json", "Authorization": "Basic " + auth})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            code, payload = r.status, json.load(r)
+    except urllib.error.HTTPError as e:
+        code, payload = e.code, json.loads(e.read() or b"{}")
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        code, payload = 0, {"results": {"A": {"error": str(e)}}}
+    res = payload.get("results", {}).get("A", {})
+    frames = res.get("frames") or []
+    fields = [f["name"] for f in frames[0]["schema"]["fields"]] if frames else []
+    values = frames[0]["data"]["values"] if frames else []
+    err = res.get("error", "")
+    print(f"{label}: http={code} status={res.get('status')} fields={fields} error={err!r}")
+    if code != 200 or res.get("status") != 200 or err:
+        failures.append(f"{label}: http={code} status={res.get('status')} error={err!r}")
+    return fields, values
+
+
+def panel(dashboard, title):
+    return next(p for p in dashboard["panels"] if p.get("title") == title)
+
+
+findings = json.load(open(os.environ["LAB_FINDINGS_DASHBOARD"]))
+target = json.loads(json.dumps(panel(findings, "Compatibility")["targets"][0]))
+target["datasource"] = {"type": "yesoreyeram-infinity-datasource", "uid": "perf-sentinel-api"}
+fields, values = query("findings badge", target)
+if fields != ["Compatibility"] or len(values) != 1 or len(values[0]) != 1:
+    failures.append(f"findings badge: expected one Compatibility cell, got {fields} {values}")
+else:
+    version = values[0][0]
+    print(f"findings badge: daemon reports {version!r}")
+    if not re.fullmatch(r"\d+\.\d+\.\d+", version or ""):
+        failures.append(f"findings badge: {version!r} is not a version the regex mappings can grade")
+
+overview = json.load(open(os.environ["LAB_DASHBOARD"]))
+target = json.loads(json.dumps(panel(overview, "Compatibility")["targets"][0]))
+target["expr"] = target["expr"].replace("$job", ".*").replace("$namespace", ".*")
+target["datasource"] = {"type": "prometheus", "uid": "prometheus"}
+target["intervalMs"] = 60000
+target["maxDataPoints"] = 1
+fields, values = query("overview badge", target)
+if "Value" not in fields:
+    failures.append(f"overview badge: no Value field in {fields}")
+else:
+    state = values[fields.index("Value")]
+    print(f"overview badge: state {state}")
+    if state != [0]:
+        failures.append(f"overview badge: expected [0] (compatible) against this daemon, got {state}")
+
+for f in failures:
+    print("FAIL " + f)
+print("PASS" if not failures else "FAIL")
+PY
+)
+sed '$d' "${TMP_DIR}/compat.log" | sed 's/^/    /'
+if [ "${COMPAT_VERDICT}" = "PASS" ]; then
+  ok "both Compatibility badges answer and read compatible"
+else
+  warn "Compatibility badge leg FAILED, see ${TMP_DIR}/compat.log"
+  COMPAT_VERDICT="FAIL"
+fi
+
 if [ "${SKIP_TRIGGER_TEST:-0}" != "1" ]; then
   step "Trigger test: scale daemon to 0, expect PerfSentinelDaemonDown to fire"
   kubectl scale -n observability deployment/perf-sentinel-daemon --replicas=0 >/dev/null
@@ -718,7 +801,8 @@ if [ "${EMPTY_PANELS}" -eq 0 ] \
    && [ "${TRIGGER_VERDICT}" != "FAIL" ] \
    && [ "${PARITY_VERDICT}" != "FAIL" ] \
    && [ "${FINDINGS_PARITY_VERDICT}" != "FAIL" ] \
-   && [ "${INFINITY_VERDICT}" = "PASS" ]; then
+   && [ "${INFINITY_VERDICT}" = "PASS" ] \
+   && [ "${COMPAT_VERDICT}" = "PASS" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -737,6 +821,7 @@ step "Write report"
   echo "- lab dashboard (manifests/grafana-dashboards/perf-sentinel-overview.json) vs upstream: ${PARITY_VERDICT}"
   echo "- lab findings dashboard (manifests/grafana-dashboards/perf-sentinel-findings.json) vs upstream: ${FINDINGS_PARITY_VERDICT}"
   echo "- Infinity datasource (perf-sentinel-api) targets through /api/ds/query: ${INFINITY_VERDICT}"
+  echo "- Compatibility badges on both dashboards through Grafana: ${COMPAT_VERDICT}"
   echo
   echo "## Coverage audit"
   echo
