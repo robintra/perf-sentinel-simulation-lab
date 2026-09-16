@@ -1327,12 +1327,18 @@ visible in Grafana :
 pipelines: the canonical ack workflow (regression to ack via PR to
 green pipeline), the 3 upstream templates (GitLab CI, Jenkinsfile,
 GitHub Actions), and the output formats / diff / cap loader coverage.
-`ci-shift-left` and `output-formats-coverage` derive their CLI image
-from `manifests/perf-sentinel-daemon.yaml`, so they track the version
-under validation. Override with `PERF_SENTINEL_VERSION` (a GHCR tag).
+`ci-shift-left` and `output-formats-coverage` take their CLI image from
+`scripts/resolve-image.sh`, so they track the version under validation:
+`PERF_SENTINEL_IMAGE` (a full reference, for a locally built pre-release),
+then `PERF_SENTINEL_VERSION` (a GHCR tag), then the pin in
+`manifests/perf-sentinel-daemon.yaml`.
 The three template scenarios still fetch the upstream templates at a
-pinned git tag (`UPSTREAM_VERSION`, default 0.5.17), because the fetch
-is by tag and a newer one only exists once the release is published.
+pinned git tag, because the fetch is by tag and a newer one only exists
+once the release is published. `template-gitlab-ci` derives that tag
+from its own fixture pin and fails the parity step when the two
+disagree, because its seeded pipeline downloads and runs that release
+binary. The other two run no perf-sentinel binary and stay on
+`UPSTREAM_VERSION`, default 0.13.1.
 
 ### ci-shift-left (primary)
 
@@ -1381,7 +1387,8 @@ make verify-output-formats-coverage  # depends on ci-shift-left having run
 
 ### template-gitlab-ci
 
-Validates the upstream `docs/ci-templates/gitlab-ci.yml` at v0.5.17:
+Validates the upstream `docs/ci-templates/gitlab-ci.yml` at the tag the
+lab fixture pins, 0.22.2 today:
 
 1. Curl upstream template (fallback to local clone).
 2. Lint via GitLab CE CI Lint API (`POST /api/v4/ci/lint`).
@@ -1403,7 +1410,7 @@ SKIP_E2E=1 make verify-template-gitlab-ci  # lint + parity only
 Note: upstream filename is `jenkinsfile.groovy` (lowercase, .groovy
 extension), NOT `Jenkinsfile`. Multibranch Pipeline accepts both.
 
-1. Curl upstream `jenkinsfile.groovy` at v0.5.17.
+1. Curl upstream `jenkinsfile.groovy` at v0.13.1 (`UPSTREAM_VERSION`).
 2. Structural lint (declarative pipeline skeleton, `analyze`, `--ci`,
    SARIF, version pin).
 3. Best-effort runtime via `jenkins/jenkinsfile-runner` containerised.
@@ -1417,7 +1424,7 @@ SKIP_RUNTIME=1 make verify-template-jenkinsfile
 
 ### template-github-actions
 
-1. Curl upstream `github-actions.yml` at v0.5.17.
+1. Curl upstream `github-actions.yml` at v0.13.1 (`UPSTREAM_VERSION`).
 2. Structural lint (YAML parse, top-level keys, install + analyze +
    `--ci` + SARIF upload, action SHAs pinned to 40-char commits).
 3. `nektos/act --list` parse-only check (no execution).
@@ -3240,6 +3247,25 @@ assertions that had been stale for releases: `esrs-e1-crosswalk` still
 required schema exactly `v1.3`, and `intent-validator` still declared
 a 2024 SPECpower vintage its binary no longer recognised. Neither
 could have surfaced while the pin held.
+
+That round missed four, each holding its version somewhere the sweep did
+not look. `calibrate-mode` assigned the image before any helper could be
+sourced. `sidecar-pattern` kept its version in a manifest it applied
+unmodified. `disclose-temporal` reimplemented the second rung alone and
+put `latest` in place of the other two, which during a pre-release round
+is the previously published release. `ci-shift-left` carried a private
+copy of the resolution that had already lost the first rung. The first
+two were still running 0.5.21 on 2026-09-16, seventeen minor versions
+behind. Both manifest scenarios now assert their rewrite matched, because
+a `sed` that matches nothing lands straight back on the frozen digest and
+says nothing.
+
+`template-gitlab-ci` is a fifth case and not an image scenario: its seeded
+GitLab pipeline downloads a release binary from GitHub, so its version
+lives in `artifacts/fixtures/gitlab-ci-from-upstream.yml` and has to name
+a PUBLISHED release. That pin sat on 0.5.17 while the template it was
+compared against pinned 0.13.1, and the parity step read both values and
+asserted nothing. It now fails on disagreement.
 
 **Building a pre-release image.** Never point a `docker build` at the product
 checkout: it has a `.dockerignore` scoped to its own release Dockerfile, and its
