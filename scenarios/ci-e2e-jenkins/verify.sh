@@ -22,6 +22,8 @@
 #   J7  the documented future fix (CSS and JS in sibling files) would NOT help
 #   J8  the blocked page carries the 0.9.25 #ps-no-js notice explaining why it is
 #       blank, and that notice is gone once the script runs
+#   J9  the same suite without capture, the agent writing the file itself
+#       (SDK 1.66 file export, `-P otel-file`): same spans, same N+1
 #
 # J6 (Resource Root URL, option A of docs/CI.md) is deliberately not covered:
 # it needs a second origin with its own hostname, and the CSP behaviour is
@@ -203,8 +205,9 @@ fi
 # J1: capture produced a file from the forked Maven test JVM.
 step "J1: the documented recipe ran and capture wrote a trace file"
 curl -fsS "${ART}/target/traces.json" -o "${TMP_DIR}/traces.json" 2>/dev/null
-SPANS=0
-[ -s "${TMP_DIR}/traces.json" ] && SPANS="$(python3 - "${TMP_DIR}/traces.json" <<'PY'
+span_count() {  # spans of the largest trace in an OTLP JSON Lines file
+  [ -s "$1" ] || { echo 0; return; }
+  python3 - "$1" <<'PY'
 import json, sys
 from collections import Counter
 # Count the spans of the REQUEST trace, not every span in the file. The test
@@ -222,7 +225,8 @@ for line in open(sys.argv[1]):
                 traces[sp.get("traceId", "")] += 1
 print(max(traces.values()) if traces else 0)
 PY
-)"
+}
+SPANS="$(span_count "${TMP_DIR}/traces.json")"
 EXPECTED_SPANS=$((ITEMS + 1))
 if [ "${BUILD_RESULT}" = "SUCCESS" ] && [ "${SPANS}" = "${EXPECTED_SPANS}" ]; then
   assert_pass "J1" "build ${BUILD_RESULT}, ${SPANS} spans captured (${ITEMS} JDBC + 1 SERVER)"
@@ -248,6 +252,27 @@ if [ "${OCC}" = "${ITEMS}" ]; then
   assert_pass "J2" "n_plus_one_sql at ${OCC} occurrences [${TYPES}]"
 else
   assert_fail "J2" "occurrences=${OCC} (expected ${ITEMS}), types=[${TYPES}]"
+fi
+
+# J9: the no-capture shape in the same job. Its own scenario,
+# java-ci-file-export, holds the details; this leg proves the stage works on a
+# Jenkins agent, where the agent jar comes from the snapshot repository.
+step "J9: the file-export stage wrote the trace file with no capture"
+curl -fsS "${ART}/project/target/traces.jsonl" -o "${TMP_DIR}/traces.jsonl" 2>/dev/null
+curl -fsS "${ART}/perf-sentinel-file-report.json" -o "${TMP_DIR}/file-findings.json" 2>/dev/null
+FILE_SPANS="$(span_count "${TMP_DIR}/traces.jsonl")"
+FILE_OCC=0
+[ -s "${TMP_DIR}/file-findings.json" ] && FILE_OCC="$(python3 - "${TMP_DIR}/file-findings.json" <<'PY'
+import json, sys
+occ = [x.get("pattern", {}).get("occurrences", 0)
+       for x in json.load(open(sys.argv[1])).get("findings", []) if x.get("type") == "n_plus_one_sql"]
+print(max(occ) if occ else 0)
+PY
+)"
+if [ "${FILE_SPANS}" = "${EXPECTED_SPANS}" ] && [ "${FILE_OCC}" = "${ITEMS}" ]; then
+  assert_pass "J9" "${FILE_SPANS} spans in the archived traces.jsonl, n_plus_one_sql at ${FILE_OCC}: same counts as capture"
+else
+  assert_fail "J9" "spans=${FILE_SPANS} (expected ${EXPECTED_SPANS}), occurrences=${FILE_OCC} (expected ${ITEMS}): $(grep -iE 'otel-file|error' "${TMP_DIR}/console.txt" | tail -2)"
 fi
 
 step "J3: report.html is published by Jenkins"

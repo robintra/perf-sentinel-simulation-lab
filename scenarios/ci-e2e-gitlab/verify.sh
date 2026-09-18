@@ -7,6 +7,8 @@
 #   G2  analyze finds the planted n_plus_one_sql with the expected occurrences
 #   G3  the Pages job publishes public/index.html
 #   G4  fetched from GitLab Pages OVER HTTP, the dashboard renders
+#   G5  the same suite without capture, the agent writing the file itself
+#       (SDK 1.66 file export, `-P otel-file`): same spans, same N+1
 #
 # Needs the cluster, `make up-gitlab` and `make seed-gitlab-project`.
 set -uo pipefail
@@ -71,7 +73,7 @@ command -v docker >/dev/null 2>&1 || die "docker needed to extract the released 
 curl -fsS -o /dev/null "${GITLAB_URL}/-/health" 2>/dev/null \
   || { skip "GitLab not reachable at ${GITLAB_URL} — run make up-gitlab && make seed-gitlab-project"
        record "G1" "SKIP — no GitLab"; record "G2" "SKIP — no GitLab"
-       record "G3" "SKIP — no GitLab"; record "G4" "SKIP — no GitLab"
+       record "G3" "SKIP — no GitLab"; record "G4" "SKIP — no GitLab"; record "G5" "SKIP — no GitLab"
        verdict="SKIP"; FAILS=0
        { echo "# Scenario: ${SCENARIO}"; echo; echo "GitLab CE unavailable."; } > "${REPORT}"
        color_yellow "SKIP — GitLab CE is not up"; exit 0; }
@@ -171,9 +173,9 @@ fetch_artifacts() {  # $1 = job id ; $2 = destination dir
 # G1: the pipeline really ran the recipe on the runner.
 step "G1: the pipeline ran the recipe and capture wrote a trace file"
 IT_JOB="$(job_id integration-tests)"
-SPANS=0
-if [ -n "${IT_JOB}" ] && fetch_artifacts "${IT_JOB}" "${TMP_DIR}/it"; then
-  [ -s "${TMP_DIR}/it/target/traces.json" ] && SPANS="$(python3 - "${TMP_DIR}/it/target/traces.json" <<'PY'
+span_count() {  # spans of the largest trace in an OTLP JSON Lines file
+  [ -s "$1" ] || { echo 0; return; }
+  python3 - "$1" <<'PY'
 import json, sys
 from collections import Counter
 # Count the spans of the REQUEST trace, not every span in the file. The test
@@ -191,7 +193,20 @@ for line in open(sys.argv[1]):
                 traces[sp.get("traceId", "")] += 1
 print(max(traces.values()) if traces else 0)
 PY
-)"
+}
+n1_occurrences() {  # n_plus_one_sql occurrences in an analyze JSON report
+  [ -s "$1" ] || { echo 0; return; }
+  python3 - "$1" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+occ = [x.get("pattern", {}).get("occurrences", 0)
+       for x in d.get("findings", []) if x.get("type") == "n_plus_one_sql"]
+print(max(occ) if occ else 0)
+PY
+}
+SPANS=0
+if [ -n "${IT_JOB}" ] && fetch_artifacts "${IT_JOB}" "${TMP_DIR}/it"; then
+  SPANS="$(span_count "${TMP_DIR}/it/target/traces.json")"
 fi
 EXPECTED_SPANS=$((ITEMS + 1))
 if [ "${SPANS}" = "${EXPECTED_SPANS}" ]; then
@@ -205,19 +220,28 @@ step "G2: analyze finds the planted n_plus_one_sql"
 PS_JOB="$(job_id perf-sentinel)"
 OCC=0
 if [ -n "${PS_JOB}" ] && fetch_artifacts "${PS_JOB}" "${TMP_DIR}/ps"; then
-  [ -s "${TMP_DIR}/ps/perf-sentinel-report.json" ] && OCC="$(python3 - "${TMP_DIR}/ps/perf-sentinel-report.json" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-occ = [x.get("pattern", {}).get("occurrences", 0)
-       for x in d.get("findings", []) if x.get("type") == "n_plus_one_sql"]
-print(max(occ) if occ else 0)
-PY
-)"
+  OCC="$(n1_occurrences "${TMP_DIR}/ps/perf-sentinel-report.json")"
 fi
 if [ "${OCC}" = "${ITEMS}" ]; then
   assert_pass "G2" "n_plus_one_sql at ${OCC} occurrences"
 else
   assert_fail "G2" "occurrences=${OCC} (expected ${ITEMS}), job=${PS_JOB:-missing}"
+fi
+
+# G5: the no-capture shape in the same pipeline. Its own scenario,
+# java-ci-file-export, holds the details; this leg proves the job works on the
+# Kubernetes runner, behind the lab's zero-trust egress.
+step "G5: the file-export job wrote the trace file with no capture"
+FILE_JOB="$(job_id integration-tests-file)"
+FILE_SPANS=0; FILE_OCC=0
+if [ -n "${FILE_JOB}" ] && fetch_artifacts "${FILE_JOB}" "${TMP_DIR}/file"; then
+  FILE_SPANS="$(span_count "${TMP_DIR}/file/project/target/traces.jsonl")"
+  FILE_OCC="$(n1_occurrences "${TMP_DIR}/file/perf-sentinel-file-report.json")"
+fi
+if [ "${FILE_SPANS}" = "${EXPECTED_SPANS}" ] && [ "${FILE_OCC}" = "${ITEMS}" ]; then
+  assert_pass "G5" "${FILE_SPANS} spans in the job's traces.jsonl, n_plus_one_sql at ${FILE_OCC}: same counts as capture"
+else
+  assert_fail "G5" "spans=${FILE_SPANS} (expected ${EXPECTED_SPANS}), occurrences=${FILE_OCC} (expected ${ITEMS}), job=${FILE_JOB:-missing}"
 fi
 
 # G3: the Pages job published the dashboard.

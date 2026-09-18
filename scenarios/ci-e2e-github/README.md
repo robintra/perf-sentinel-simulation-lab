@@ -27,6 +27,7 @@ assuming it, which is the whole point of the family.
 | H2 | `capture` wrote a complete trace file and `analyze` finds the planted N+1 |
 | H3 | `report.html` is produced and lands where the workflow publishes it |
 | H4 | served the way GitHub Pages serves it, the dashboard renders |
+| H5 | a second step runs the suite **without capture** (`-P otel-file`, the agent writes `project/target/traces.jsonl` itself, SDK 1.66): 16 spans and `n_plus_one_sql` at 15, the same counts as H2 |
 
 ## What it found (2026-08-01, released 0.9.24)
 

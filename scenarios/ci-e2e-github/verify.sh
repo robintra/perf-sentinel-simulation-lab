@@ -16,6 +16,8 @@
 #   H2  capture wrote a complete trace file and analyze finds the planted N+1
 #   H3  report.html is produced and lands where the workflow publishes it
 #   H4  served the way GitHub Pages serves it, the dashboard renders
+#   H5  the same suite without capture, the agent writing the file itself
+#       (SDK 1.66 file export, `-P otel-file`): same spans, same N+1
 #
 # Self-contained: no cluster. Needs Docker, act, python3 and Chrome.
 set -uo pipefail
@@ -147,11 +149,9 @@ else
   assert_fail "H1" "act rc=${ACT_RC}: $(grep -iE '❌|error|failure' "${TMP_DIR}/act.log" | tail -2 | tr '\n' ' ')"
 fi
 
-# H2: capture wrote a usable trace file and it carries the anti-pattern.
-step "H2: capture wrote the trace file and analyze finds the planted N+1"
-SPANS=0
-if [ -s "${WORKDIR}/target/traces.json" ]; then
-  SPANS="$(python3 - "${WORKDIR}/target/traces.json" <<'PY'
+span_count() {  # spans of the largest trace in an OTLP JSON Lines file
+  [ -s "$1" ] || { echo 0; return; }
+  python3 - "$1" <<'PY'
 import json, sys
 from collections import Counter
 # Count the spans of the REQUEST trace, not every span in the file. The test
@@ -169,24 +169,40 @@ for line in open(sys.argv[1]):
                 traces[sp.get("traceId", "")] += 1
 print(max(traces.values()) if traces else 0)
 PY
-)"
-fi
-OCC=0
-if [ -s "${WORKDIR}/perf-sentinel-report.json" ]; then
-  OCC="$(python3 - "${WORKDIR}/perf-sentinel-report.json" <<'PY'
+}
+
+n1_occurrences() {  # n_plus_one_sql occurrences in an analyze JSON report
+  [ -s "$1" ] || { echo 0; return; }
+  python3 - "$1" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 occ = [x.get("pattern", {}).get("occurrences", 0)
        for x in d.get("findings", []) if x.get("type") == "n_plus_one_sql"]
 print(max(occ) if occ else 0)
 PY
-)"
-fi
+}
+
+# H2: capture wrote a usable trace file and it carries the anti-pattern.
+step "H2: capture wrote the trace file and analyze finds the planted N+1"
+SPANS="$(span_count "${WORKDIR}/target/traces.json")"
+OCC="$(n1_occurrences "${WORKDIR}/perf-sentinel-report.json")"
 EXPECTED_SPANS=$((ITEMS + 1))
 if [ "${SPANS}" = "${EXPECTED_SPANS}" ] && [ "${OCC}" = "${ITEMS}" ]; then
   assert_pass "H2" "${SPANS} spans captured, n_plus_one_sql at ${OCC} occurrences"
 else
   assert_fail "H2" "spans=${SPANS} (expected ${EXPECTED_SPANS}), occurrences=${OCC} (expected ${ITEMS})"
+fi
+
+# H5: the no-capture shape in the same workflow. Its own scenario,
+# java-ci-file-export, holds the details; this leg proves the step works on a
+# runner, where the agent comes from the snapshot repository.
+step "H5: the file-export step wrote the trace file with no capture"
+FILE_SPANS="$(span_count "${WORKDIR}/project/target/traces.jsonl")"
+FILE_OCC="$(n1_occurrences "${WORKDIR}/perf-sentinel-file-report.json")"
+if [ "${FILE_SPANS}" = "${EXPECTED_SPANS}" ] && [ "${FILE_OCC}" = "${ITEMS}" ]; then
+  assert_pass "H5" "${FILE_SPANS} spans in project/target/traces.jsonl, n_plus_one_sql at ${FILE_OCC}: same counts as capture"
+else
+  assert_fail "H5" "spans=${FILE_SPANS} (expected ${EXPECTED_SPANS}), occurrences=${FILE_OCC} (expected ${ITEMS})"
 fi
 
 # H3: the dashboard was produced and published where the workflow puts it.

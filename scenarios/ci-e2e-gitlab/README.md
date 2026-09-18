@@ -25,6 +25,7 @@ scenario did before.
 | G2 | `analyze` finds the planted `n_plus_one_sql` with the expected occurrences |
 | G3 | the Pages job publishes `public/index.html` |
 | G4 | fetched from GitLab Pages **over HTTP**, the dashboard renders |
+| G5 | a parallel `integration-tests-file` job runs the suite **without capture** (`-P otel-file`, the agent writes `project/target/traces.jsonl` itself, SDK 1.66): 16 spans and `n_plus_one_sql` at 15. While the agent pin is a SNAPSHOT, the job needs `central.sonatype.com`, opened in `gitlab-ci-jobs-maven-egress` (`manifests/network-policies.yaml`) |
 
 ## What it found (2026-08-01, released 0.9.24)
 

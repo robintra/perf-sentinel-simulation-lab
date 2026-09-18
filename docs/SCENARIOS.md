@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 86 scenarios live under `scenarios/<name>/` and each one ships a
+The 87 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -193,7 +193,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 86
+`grouping-identity` is the 0.11 contract gate. The lab now ships 87
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -297,6 +297,16 @@ the fork, `perf-sentinel capture` receiving OTLP over the network, and
 too: size cap, unusable versus backpressure rejections, refusal to
 start on an unwritable output, whole-process-group stop on SIGTERM,
 and cross-container listening.
+
+The `java-ci-file-export` gate runs the same fixture with no `capture`
+at all. OpenTelemetry Java SDK 1.66.0 lets the `otlp_file/development`
+exporter write to a file (`output_stream`), through declarative
+configuration only, so the agent in the Failsafe fork writes
+`target/traces.jsonl` itself and `analyze --ci` reads it. The gate
+asserts the same counts as `capture`, the APPEND behaviour a persistent
+workspace trips on, a red suite that still leaves its file, and the
+silent zero of the same configuration on agent 2.31.1 (SDK 1.65): a
+green build with no trace file at all.
 
 The `otlp-compression-matrix` gate locks the 0.9.28 OTLP transport ×
 encoding matrix. Gzipped gRPC is ingested, and refused on the pre-fix
@@ -413,7 +423,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 70 (sequential, long-running-drift is the long pole)
+# All 87 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1444,7 +1454,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 86 scenarios, in an order
+`make verify-all-scenarios` includes all 87 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -1456,6 +1466,14 @@ recipe verbatim from the published POM: Maven Failsafe +
 contract that command promises, namely the size cap, unusable versus
 backpressure rejections, refusal to start on an unwritable output,
 whole-process-group stop on SIGTERM, and cross-container listening.
+
+`java-ci-file-export` removes `capture` from that chain. With agent
+2.32 (the first to bundle SDK 1.66) and a declarative configuration
+file, the forked JVM writes OTLP JSON Lines straight to a file. There
+is no receiver, no port, and nothing on the fork's stdout, which is
+the channel that broke `experimental-otlp/stdout`. The three `ci-e2e-*`
+scenarios below run that no-capture step too, as H5, J9 and G5, next
+to their `capture` step and against the same counts.
 
 `ci-e2e-jenkins` runs the documented Java CI recipe inside a real
 Jenkins controller. It follows the artifact all the way to whether the

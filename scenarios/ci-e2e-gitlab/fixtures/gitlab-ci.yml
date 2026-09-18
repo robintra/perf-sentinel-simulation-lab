@@ -48,6 +48,33 @@ integration-tests:
       - target/traces.json
     expire_in: 1 day
 
+# The same suite a second time, WITHOUT capture: the agent writes
+# project/target/traces.jsonl itself (SDK 1.66 otlp_file/development +
+# output_stream, the otel-file profile). A real pipeline picks one of the two
+# shapes; this one runs both so the scenario can compare them (G5). The agent
+# jar comes from the Sonatype snapshot repository while the pin is a SNAPSHOT,
+# which is why manifests/network-policies.yaml opens central.sonatype.com.
+integration-tests-file:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  services:
+    - name: postgres:18.4-alpine
+      alias: postgres
+  before_script:
+    - chmod +x ./perf-sentinel
+  script:
+    # The exporter APPENDS: start from an empty file.
+    - rm -f project/target/traces.jsonl
+    - mvn -B -f project/pom.xml -P otel-file verify -Dlab.db.url="$LAB_DB_URL" -Dlab.items=15
+    - ./perf-sentinel analyze --ci --input project/target/traces.jsonl --format json
+        > perf-sentinel-file-report.json || true
+  artifacts:
+    when: always
+    paths:
+      - project/target/traces.jsonl
+      - perf-sentinel-file-report.json
+    expire_in: 1 day
+
 perf-sentinel:
   stage: report
   image: maven:3.9-eclipse-temurin-21

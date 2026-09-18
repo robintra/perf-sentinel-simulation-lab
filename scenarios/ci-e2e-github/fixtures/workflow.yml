@@ -54,6 +54,24 @@ jobs:
                  -Dlab.db.url="jdbc:postgresql://${LAB_PG_HOST}:5432/labdb?user=lab&password=lab" \
                  -Dlab.items=15
 
+      # The same suite a second time, WITHOUT capture: the agent writes the
+      # file itself (SDK 1.66 `otlp_file/development` + `output_stream`, the
+      # `otel-file` profile). A real workflow picks one of the two shapes; this
+      # one runs both so ci-e2e-github can compare them (H5).
+      - name: Run integration tests with file export
+        run: |
+          set -euo pipefail
+          # The exporter APPENDS: start from an empty file.
+          rm -f project/target/traces.jsonl
+          mvn -B -f project/pom.xml -P otel-file verify \
+            -Dlab.db.url="jdbc:postgresql://${LAB_PG_HOST}:5432/labdb?user=lab&password=lab" \
+            -Dlab.items=15
+
+      - name: Analyze the file export
+        run: |
+          ./perf-sentinel analyze --ci --input project/target/traces.jsonl --format json \
+            > perf-sentinel-file-report.json || true
+
       - name: Analyze
         run: |
           # --ci exits non-zero when the quality gate trips, the nominal outcome

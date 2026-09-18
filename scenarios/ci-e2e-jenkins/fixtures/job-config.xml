@@ -32,6 +32,18 @@ pipeline {
                 sh 'perf-sentinel capture --output target/traces.json -- mvn -B -f project/pom.xml verify -Dlab.db.url="jdbc:postgresql://$LAB_PG_HOST:5432/labdb?user=lab&amp;password=lab" -Dlab.items=15'
             }
         }
+        stage('Integration tests with file export') {
+            steps {
+                // The same suite a second time, WITHOUT capture: the agent writes
+                // project/target/traces.jsonl itself (SDK 1.66 otlp_file/development
+                // + output_stream, the otel-file profile). A real pipeline picks one
+                // of the two shapes; this job runs both so J9 can compare them.
+                // rm -f: the exporter APPENDS, and a Jenkins workspace persists.
+                sh 'rm -f project/target/traces.jsonl'
+                sh 'mvn -B -f project/pom.xml -P otel-file verify -Dlab.db.url="jdbc:postgresql://$LAB_PG_HOST:5432/labdb?user=lab&amp;password=lab" -Dlab.items=15'
+                sh 'perf-sentinel analyze --ci --input project/target/traces.jsonl --format json > perf-sentinel-file-report.json || true'
+            }
+        }
         stage('Analyze') {
             steps {
                 // --ci exits non-zero when the quality gate trips, which is the
@@ -49,7 +61,7 @@ pipeline {
     post {
         always {
             archiveArtifacts(
-                artifacts: 'report.html, perf-sentinel-report.json, target/traces.json',
+                artifacts: 'report.html, perf-sentinel-report.json, target/traces.json, perf-sentinel-file-report.json, project/target/traces.jsonl',
                 allowEmptyArchive: true
             )
             publishHTML([

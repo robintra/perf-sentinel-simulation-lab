@@ -33,6 +33,7 @@ clean workspace, and an artifact served by the CI system's own web server.
 | J5 | with the remedy `docs/CI.md` prescribes, the dashboard renders |
 | J7 | whether the fix `docs/CI.md:423` promises would actually help |
 | J8 | the blocked page carries the `#ps-no-js` notice explaining why it is blank, and that notice is gone once the script runs |
+| J9 | a second stage runs the suite **without capture** (`-P otel-file`, the agent writes `project/target/traces.jsonl` itself, SDK 1.66) after `rm -f` on the persistent workspace: 16 spans and `n_plus_one_sql` at 15 in the archived artifact |
 
 J4 records rather than asserts, on purpose: today the dashboard is blank under
 Jenkins' default CSP, and a gate that turned red when the product *improved*
