@@ -34,6 +34,11 @@
 #
 #   6.E. Real Chrome renders the batch-warning banner only when warnings are
 #        present, and the findings CSV exposes the grouping columns.
+#
+#   6.F. The text `Window:` line is in the local time zone (0.23.0), nine
+#        hours later under TZ=JST-9 and TZ=Asia/Tokyo than under UTC, the
+#        named zone resolving with no zoneinfo in the image, and the JSON
+#        output is byte-identical between zones.
 
 set -euo pipefail
 
@@ -354,6 +359,46 @@ else
   warn "clean gate failed exit ${SANITY_EXIT} (residue findings on long-lived cluster)"
 fi
 
+step "6.F. Terminal times in the local time zone, machine formats in UTC"
+
+# 0.23.0 prints the `Window:` line of text output in the machine's time
+# zone. The image is FROM scratch, with no zoneinfo: a named zone must
+# resolve against the database embedded in the binary rather than fall
+# back to UTC, and a POSIX rule, which needs no database, works as well.
+tz_run() {  # $1 = TZ, $2 = format, $3 = out file
+  docker run --rm "${DOCKER_NET_FLAGS[@]}" -e "TZ=$1" -v "${TMP_DIR}:/workdir" "${IMAGE}" \
+    analyze --input /workdir/source.json --format "$2" > "$3" 2>/dev/null || true
+}
+window_line() { sed 's/\x1b\[[0-9;]*m//g' "$1" | grep -m1 'Window:' | sed 's/^ *Window: *//' || true; }
+tz_run UTC text "${TMP_DIR}/tz-utc.txt"
+tz_run JST-9 text "${TMP_DIR}/tz-jst.txt"
+tz_run Asia/Tokyo text "${TMP_DIR}/tz-named.txt"
+tz_run UTC json "${TMP_DIR}/tz-utc.json"
+tz_run JST-9 json "${TMP_DIR}/tz-jst.json"
+UTC_WINDOW="$(window_line "${TMP_DIR}/tz-utc.txt")"
+JST_WINDOW="$(window_line "${TMP_DIR}/tz-jst.txt")"
+NAMED_WINDOW="$(window_line "${TMP_DIR}/tz-named.txt")"
+EXPECTED_JST="$(python3 - "${UTC_WINDOW}" <<'PY'
+import sys
+from datetime import datetime, timedelta
+parts = sys.argv[1].split(" -> ")
+try:
+    shifted = [(datetime.strptime(p, "%Y-%m-%d %H:%M:%S") + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S") for p in parts]
+    print(" -> ".join(shifted))
+except ValueError:
+    print("unparsable")
+PY
+)"
+if [ -n "${UTC_WINDOW}" ] && [ "${JST_WINDOW}" = "${EXPECTED_JST}" ] \
+   && [ "${NAMED_WINDOW}" = "${EXPECTED_JST}" ] \
+   && cmp -s "${TMP_DIR}/tz-utc.json" "${TMP_DIR}/tz-jst.json"; then
+  ASSERT_LOCAL_TIME="PASS"
+  ok "Window: ${UTC_WINDOW} (UTC) -> ${JST_WINDOW} (JST-9 and Asia/Tokyo), JSON identical"
+else
+  ASSERT_LOCAL_TIME="FAIL"
+  warn "Window UTC='${UTC_WINDOW}' JST-9='${JST_WINDOW}' Asia/Tokyo='${NAMED_WINDOW}' expected '${EXPECTED_JST}', or the JSON differs between zones"
+fi
+
 step "7. Verdict"
 
 # 6.D is informational. The 5 hard assertions are A formats coherence,
@@ -365,7 +410,8 @@ if [ "${ASSERT_FORMATS}" = "PASS" ] \
    && [ "${ASSERT_CSV_HEADERS}" = "PASS" ] \
    && [ "${ASSERT_DIFF_SCHEMA}" = "PASS" ] \
    && [ "${ASSERT_DIFF_NEW}" = "PASS" ] \
-   && [ "${ASSERT_CAP}" = "PASS" ]; then
+   && [ "${ASSERT_CAP}" = "PASS" ] \
+   && [ "${ASSERT_LOCAL_TIME}" = "PASS" ]; then
   verdict="PASS"
 else
   verdict="FAIL"
@@ -403,6 +449,10 @@ new_findings count > 0: ${ASSERT_DIFF_NEW} (${NEW_FINDINGS})
 
 Generated ack file: ${ACTUAL_SIZE} bytes
 Cap loader rejection: ${ASSERT_CAP}
+
+## 6.F. Local time on the terminal
+
+Window line in UTC vs JST-9 and Asia/Tokyo (no zoneinfo in the image), JSON identical: ${ASSERT_LOCAL_TIME}
 
 ## 6.D. Sanity gate clean (informational)
 
