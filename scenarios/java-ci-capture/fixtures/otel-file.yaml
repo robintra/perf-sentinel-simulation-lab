@@ -1,0 +1,39 @@
+# Declarative configuration read by the agent under `-P otel-file`
+# (OTEL_CONFIG_FILE). It replaces the OTEL_* variables of the base Failsafe
+# configuration entirely: whatever the file does not set is the SDK default,
+# not the environment.
+file_format: "1.1"
+
+resource:
+  attributes:
+    - name: service.name
+      value: lab-java-it
+
+tracer_provider:
+  processors:
+    # simple, not batch: one line per span, written as the span ends, so a JVM
+    # that exits without a clean shutdown still leaves every finished span.
+    - simple:
+        exporter:
+          otlp_file/development:
+            # SDK 1.66.0 and later. The file is opened in APPEND mode and its
+            # parent directory is created. LAB_TRACES_FILE is an absolute path
+            # set by the POM, so this expands to file:///...
+            output_stream: file://${LAB_TRACES_FILE}
+  sampler:
+    always_on:
+
+propagator:
+  composite:
+    - tracecontext:
+
+instrumentation/development:
+  java:
+    common:
+      db:
+        # Same reason as OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED
+        # in pom.xml: DETERMINISM of the gate assertion, not correctness. Do not
+        # copy it into a real pipeline, where it puts raw SQL literals into a
+        # file CI commonly publishes as a job artifact.
+        query_sanitization:
+          enabled: false

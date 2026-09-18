@@ -9,6 +9,10 @@
 # channel in premain (this scenario is what measured that). `capture` receives
 # OTLP over the network instead, so the fork stays untouched.
 #
+# Since SDK 1.66 (agent 2.32) a file-writing shape exists too, through
+# declarative configuration: see java-ci-file-export, which reuses this
+# fixture's `otel-file` profile.
+#
 # Assertions (see README.md):
 #   D0  the POM exactly as published produces a non-empty capture.
 #   D1  `mvn verify` runs normally, fork included, no Corrupted channel, no

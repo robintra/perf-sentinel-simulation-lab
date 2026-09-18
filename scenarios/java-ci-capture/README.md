@@ -14,6 +14,13 @@ names that exist nowhere in OpenTelemetry. An external user followed it on a
 Jenkins + Maven pipeline and got no traces at all. The *History* table below
 traces what happened next.
 
+Those two names still do not exist. What OpenTelemetry Java SDK 1.66.0 added
+in September 2026 is `output_stream: file:///...` on the
+`otlp_file/development` exporter, reachable through declarative configuration
+(`OTEL_CONFIG_FILE`) only, from agent 2.32 on. `java-ci-file-export` covers
+that shape with this same fixture, through its `otel-file` profile. The
+profile leaves the documented configuration below untouched.
+
 The reason none of it was caught is structural: every lab batch scenario
 before this one obtained its trace file from committed fixtures, a Collector
 `file` exporter, or a backend query API, never from a language agent. Every

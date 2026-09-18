@@ -359,8 +359,9 @@ else
 fi
 
 # ── A8: the opentelemetry-java stdout exporter shape ────────────────────────
-# Java has no OTLP file exporter, so the documented CI recipe captures traces
-# from the forked JVM's stdout: `experimental-otlp/stdout` writes one JSON
+# Before SDK 1.66 (agent 2.32) Java had no way to point the OTLP JSON exporter
+# at a file, so a CI recipe captured traces from the forked JVM's stdout (the
+# file path is java-ci-file-export's subject): `experimental-otlp/stdout` writes one JSON
 # object per export batch, Failsafe parks it in target/failsafe-reports, and a
 # grep turns it into NDJSON. That output carries attributes with no value at
 # all, which is legal protojson but matches no AnyValue variant.

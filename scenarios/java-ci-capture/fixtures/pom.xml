@@ -158,4 +158,68 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- The no-capture shape: the agent in the Failsafe fork writes OTLP JSON
+         Lines straight to target/traces.jsonl, no receiver, no port, no stdout.
+         Needs OpenTelemetry Java SDK 1.66.0 (open-telemetry/opentelemetry-java
+         #8676, `output_stream` on `otlp_file/development`), which only
+         declarative configuration reaches: there is no OTEL_* variable for it.
+         Agent 2.31.1 bundles SDK 1.65 and silently writes to stdout instead;
+         2.32.0-SNAPSHOT is the first agent with 1.66. Move this pin to 2.32.0
+         once it is tagged: Renovate's maven manager is off in this repo. -->
+    <profile>
+      <id>otel-file</id>
+      <properties>
+        <lab.otel.file.agent.version>2.32.0-SNAPSHOT</lab.otel.file.agent.version>
+      </properties>
+      <repositories>
+        <repository>
+          <id>central-snapshots</id>
+          <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+          <releases><enabled>false</enabled></releases>
+          <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+      </repositories>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-dependency-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>copy-otel-agent</id>
+                <configuration>
+                  <artifactItems>
+                    <artifactItem>
+                      <groupId>io.opentelemetry.javaagent</groupId>
+                      <artifactId>opentelemetry-javaagent</artifactId>
+                      <version>${lab.otel.file.agent.version}</version>
+                      <destFileName>opentelemetry-javaagent.jar</destFileName>
+                    </artifactItem>
+                  </artifactItems>
+                  <!-- target/ survives between runs: without this the copy
+                       skips a jar that is already there, whatever its version. -->
+                  <overWriteReleases>true</overWriteReleases>
+                  <overWriteSnapshots>true</overWriteSnapshots>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <configuration>
+              <environmentVariables>
+                <!-- With a config file set, the agent reads that file and
+                     nothing else: the OTEL_* variables above no longer apply. -->
+                <OTEL_CONFIG_FILE>${project.basedir}/otel-file.yaml</OTEL_CONFIG_FILE>
+                <LAB_TRACES_FILE>${project.build.directory}/traces.jsonl</LAB_TRACES_FILE>
+              </environmentVariables>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
