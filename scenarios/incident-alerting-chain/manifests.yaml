@@ -164,6 +164,12 @@ spec:
             # incident archive live in an emptyDir.
             - name: state
               mountPath: /var/lib/perf-sentinel
+            # The shared ConfigMap enables [daemon.hub_export] once
+            # seed-hub-local.sh has run, and the daemon exits when the key file
+            # it names is absent. Same optional mount as the daemon under test.
+            - name: hub-import-key
+              mountPath: /etc/perf-sentinel-hub
+              readOnly: true
           resources:
             requests:
               cpu: 50m
@@ -197,6 +203,10 @@ spec:
             name: perf-sentinel-daemon-config
         - name: state
           emptyDir: {}
+        - name: hub-import-key
+          secret:
+            secretName: perf-sentinel-hub-import-key
+            optional: true
 ---
 apiVersion: v1
 kind: Service
