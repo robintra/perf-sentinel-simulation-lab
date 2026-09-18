@@ -510,7 +510,7 @@ step "Infinity datasource: run each findings-dashboard target through POST /api/
 # so the server-side truth is /api/ds/query with the dashboard's own targets.
 # Grafana does not interpolate dashboard variables on this route, so the
 # ${...} of the Findings URL are substituted here with the dashboard's
-# defaults, an empty grouping and service meaning no filter on the API.
+# defaults, an empty grouping, service and type meaning no filter on the API.
 # Row assertions need the ring populated: they are gated on SKIP_TRAFFIC.
 # Must run before the trigger test, which scales the daemon to 0 and
 # empties the findings ring and the correlator pairs.
@@ -527,10 +527,10 @@ auth = base64.b64encode(("admin:" + os.environ["GRAFANA_PASS"]).encode()).decode
 dash = json.load(open(os.environ["LAB_FINDINGS_DASHBOARD"]))
 expect_rows = os.environ["EXPECT_ROWS"] == "1"
 DS = {"type": "yesoreyeram-infinity-datasource", "uid": "perf-sentinel-api"}
-SUBS = {"${limit}": "200", "${offset}": "0", "${grouping}": "", "${service}": "", "${include_acked}": "false"}
+SUBS = {"${limit}": "200", "${offset}": "0", "${grouping}": "", "${service}": "", "${type}": "", "${include_acked}": "false"}
 failures = []
 
-def target(title, service=None):
+def target(title, service=None, ftype=None):
     p = next(p for p in dash["panels"] if p.get("title") == title)
     t = json.loads(json.dumps(p["targets"][0]))
     t["datasource"] = DS
@@ -539,11 +539,13 @@ def target(title, service=None):
         u = u.replace(k, v)
     if service is not None:
         u = u.replace("service=", "service=" + service)
+    if ftype is not None:
+        u = u.replace("type=", "type=" + ftype)
     t["url"] = u
     return t
 
-def query(title, service=None):
-    body = json.dumps({"from": "now-6h", "to": "now", "queries": [target(title, service)]}).encode()
+def query(title, service=None, ftype=None):
+    body = json.dumps({"from": "now-6h", "to": "now", "queries": [target(title, service, ftype)]}).encode()
     req = urllib.request.Request(url, data=body, method="POST", headers={
         "Content-Type": "application/json", "Authorization": "Basic " + auth})
     try:
@@ -584,16 +586,33 @@ if expect_rows:
     elif "Fix for" in fields and not column(frames, fields, "Fix for"):
         failures.append("Findings: no row with a non-empty 'Fix for' (expected 'java jpa')")
 
+# Finding type variable: a single type narrows the table on the daemon, and
+# `All`, which the dashboard sends as a single space, lets every type through.
+# validate-findings drives slow-sql, so slow_sql rows exist.
+frames, fields, rows = query("Findings", ftype="slow_sql")
+if expect_rows:
+    types = set(column(frames, fields, "Type")) if "Type" in fields else set()
+    if rows == 0 or types != {"slow_sql"}:
+        failures.append(f"Findings type=slow_sql: expected only slow_sql rows, got rows={rows} types={sorted(types)}")
+frames, fields, rows = query("Findings", ftype="%20")
+if expect_rows:
+    types = set(column(frames, fields, "Type")) if "Type" in fields else set()
+    if len(types) < 2:
+        failures.append(f"Findings type=' ' (All): expected several types, got {sorted(types)}")
+
 # Empty selection: a service nobody runs makes the API answer [] and the
 # JSONata ternary must yield No data, not Infinity's 'no results found'.
 query("Findings", service="no-such-service")
 
-# Correlations: the 14 columns, one row at least once chatty and fanout ran.
+# Correlations: the 15 columns, both sides' traces named since 0.23.0, one
+# row at least once chatty and fanout ran.
 frames, fields, rows = query("Correlations")
 expected = [c["text"] for c in target("Correlations")["columns"]]
 missing = [c for c in expected if c not in fields]
-if len(expected) != 14 or (rows > 0 and missing):
-    failures.append(f"Correlations: expected 14 fields, missing {missing} in {fields}")
+if len(expected) != 15 or not {"Source trace", "Target trace"} <= set(expected) or (rows > 0 and missing):
+    failures.append(f"Correlations: expected 15 fields with Source/Target trace, missing {missing} in {fields}")
+if rows > 0 and "Source trace" in fields and not column(frames, fields, "Source trace"):
+    failures.append("Correlations: no row carries a source_sample_trace_id")
 if expect_rows and rows == 0:
     failures.append("Correlations: 0 rows after validate-findings (chatty + fanout)")
 
