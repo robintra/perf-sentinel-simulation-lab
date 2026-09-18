@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 87 scenarios live under `scenarios/<name>/` and each one ships a
+The 89 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -190,10 +190,12 @@ Findings produced by the standard rule omit the field.
 | [`astronomy-shop`](#astronomy-shop-capture-and-replay)    | foreign OTel auto-instrumentation + FP budget on captured demo slices | none (committed fixtures + local binary)         | PASS   |
 | [`grouping-identity`](#grouping-identity)                  | 0.11 grouping identity across ingest, detection and outputs    | local binary + Docker + Chrome                    | PASS   |
 | [`findings-page-filters`](#findings-page-filters-0210-findings-page-contract-and-its-fold) | 0.21.0 findings page filters, paging and fold, against the published release | local binary + Docker | PASS   |
+| [`correlation-event-time`](#correlation-event-time-0230-pairing-on-event-time) | 0.23.0 correlator pairing on event time, both sides' traces, against the published release | local binary + Docker | PASS   |
+| [`slow-window-cross-batch`](#slow-window-cross-batch-0230-daemon-slow-window) | 0.23.0 daemon slow window across analysis batches, against the published release | local binary + Docker | PASS   |
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 87
+`grouping-identity` is the 0.11 contract gate. The lab now ships 89
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -423,7 +425,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 87 (sequential, long-running-drift is the long pole)
+# All 89 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1454,7 +1456,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 87 scenarios, in an order
+`make verify-all-scenarios` includes all 89 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -3014,6 +3016,54 @@ instead; from 0.21.0 on, a build that ignores it is a moved contract,
 not an old binary. A gate that skips forever is indistinguishable from
 one that passes, and the 0.20.2 ledger entry records a release whose
 only change no scenario here could see.
+
+## correlation-event-time (0.23.0, pairing on event time)
+
+`make verify-correlation-event-time`. Self-contained: the local release
+binary, Docker, python3 and curl. About a minute.
+
+Until 0.22.2 the cross-trace correlator stamped every finding of an
+analysis tick with the tick time: only findings of one tick could pair,
+the lag was the gap between two ticks, and the source was whichever side
+arrived first. `correlation-finding` cannot tell, it only asserts that
+some pair exists after validate-findings, which both builds satisfy.
+
+`tools/tracegen/emit_at.py` sends one trace per batch with its spans
+stamped at a chosen time. Four rounds 30 s apart in event time: A at t
+and B at t + 5 s sent in that order, C at t and D at t + 7 s sent D
+first. With `lag_threshold_ms = 10000` a finding only pairs inside its
+round, so the answers are exact:
+
+1. `median_lag_ms` is 5000 for A -> B and 7000 for C -> D.
+2. C is the source although D arrived first, and no D -> C pair exists.
+3. `source_sample_trace_id` and `sample_trace_id` name the last round's
+   A and B traces, and `/api/explain` opens both.
+4. Counter-proof on the published image: the same A/B corpus gives the
+   tick gap (about 1500 ms), not 5000.
+5. `window_minutes = 0` is refused at config load.
+
+## slow-window-cross-batch (0.23.0, daemon slow window)
+
+`make verify-slow-window-cross-batch`. Self-contained: the local release
+binary, Docker, python3 and curl. About three minutes, two of them
+waiting between episodes.
+
+validate-findings' slow scenarios put three slow spans in every trace,
+so the batch detectors report them and the spans they report are
+excluded from the window: the cross-batch path never fires anywhere
+else in the lab. Here each episode is one slow span in its own trace,
+65 s apart in wall clock (an episode spans max(60 s, 1.5 x
+`trace_ttl_ms`)), sent to three daemons at once: the build under test
+with `slow_query_window_minutes = 15`, the same with `0`, and the
+published image.
+
+1. The windowed daemon reports one `slow_sql` finding with 3 occurrences.
+2. Its `trace_id` is the trace of the episode that fired it, and
+   `/api/explain` opens it.
+3. `perf_sentinel_slow_window_keys_refused_total` is exposed, at 0.
+4. The disabled window reports nothing.
+5. Counter-proof: the published image reports nothing.
+6. `slow_query_window_minutes = 61` is refused at config load.
 
 ## incident-alerting-chain (0.22.0, where the delivery comes from)
 
