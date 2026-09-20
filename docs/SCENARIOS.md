@@ -3097,10 +3097,12 @@ published image.
 ## incident-alerting-chain (0.22.0, where the delivery comes from)
 
 `make verify-incident-alerting-chain`. Legs A to F are self-contained (python3,
-promtool, kubeconform) and take seconds. Legs G to I need the cluster, a daemon
-under test from `make seed-daemon-local`, and the image from
-`make seed-tracegen`. Around ten minutes, most of it spent waiting on
-Alertmanager's own group intervals.
+promtool, kubeconform) and take seconds. Legs G to I need the cluster and a
+daemon under test from `make seed-daemon-local`. The target depends on
+`make seed-tracegen`, since the victim and the seed Job both run that image and
+neither pod starts without it, which reads in leg I as a rule that stopped
+firing. Around ten minutes, most of it spent waiting on Alertmanager's own
+group intervals.
 
 `incident-window-capture` owns what the daemon does with a delivery. This one
 owns where the delivery comes from, which until 0.22.0 nothing did: both
@@ -3109,12 +3111,32 @@ of the four links in the real chain live outside the product repo, in the CRD
 schema, the operator that renders it and the Alertmanager that sends it.
 
 **The rules, without a cluster.** promtool accepts both example files, the
-prometheus-operator and VictoriaMetrics files carry byte-identical rules, and
-seven unit tests over synthetic kube-state-metrics series settle the three
-claims the files make in prose and cannot demonstrate: the oom and restart
-rules exclude each other, the saturation rule is permanently silent on a
-container with no memory limit, and both many-to-one joins survive a
-kube-state-metrics scraped twice.
+prometheus-operator and VictoriaMetrics files carry byte-identical rules down
+to the recording rule's two-minute interval, and nine unit tests over synthetic
+kube-state-metrics series settle the five claims the files make in prose and
+cannot demonstrate: the oom and restart rules exclude each other, the
+saturation rule is permanently silent on a container with no memory limit, both
+many-to-one joins survive a kube-state-metrics scraped twice, a workload with
+no `perf_sentinel_service_io_ops_total` over the window raises nothing, and
+that same workload raises it again once
+`perf_sentinel_service_io_ops_overflow_total` is nonzero.
+
+**The fifth group, 0.24.0.** Both files gained a
+`perf_sentinel:untraced_services:1d` recording rule, evaluated every two
+minutes, and the four alerts subtract it with `unless on (service)`, so a
+workload the daemon has not ingested over the last day raises no incident with
+an empty findings array. Whatever the record lacks lets an alert through, which
+is what makes the overflow case above the one worth pinning: past the daemon's
+1024-service cap a later service has no series at all, and a record still
+subtracting on that evidence would silence a whole fleet. Every unit test
+publishes the `kube_pod_container_info` its pod would really carry, since a
+case that omits it passes for want of a left-hand side rather than because the
+rule behaves, and every service meant to look ingested publishes
+`perf_sentinel_service_io_ops_total` beside it. In the cluster the same thing
+decides the
+chain: the victim is a `container="app"` workload like any other, so it is
+silenced until the tracegen Job reaches the daemon and Prometheus scrapes the
+counter, which is why the findings are seeded first.
 
 **The schema.** The example file asserts that `AlertmanagerConfig`'s
 `httpConfig` carries no arbitrary-header field and does carry a bearer token.
@@ -3134,7 +3156,11 @@ before its 401 on a bearer proves anything.
 `kube_replicaset_owner` twice per (namespace, replicaset). The shipped deploy
 rule runs beside a copy of its pre-review expression, and
 `prometheus_rule_evaluation_failures_total` separates them: the unaggregated
-one does not alert late, it fails to evaluate and posts nothing.
+one does not alert late, it fails to evaluate and posts nothing. The counter is
+read for both shipped groups, the record's included, and an absent group fails
+the leg instead of counting as zero: a record group that stops evaluating is
+silent, it empties the record and every alert passes its `unless`, so the chain
+below reports the same alerts it reports when all is well.
 
 **The chain.** The `PrometheusRule` is applied byte for byte, which is possible
 because the scenario's victim names its container `app` and no other workload
@@ -3145,7 +3171,11 @@ counted either, so an operator has nothing anywhere to read. Disabled, the same
 alert reaches the receiver, a real Alertmanager sends the bearer credential, and
 the incident comes back with its window frozen. Findings are seeded before any
 alert fires and a non-empty `findings` array is asserted, because an incident
-that freezes nothing is recorded all the same and reports no error.
+that freezes nothing is recorded all the same and reports no error. The seed
+Job's own completion is asserted beside them: the record reads its counter over
+a whole day and the findings ring outlives the run, so a Job that stopped
+running would leave both answering from yesterday and the leg green on evidence
+this run did not produce.
 
 Two cluster-wide settings are changed and restored by a trap, which the
 pre-flight also resets on the way in: Alertmanager's
@@ -3154,7 +3184,11 @@ The scenario's README lists the manual restoration if the trap never ran.
 
 Deliberately not asserted: the VictoriaMetrics rendering (no VM operator runs
 here, and its converter would collide with every selector this lab leaves
-open), `PerfSentinelMemorySaturation` in-cluster (its `for: 5m` and the
+open), and with it the trap the fifth group brings to that operator (under it
+the recording rule needs the VMAlert's `spec.remoteWrite`, without which vmalert
+refuses its whole rule configuration, every `VMRule` it selects included, so a
+reload is rejected and a restart fails, which no spelling or schema check here
+can see), `PerfSentinelMemorySaturation` in-cluster (its `for: 5m` and the
 instability of holding a container just under its limit, both covered by the
 unit tests), the chart's `inhibit_rules` trap on `severity: info` (invisible
 while `defaultRules.create` is false), and Alertmanager in HA.

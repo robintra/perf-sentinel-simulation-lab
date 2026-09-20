@@ -12,12 +12,15 @@
 # Legs, in order of what they cost:
 #
 #   A. Both example files parse and promtool accepts their rules.
-#   B. The two files carry the SAME four rules. Everything proved on one is
-#      then proved on its twin, which is what lets leg C run once.
-#   C. promtool test rules over synthetic kube-state-metrics series: the seven
+#   B. The two files carry the SAME five rules, the four alerts and the
+#      recording rule they subtract. Everything proved on one is then proved on
+#      its twin, which is what lets leg C run once.
+#   C. promtool test rules over synthetic kube-state-metrics series: the nine
 #      behaviours the files claim in prose but cannot demonstrate, including
-#      the two duplicated-series joins and the rule that goes silent when a
-#      container carries no memory limit.
+#      the two duplicated-series joins, the rule that goes silent when a
+#      container carries no memory limit, and both directions of the record,
+#      the untraced workload it drops and the service cap that makes it stop
+#      dropping anything.
 #   D. The CRD fields the receiver uses exist in the schema that admits it,
 #      read from the installed CRD when there is a cluster and from the pinned
 #      chart otherwise.
@@ -31,8 +34,10 @@
 #      guard that says they really are two versions: /api/status reports the
 #      same number on both, because Cargo.toml still carries 0.21.0 on this
 #      branch, so the 401 body is the discriminant.
-#   H. The deploy rule against a kube-state-metrics scaled to two, beside a
-#      copy of its pre-review expression. One evaluates, the other does not.
+#   H. The shipped rules applied unedited, against a kube-state-metrics scaled
+#      to two, beside a copy of the deploy rule's pre-review expression. One
+#      evaluates, the other does not, and both shipped groups are read: a
+#      record that fails to evaluate is silent, it just stops suppressing.
 #   I. The chain: the shipped rules applied unedited fire on real series, the
 #      default namespace matcher swallows the delivery in complete silence,
 #      disabling it lets a real Alertmanager post its bearer credential, and
@@ -113,14 +118,14 @@ else
     fi
   done
   if [ "${A_OK}" = "1" ]; then
-    record "promtool check" PASS "both rule sets accepted, 4 rules each"
+    record "promtool check" PASS "both rule sets accepted, 5 rules each"
   else
     record "promtool check" FAIL "see log"
   fi
 fi
 
 # ---------------------------------------------------------------------------
-step "B. The two files carry the same four rules"
+step "B. The two files carry the same five rules"
 if B_OUT="$(python3 "${FIXTURES}/check_twins.py" "${TMP_DIR}/rules.yaml" "${TMP_DIR}/vm-rules.yaml" 2>&1)"; then
   ok "${B_OUT}"
   record "twins identical" PASS "${B_OUT}"
@@ -130,22 +135,27 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-step "C. The four rules behave the way the file describes them"
-# The seven cases live in fixtures/rules-unit-tests.yaml. They settle
+step "C. The five rules behave the way the file describes them"
+# The nine cases live in fixtures/rules-unit-tests.yaml. They settle
 # deterministically, in under a second, what a cluster settles slowly and only
 # with a second kube-state-metrics: the two duplicated-series joins, the rule
-# that is silent without a memory limit, and the pod shape that loses its
-# service label. Cheap enough to run on every pass, and they fail on their own.
+# that is silent without a memory limit, the pod shape that loses its service
+# label, and the recording rule both ways, dropping a workload the daemon never
+# ingested and dropping nobody once the service cap has overflowed. Every case
+# gives the record a left-hand side to subtract from, so a rule that fires
+# fires past the record rather than for want of anything to subtract. Cheap
+# enough to run on every pass, and they fail on their own.
 if ! command -v promtool >/dev/null; then
   skip "promtool not installed"
   record "rule unit tests" SKIP "promtool absent"
 else
   cp "${FIXTURES}/rules-unit-tests.yaml" "${TMP_DIR}/tests.yaml"
   if C_OUT="$(cd "${TMP_DIR}" && promtool test rules tests.yaml 2>&1)"; then
-    ok "7 behaviours asserted: the oom/restart exclusion, the for clause, the"
+    ok "9 behaviours asserted: the oom/restart exclusion, the for clause, the"
     ok "rule that stays silent with no memory limit, both duplicated-series"
-    ok "joins, and the pod shape that loses its service label"
-    record "rule unit tests" PASS "promtool test rules SUCCESS, 7 cases"
+    ok "joins, the pod shape that loses its service label, the workload the"
+    ok "daemon never ingested, and the service cap that silences nobody"
+    record "rule unit tests" PASS "promtool test rules SUCCESS, 9 cases"
   else
     fail "promtool test rules failed:"
     printf '%s\n' "${C_OUT}" | head -20
@@ -283,6 +293,21 @@ promq() {  # $1 = PromQL, prints one JSON result array
   curl -s --get "${PROM_URL}/api/v1/query" --data-urlencode "query=$1" 2>/dev/null
 }
 
+rule_fails() {  # $@ = rule group names, prints their total failures
+  # A group Prometheus never loaded publishes no counter at all, and reading
+  # that as zero is how a rule that is not there passes for a rule that
+  # evaluates cleanly. Missing is reported as `absent`, never as a number.
+  promq 'prometheus_rule_evaluation_failures_total' \
+    | python3 -c "
+import json, sys
+seen = {}
+for s in json.load(sys.stdin)['data']['result']:
+    seen[s['metric'].get('rule_group', '').rsplit(';', 1)[-1]] = float(s['value'][1])
+missing = [g for g in sys.argv[1:] if g not in seen]
+print('absent(%s)' % ','.join(missing) if missing else int(sum(seen[g] for g in sys.argv[1:])))" \
+    "$@" 2>/dev/null
+}
+
 route_target() {
   kubectl -n "${NS}" exec "${AM_POD}" -c alertmanager -- amtool config routes test \
     --config.file=/etc/alertmanager/config_out/alertmanager.env.yaml \
@@ -384,10 +409,25 @@ step "H. The deploy rule survives a replicated kube-state-metrics"
 # (namespace, replicaset), and the unaggregated join then refuses the match:
 # the rule does not alert late, it fails to evaluate and posts nothing, ever.
 # Leg C proves the same thing offline; this proves it on real series.
+#
+# Both shipped groups are read, not just the alerting one. The record of the
+# untraced-services group is the only expression in either file joining on an
+# aggregated scalar, and a group that fails to evaluate leaves the record
+# empty, which is silent: every alert then passes the `unless` and leg I below
+# reports the same alerts it reports when all is well.
 if [ "${CLUSTER_OK}" != "1" ]; then
   skip "no usable cluster"
   record "group_left fix" SKIP "no cluster"
 else
+  # The rules go in BYTE FOR BYTE. No container selector is substituted, no
+  # regex adapted: the victim in manifests.yaml names its container `app`
+  # precisely so the shipped file applies unedited. Validating an adapted copy
+  # would validate the copy. They are applied here rather than in leg I so
+  # this leg has something of theirs to read.
+  python3 "${FIXTURES}/extract_doc.py" "${PROM_FILE}" PrometheusRule "${TMP_DIR}/rule.yaml" \
+    || die "could not extract the PrometheusRule document"
+  kubectl apply -f "${TMP_DIR}/rule.yaml" >/dev/null 2>&1 \
+    || die "the API server refused the shipped PrometheusRule"
   kubectl -n "${NS}" scale "${KSM}" --replicas=2 >/dev/null 2>&1
   kubectl apply -f "${SCENARIO_DIR}/control-unaggregated-rule.yaml" >/dev/null 2>&1
   kubectl -n "${NS}" rollout status "${KSM}" --timeout=180s >/dev/null 2>&1
@@ -396,33 +436,23 @@ else
 
   DUPES="$(promq 'count(count by (replicaset) (kube_replicaset_owner{owner_kind="Deployment"}) > 1)' \
     | python3 -c 'import json,sys; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else 0)' 2>/dev/null)"
-  SHIPPED_FAILS="$(promq 'prometheus_rule_evaluation_failures_total' \
-    | python3 -c "
-import json, sys
-best = '0'
-for s in json.load(sys.stdin)['data']['result']:
-    g = s['metric'].get('rule_group', '')
-    if g.endswith(';perf-sentinel-incidents'):
-        best = s['value'][1]
-print(best)" 2>/dev/null)"
-  CONTROL_FAILS="$(promq 'prometheus_rule_evaluation_failures_total' \
-    | python3 -c "
-import json, sys
-best = '0'
-for s in json.load(sys.stdin)['data']['result']:
-    g = s['metric'].get('rule_group', '')
-    if g.endswith(';perf-sentinel-incidents-control'):
-        best = s['value'][1]
-print(best)" 2>/dev/null)"
+  SHIPPED_FAILS="$(rule_fails perf-sentinel-incidents perf-sentinel-untraced-services)"
+  CONTROL_FAILS="$(rule_fails perf-sentinel-incidents-control)"
 
   if [ "${DUPES:-0}" -lt 1 ]; then
     fail "no replicaset has a duplicated owner series, so this leg tests nothing"
     record "group_left fix" FAIL "no duplication, kube-state-metrics may not have scaled"
+  elif [[ "${SHIPPED_FAILS}" == absent* || "${CONTROL_FAILS}" == absent* ]]; then
+    fail "a rule group never reached Prometheus: shipped=${SHIPPED_FAILS}, control=${CONTROL_FAILS}"
+    fail "(a group it never loaded publishes no counter, which reads exactly"
+    fail "like a group that evaluates cleanly)"
+    record "group_left fix" FAIL "shipped=${SHIPPED_FAILS}, control=${CONTROL_FAILS}"
   elif [ "${SHIPPED_FAILS}" = "0" ] && [ "${CONTROL_FAILS}" != "0" ]; then
     ok "${DUPES} replicaset(s) carry a duplicated owner series"
-    ok "the shipped rule evaluates cleanly (0 failures), the pre-review one"
-    ok "fails ${CONTROL_FAILS} times: not a late alert, an evaluation that never happens"
-    record "group_left fix" PASS "shipped=0 failures, pre-review=${CONTROL_FAILS}, ${DUPES} duplicated series"
+    ok "both shipped groups evaluate cleanly (0 failures over the four alerts"
+    ok "and the record), the pre-review one fails ${CONTROL_FAILS} times: not a"
+    ok "late alert, an evaluation that never happens"
+    record "group_left fix" PASS "shipped=0 failures over both groups, pre-review=${CONTROL_FAILS}, ${DUPES} duplicated series"
   else
     fail "shipped rule failures=${SHIPPED_FAILS}, pre-review control=${CONTROL_FAILS}"
     fail "(expected 0 and non-zero: either the fix regressed, or the control no"
@@ -439,15 +469,8 @@ if [ "${CLUSTER_OK}" != "1" ]; then
   record "namespace matcher" SKIP "no cluster"
   record "bearer delivers" SKIP "no cluster"
 else
-  # The rules go in BYTE FOR BYTE. No container selector is substituted, no
-  # regex adapted: the victim in manifests.yaml names its container `app`
-  # precisely so the shipped file applies unedited. Validating an adapted copy
-  # would validate the copy.
-  python3 "${FIXTURES}/extract_doc.py" "${PROM_FILE}" PrometheusRule "${TMP_DIR}/rule.yaml" \
-    || die "could not extract the PrometheusRule document"
-  kubectl apply -f "${TMP_DIR}/rule.yaml" >/dev/null 2>&1 \
-    || die "the API server refused the shipped PrometheusRule"
-
+  # The shipped PrometheusRule went in unedited in leg H and is still applied.
+  #
   # The receiver needs three substitutions and the scenario names each one:
   # two are addresses (this lab calls its Service perf-sentinel-daemon and
   # exposes it on 14318), the third adds the 0.21.0 twin to the same receiver
@@ -466,8 +489,17 @@ else
   # the freeze window has something to freeze. An incident with an empty
   # findings array is recorded all the same and reports no error anywhere,
   # which is the quietest way this whole chain can look green and be useless.
+  #
+  # Since 0.24.0 the same seeding is also what lifts the untraced-services
+  # record off the victim, so the alert fires at all. The Job's completion is
+  # asserted rather than assumed: the record reads its counter over a whole
+  # day and the daemon's ring outlives the run, so a Job that stopped running
+  # would leave both of them answering from yesterday and this leg green on
+  # evidence it did not produce.
   kubectl apply -f "${SCENARIO_DIR}/tracegen-job.yaml" >/dev/null 2>&1
-  kubectl -n "${NS}" wait --for=condition=complete job/tracegen-psbearer --timeout=240s >/dev/null 2>&1
+  JOB_DONE=1
+  kubectl -n "${NS}" wait --for=condition=complete job/tracegen-psbearer --timeout=240s >/dev/null 2>&1 \
+    || JOB_DONE=0
   sleep 40
   SEEDED="$(curl -s "${DAEMON_URL}/api/findings?service=psbearer-probe-0000" 2>/dev/null \
     | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d if isinstance(d,list) else d.get("findings",[])))' 2>/dev/null)"
@@ -484,14 +516,17 @@ print(' '.join(sorted({r['metric']['alertname'] for r in rows})))" 2>/dev/null)"
     sleep 10
   done
 
-  if [ -n "${FIRED}" ] && [ "${SEEDED:-0}" -ge 1 ]; then
+  if [ "${JOB_DONE}" = "1" ] && [ -n "${FIRED}" ] && [ "${SEEDED:-0}" -ge 1 ]; then
+    ok "the seed Job completed on this run, so the ingest the record reads and"
+    ok "the findings the window freezes both belong to it"
     ok "the shipped rules, applied unedited, fire on real series: ${FIRED}"
     ok "and derive service=psbearer-probe-0000 from the pod name, which is"
     ok "exactly the OTLP service.name the ${SEEDED} seeded findings carry"
     record "rules fire" PASS "${FIRED}, service derived, ${SEEDED} findings seeded"
   else
-    fail "alerts fired: '${FIRED}', findings seeded: ${SEEDED:-0}"
-    record "rules fire" FAIL "fired='${FIRED}', seeded=${SEEDED:-0}"
+    fail "seed Job completed: ${JOB_DONE}, alerts fired: '${FIRED}', findings seeded: ${SEEDED:-0}"
+    [ "${JOB_DONE}" = "1" ] || fail "(the Job runs lab-tracegen:1 with imagePullPolicy: Never, so \`make seed-tracegen\` first)"
+    record "rules fire" FAIL "job_done=${JOB_DONE}, fired='${FIRED}', seeded=${SEEDED:-0}"
   fi
 
   # --- The namespace matcher, negative direction. The chart default appends a

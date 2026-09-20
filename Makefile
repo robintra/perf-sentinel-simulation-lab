@@ -721,7 +721,7 @@ verify-archive-window-drops: ## 0.15.0 dropped archive windows: the four pre-war
 verify-incident-window-capture: ## 0.20.0 incident intake: the window frozen at reception, the settle merge, idempotent reposts, counted refusals, the NDJSON archive, until_ms, the last-span gauge and the 0.24.0 id parameter (local binary, no cluster)
 	./scenarios/incident-window-capture/verify.sh
 
-verify-incident-alerting-chain: ## 0.22.0 alerting half of POST /api/incidents: the shipped rules applied unedited, the group_left fix against a replicated kube-state-metrics, the namespace-matcher trap both ways, and a real Alertmanager delivering with a bearer credential against a 0.21.0 twin
+verify-incident-alerting-chain: seed-tracegen ## 0.22.0 alerting half of POST /api/incidents: the shipped rules applied unedited, the group_left fix against a replicated kube-state-metrics, the namespace-matcher trap both ways, and a real Alertmanager delivering with a bearer credential against a 0.21.0 twin
 	./scenarios/incident-alerting-chain/verify.sh
 
 verify-ack-lifecycle-warning: ## 0.9.28 CI acknowledgment life cycle: unmatched warning, the fixed/not-run split, and the pre-computed-report guard (local binary, no cluster)

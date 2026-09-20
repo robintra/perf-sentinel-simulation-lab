@@ -1,15 +1,26 @@
-# promtool unit tests for the four incident rules perf-sentinel ships in
-# examples/incident-alerts-prometheus-operator.yaml.
+# promtool unit tests for the five rules perf-sentinel ships in
+# examples/incident-alerts-prometheus-operator.yaml: the four alerts and the
+# perf_sentinel:untraced_services:1d record every one of them subtracts.
 #
 # These assert what the file's own comments claim but cannot prove: that the
 # OOM and restart rules are mutually exclusive, that the saturation rule is
-# silent when the container carries no memory limit, and that both many-to-one
-# joins survive a kube-state-metrics scraped on two instances. A real cluster
-# proves none of them better, and this lab's cluster proves none of them at
-# all: its containers are named after their chart, never `app`.
+# silent when the container carries no memory limit, that both many-to-one
+# joins survive a kube-state-metrics scraped on two instances, and that the
+# record drops a workload the daemon does not ingest while letting every
+# workload through the moment it can no longer tell which ones it does. A real
+# cluster proves none of them better, and this lab's cluster proves none of
+# them at all: its containers are named after their chart, never `app`.
 #
 # `rules.yaml` is written next to this file at run time by verify.sh, from the
 # shipped example's spec.groups.
+#
+# EVERY CASE CARRIES ITS OWN INGEST. `kube_pod_container_info` and
+# `perf_sentinel_service_io_ops_total` are not decoration here. A case that
+# omits the first leaves the record with no left-hand side to count, and then
+# passes because there is nothing to subtract, which is the new suppression
+# routed around rather than exercised. So each traced service below publishes
+# both, the shape a fleet the daemon ingests actually has, and the two cases at
+# the end are the ones that take an ingest away on purpose.
 #
 # Time base: promtool's synthetic clock starts at 0, so `time()` at eval_time
 # 10m is 600. That is why kube_replicaset_created sits at 400 rather than at a
@@ -28,6 +39,10 @@ tests:
         values: '0 0 0 1 1 1 1 1 1 1 1'
       - series: 'kube_pod_container_status_last_terminated_reason{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", reason="OOMKilled"}'
         values: '1+0x10'
+      - series: 'kube_pod_container_info{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab"}'
+        values: '1+0x10'
+      - series: 'perf_sentinel_service_io_ops_total{service="order-service", grouping=""}'
+        values: '4200+180x10'
     alert_rule_test:
       - eval_time: 6m
         alertname: PerfSentinelOomKill
@@ -51,6 +66,10 @@ tests:
     input_series:
       - series: 'kube_pod_container_status_restarts_total{namespace="shop", pod="payment-service-6c8f7d5b4-mn9wz", container="app"}'
         values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'kube_pod_container_info{namespace="shop", pod="payment-service-6c8f7d5b4-mn9wz", container="app", image="payment-service:lab"}'
+        values: '1+0x10'
+      - series: 'perf_sentinel_service_io_ops_total{service="payment-service", grouping=""}'
+        values: '3100+90x10'
     alert_rule_test:
       - eval_time: 6m
         alertname: PerfSentinelRestart
@@ -75,6 +94,10 @@ tests:
         values: '740000000+0x12'
       - series: 'kube_pod_container_resource_limits{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", resource="memory", unit="byte"}'
         values: '805306368+0x12'
+      - series: 'kube_pod_container_info{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab"}'
+        values: '1+0x12'
+      - series: 'perf_sentinel_service_io_ops_total{service="order-service", grouping=""}'
+        values: '4200+180x12'
     alert_rule_test:
       # 740/768 = 0.963, over the 0.9 floor, but three minutes is not five.
       - eval_time: 3m
@@ -96,12 +119,17 @@ tests:
   # The rule the example file calls "the one that fires BEFORE the crash" is
   # permanently dead on a container that sets requests but not limits: the
   # division matches nothing. Nothing anywhere says so, which is why it is
-  # asserted here and stated in the file's assumptions.
+  # asserted here and stated in the file's assumptions. The service is ingested
+  # below, so the silence can only come from the missing limit.
   - interval: 1m
     name: a container with no memory limit never saturates
     input_series:
       - series: 'container_memory_working_set_bytes{namespace="shop", pod="notification-service-5b9c6d8f7-qr3tv", container="app", image="notification-service:lab"}'
         values: '900000000+0x12'
+      - series: 'kube_pod_container_info{namespace="shop", pod="notification-service-5b9c6d8f7-qr3tv", container="app", image="notification-service:lab"}'
+        values: '1+0x12'
+      - series: 'perf_sentinel_service_io_ops_total{service="notification-service", grouping=""}'
+        values: '1700+40x12'
     alert_rule_test:
       - eval_time: 8m
         alertname: PerfSentinelMemorySaturation
@@ -120,6 +148,14 @@ tests:
         values: '805306368+0x12'
       - series: 'kube_pod_container_resource_limits{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", resource="memory", unit="byte", instance="ksm-b"}'
         values: '805306368+0x12'
+      # Doubled on the record's own left-hand side too, which is what the
+      # `max by (namespace, pod)` in front of its label_replace is there for.
+      - series: 'kube_pod_container_info{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab", instance="ksm-a"}'
+        values: '1+0x12'
+      - series: 'kube_pod_container_info{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab", instance="ksm-b"}'
+        values: '1+0x12'
+      - series: 'perf_sentinel_service_io_ops_total{service="order-service", grouping=""}'
+        values: '4200+180x12'
     alert_rule_test:
       - eval_time: 8m
         alertname: PerfSentinelMemorySaturation
@@ -150,6 +186,8 @@ tests:
         values: '1+0x12'
       - series: 'kube_pod_container_info{namespace="shop", pod="order-service-7d4b8c9f5-x2kqp", container="app", image="order-service:lab"}'
         values: '1+0x12'
+      - series: 'perf_sentinel_service_io_ops_total{service="order-service", grouping=""}'
+        values: '4200+180x12'
     alert_rule_test:
       - eval_time: 10m
         alertname: PerfSentinelDeploy
@@ -169,11 +207,19 @@ tests:
   # daemon refuses it into rejected_no_service rather than joining it to the
   # wrong findings. That refusal is the safety net, and it only works because
   # every rule drops the scrape target's own labels first.
+  #
+  # The pod publishes `kube_pod_container_info` like any other, which makes
+  # this a test of the record's own `pod=~".+-[^-]+-[^-]+"` selector as well:
+  # without it the record would carry an entry whose `service` stayed empty,
+  # and `unless on (service)` would swallow the very alert the daemon is meant
+  # to refuse out loud.
   - interval: 1m
     name: a StatefulSet pod fires without a service label
     input_series:
       - series: 'kube_pod_container_status_restarts_total{namespace="db", pod="postgres-0", container="app"}'
         values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'kube_pod_container_info{namespace="db", pod="postgres-0", container="app", image="postgres:18"}'
+        values: '1+0x10'
     alert_rule_test:
       - eval_time: 6m
         alertname: PerfSentinelRestart
@@ -185,3 +231,61 @@ tests:
               perf_sentinel_kind: restart
             exp_annotations:
               summary: 'db/: container restarted (postgres-0)'
+
+  # === 8. A workload the daemon does not ingest raises nothing ===
+  # The reason the record exists. This pod matches `container="app"` like every
+  # other, restarts exactly as case 2 does, and differs from it in one thing:
+  # no perf_sentinel_service_io_ops_total ever carried its service. The daemon
+  # holds no finding for it, so an incident on it would freeze an empty window,
+  # and those are what cluttered the incident panels.
+  #
+  # One alert is asserted and not all four. They carry the same `unless on
+  # (service)` clause, and the OOM rule would be silent here whatever the
+  # record does, for want of a termination reason: an `exp_alerts: []` on it
+  # cannot fail and would read as a second proof. Case 2 is the control, the
+  # same restart on a service the daemon does ingest, and it fires.
+  - interval: 1m
+    name: a workload the daemon never ingested stays silent
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'kube_pod_container_info{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app", image="legacy-batch:lab"}'
+        values: '1+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PerfSentinelRestart
+        exp_alerts: []
+
+  # === 9. Past the service cap the record silences nobody ===
+  # The fail-open direction, and the one worth pinning: whatever the record
+  # lacks lets an alert through. Same untraced workload as case 8, and the only
+  # thing added is a nonzero perf_sentinel_service_io_ops_overflow_total. Past
+  # its 1024-service cap the daemon gives a later service no series at all, so
+  # it can no longer say which workloads it ingests, and a record still
+  # subtracting on that evidence would silence a whole fleet at once.
+  #
+  # On its own this case cannot tell a working overflow clause from a record
+  # that was never there, since both leave nothing to subtract. Case 8 is the
+  # half that can: delete the record and case 8 goes red while this one stays
+  # green. The pair is the assertion, not either case alone.
+  - interval: 1m
+    name: an overflowing service cap silences nobody
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'kube_pod_container_info{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app", image="legacy-batch:lab"}'
+        values: '1+0x10'
+      - series: 'perf_sentinel_service_io_ops_overflow_total'
+        values: '7+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PerfSentinelRestart
+        exp_alerts:
+          - exp_labels:
+              namespace: shop
+              pod: legacy-batch-7f9c4d2b1-k8mnp
+              service: legacy-batch
+              severity: info
+              perf_sentinel_kind: restart
+            exp_annotations:
+              summary: 'shop/legacy-batch: container restarted (legacy-batch-7f9c4d2b1-k8mnp)'
