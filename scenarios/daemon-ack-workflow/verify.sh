@@ -16,6 +16,9 @@
 #   9. 409 conflict          : POST sig_b again -> 409, fail counter delta == 1
 #  10. DELETE sig_b          : 204, unack counter delta == 1
 #  11. TTL expiry            : sleep + poll, sig_a dropped at query time
+#  12. include_toml (0.24.0) : a throwaway daemon of its own reads a CI TOML
+#                              baseline, the flagged listing names both sources
+#                              and the key is checked before the value
 #
 # Counter assertions tolerate the 0.5.20 surface where ack_operations_total
 # is not exposed (verdict_source=counter_absent_0520_fallback). When the
@@ -374,6 +377,183 @@ except Exception:
   else
     VERDICTS+=("FAIL: 11 TTL filter (sig_c still present after ${EXPIRY_SLEEP_SEC}+${EXPIRY_POLL_SEC}s)")
   fi
+fi
+
+#######################################
+# 12. include_toml: the CI baseline beside the runtime acks (0.24.0)
+#######################################
+step "12. GET /api/acks?include_toml=true beside a CI TOML baseline"
+# The listing held only the daemon's own JSONL acks, so a reader that mirrors
+# the ack state could not learn that the CI baseline acknowledges a finding
+# once that finding had left the findings ring. The lab daemon sets neither
+# `[daemon.ack] toml_path` nor `[daemon.ack] api_key`, so it has no baseline to
+# merge and no gate to judge a malformed value after, and giving it either
+# would mean editing manifests/perf-sentinel-daemon.yaml, which carries an
+# uncommitted local pin during a pre-release pass. This leg runs the image
+# under validation as a throwaway pod of its own instead.
+TOML_NS="ack-toml-baseline"
+TOML_PORT="${TOML_PORT:-14419}"
+TOML_URL="http://localhost:${TOML_PORT}"
+TOML_KEY="lab-ack-toml-key-0"
+TOML_MANIFESTS="$(cd "$(dirname "$0")" && pwd)/manifests.yaml"
+SIG_DAEMON="n_plus_one_sql:runtime-svc:GET__api_runtime:dddddddddddddddddddddddddddddddd"
+SIG_DAEMON2="slow_sql:runtime-svc:GET__api_runtime_slow:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+SIG_PERM="n_plus_one_sql:baseline-svc:GET__api_orders:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+SIG_LIVE="slow_sql:baseline-svc:GET__api_invoices:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+SIG_EXPIRED="redundant_sql:baseline-svc:GET__api_carts:cccccccccccccccccccccccccccccccc"
+export SIG_DAEMON SIG_DAEMON2 SIG_PERM SIG_LIVE SIG_EXPIRED
+
+# The pod runs the image under validation, resolved by scripts/resolve-image.sh:
+# PERF_SENTINEL_IMAGE, then PERF_SENTINEL_VERSION, then the daemon manifest pin.
+LAB_ROOT="${REPO_ROOT}"
+# shellcheck source=../../scripts/resolve-image.sh
+. "${REPO_ROOT}/scripts/resolve-image.sh"
+
+TOML_PF_PID=""
+cleanup_toml() {
+  if [ -n "${TOML_PF_PID}" ]; then kill "${TOML_PF_PID}" 2>/dev/null || true; fi
+  if [ "${KEEP_NAMESPACE:-no}" != "yes" ]; then
+    kubectl delete namespace "${TOML_NS}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_toml EXIT
+
+# A Pod is immutable on the fields the rewrite touches, so a re-run drops the
+# previous one rather than applying over it.
+kubectl -n "${TOML_NS}" delete pod perf-sentinel-ack-toml --ignore-not-found >/dev/null 2>&1 || true
+# Rendered to a file rather than piped, so the rewrite can be asserted. A sed
+# that matches nothing would silently run the digest frozen in manifests.yaml,
+# which is the failure scripts/resolve-image.sh exists to prevent.
+sed -e "s#image: ghcr.io/robintra/perf-sentinel@sha256:[0-9a-f]*.*#image: ${IMAGE}#" "${TOML_MANIFESTS}" \
+  > "${TMP_DIR}/ack-toml.rendered.yaml"
+grep -qF "image: ${IMAGE}" "${TMP_DIR}/ack-toml.rendered.yaml" \
+  || die "the image rewrite matched nothing, the pod would run the digest frozen in manifests.yaml"
+kubectl apply -f "${TMP_DIR}/ack-toml.rendered.yaml" > "${TMP_DIR}/ack-toml-apply.log" 2>&1 \
+  || die "kubectl apply failed, see ${TMP_DIR}/ack-toml-apply.log"
+kubectl -n "${TOML_NS}" wait --for=condition=Ready pod/perf-sentinel-ack-toml --timeout=120s >/dev/null \
+  || die "the baseline daemon never became Ready, see kubectl -n ${TOML_NS} describe pod perf-sentinel-ack-toml"
+ok "baseline daemon Ready on ${IMAGE}"
+
+kubectl -n "${TOML_NS}" port-forward pod/perf-sentinel-ack-toml "${TOML_PORT}:14318" \
+  > "${TMP_DIR}/ack-toml-pf.log" 2>&1 &
+TOML_PF_PID=$!
+# Off the job table: the shell would otherwise print "Terminated" of its own
+# when the cleanup kills it, which reads like a failure at the end of a pass.
+disown "${TOML_PF_PID}" 2>/dev/null || true
+TOML_UP="no"
+for _ in $(seq 1 30); do
+  if curl -fsS -o /dev/null "${TOML_URL}/health" 2>/dev/null; then
+    TOML_UP="yes"
+    break
+  fi
+  sleep 1
+done
+[ "${TOML_UP}" = "yes" ] || die "port-forward to the baseline daemon never answered on ${TOML_PORT}"
+
+# Two runtime acks, so the flagged listing carries a block of each source and
+# the ordering assertion below pins a boundary rather than one row's position.
+# Their signatures name no finding the pod ever saw: the ack store validates
+# the format, never the existence.
+post_runtime_ack() {  # $1 = signature
+  local enc
+  enc=$(SIG="$1" python3 -c "import urllib.parse, os; print(urllib.parse.quote(os.environ['SIG'], safe=''))")
+  curl -o /dev/null -s -w "%{http_code}" \
+    -X POST -H "Content-Type: application/json" -H "X-API-Key: ${TOML_KEY}" \
+    -d '{"by":"sre@lab","reason":"runtime ack"}' \
+    "${TOML_URL}/api/findings/${enc}/ack" 2>/dev/null || echo "000"
+}
+HTTP_TOML_POST=$(post_runtime_ack "${SIG_DAEMON}")
+HTTP_TOML_POST2=$(post_runtime_ack "${SIG_DAEMON2}")
+
+curl -fsS -H "X-API-Key: ${TOML_KEY}" "${TOML_URL}/api/acks" \
+  > "${TMP_DIR}/acks-default.json" 2>/dev/null || echo '[]' > "${TMP_DIR}/acks-default.json"
+curl -fsS -H "X-API-Key: ${TOML_KEY}" "${TOML_URL}/api/acks?include_toml=true" \
+  > "${TMP_DIR}/acks-flagged.json" 2>/dev/null || echo '[]' > "${TMP_DIR}/acks-flagged.json"
+
+TOML_CHECK=$(python3 - "${TMP_DIR}/acks-default.json" "${TMP_DIR}/acks-flagged.json" <<'PY'
+import json, os, sys
+
+
+def check():
+    default = json.load(open(sys.argv[1]))
+    flagged = json.load(open(sys.argv[2]))
+    daemon, daemon2, perm, live, expired = (
+        os.environ[k] for k in
+        ("SIG_DAEMON", "SIG_DAEMON2", "SIG_PERM", "SIG_LIVE", "SIG_EXPIRED"))
+    bad = []
+
+    # The default answer is what it always was: the daemon store alone, and
+    # not a row of it names a source.
+    if {a["signature"] for a in default} != {daemon, daemon2}:
+        bad.append("default listing is %s" % sorted(a["signature"] for a in default))
+    if any("source" in a for a in default):
+        bad.append("default listing carries a source field")
+
+    rows = {a["signature"]: a for a in flagged}
+    if expired in rows:
+        bad.append("the expired baseline entry is listed")
+    for sig, want in ((daemon, "daemon"), (daemon2, "daemon"),
+                      (perm, "toml"), (live, "toml")):
+        got = rows.get(sig)
+        if got is None:
+            bad.append("%s missing from the flagged listing" % sig.split(":")[0])
+        elif got.get("source") != want:
+            bad.append("%s names source %r, expected %r"
+                       % (sig.split(":")[0], got.get("source"), want))
+
+    # A toml row maps the baseline entry onto the daemon fields: `by` from
+    # `acknowledged_by`, `at` from `acknowledged_at` verbatim, which is a bare
+    # date here and not a timestamp, and `expires_at` as the end of the expiry
+    # day UTC.
+    p = rows.get(perm, {})
+    if (p.get("by"), p.get("at"), p.get("reason"), p.get("action")) != \
+            ("ci-bot@lab", "2026-05-04", "permanent baseline", "ack"):
+        bad.append("the permanent baseline row maps to %r" % p)
+    if "expires_at" in p:
+        bad.append("a baseline entry with no expiry carries expires_at=%r" % p["expires_at"])
+    if rows.get(live, {}).get("expires_at") != "2099-12-31T23:59:59Z":
+        bad.append("expires_at is %r, expected the end of the expiry day in UTC"
+                   % rows.get(live, {}).get("expires_at"))
+
+    # Both daemon acks, then the baseline sorted by signature: one block per
+    # source, which is the order the 1000-row cap sheds from, since a baseline
+    # past the cap loses its tail and never a runtime ack.
+    sources = [a.get("source") for a in flagged]
+    if sources != sorted(sources, key=lambda s: s != "daemon"):
+        bad.append("sources come back as %s, the daemon rows are not the first block" % sources)
+
+    return bad
+
+
+# Any shape the daemon returns has to land as a FAIL verdict. Left to raise,
+# the traceback would take the whole scenario down under `set -e` with no
+# verdict and no report, which reads as a crashed harness and not as a broken
+# contract.
+try:
+    problems = check()
+except Exception as exc:
+    print("PROBLEM: the checker failed on the answer: %r" % (exc,))
+else:
+    print("OK" if not problems else "PROBLEM: " + "; ".join(problems))
+PY
+)
+
+if [ "${HTTP_TOML_POST}" = "201" ] && [ "${HTTP_TOML_POST2}" = "201" ] && [ "${TOML_CHECK}" = "OK" ]; then
+  VERDICTS+=("PASS: 12 include_toml (default unchanged and sourceless, flagged lists the daemon block then the baseline, expired entry absent, end-of-day expiry)")
+else
+  VERDICTS+=("FAIL: 12 include_toml (runtime POSTs=${HTTP_TOML_POST}/${HTTP_TOML_POST2}, ${TOML_CHECK})")
+fi
+
+# The value is read after the key, so the parameter cannot be used to tell a
+# gated route from an unknown one.
+CODE_TOML_BARE=$(curl -o /dev/null -s -w "%{http_code}" \
+  "${TOML_URL}/api/acks?include_toml=maybe" 2>/dev/null || echo "000")
+CODE_TOML_KEYED=$(curl -o /dev/null -s -w "%{http_code}" -H "X-API-Key: ${TOML_KEY}" \
+  "${TOML_URL}/api/acks?include_toml=maybe" 2>/dev/null || echo "000")
+if [ "${CODE_TOML_BARE}" = "401" ] && [ "${CODE_TOML_KEYED}" = "400" ]; then
+  VERDICTS+=("PASS: 12 malformed include_toml judged after the key (401 without it, 400 with it)")
+else
+  VERDICTS+=("FAIL: 12 malformed include_toml -> ${CODE_TOML_BARE} without the key, ${CODE_TOML_KEYED} with it (expected 401 then 400)")
 fi
 
 #######################################

@@ -1711,8 +1711,9 @@ manifest at `manifests/perf-sentinel-daemon.yaml` mounts a
 `perf-sentinel-acks` PVC at `/var/lib/perf-sentinel/` and enables the
 `[daemon.ack]` section in the ConfigMap.
 
-11 verification steps cover the full lifecycle (steps 1-3 are setup,
-steps 4-11 each emit one PASS/FAIL verdict for a total of 8 verdicts):
+12 verification steps cover the full lifecycle (steps 1-3 are setup,
+steps 4-11 each emit one PASS/FAIL verdict and step 12 emits two, for a
+total of 10 verdicts):
 
 1. Sanity: daemon reachable on `/api/status`.
 2. Seed: harvest 3 distinct finding signatures from
@@ -1749,6 +1750,34 @@ steps 4-11 each emit one PASS/FAIL verdict for a total of 8 verdicts):
     with a short TTL, sleep past the deadline, poll `GET /api/acks`
     and confirm `sig_c` is no longer surfaced (query-time
     filtering).
+12. `include_toml` on `GET /api/acks`, 0.24.0. The listing held only
+    the daemon's JSONL acks, so a reader that mirrors the ack state
+    could not learn that the CI baseline acknowledges a finding once
+    that finding had left the findings ring.
+
+The lab daemon sets neither `[daemon.ack] toml_path` nor
+`[daemon.ack] api_key`, so it has no baseline to merge and no gate to
+judge a malformed value after, and giving it either would mean editing
+`manifests/perf-sentinel-daemon.yaml`, which carries an uncommitted
+local pin during a pre-release pass. Step 12 applies
+`scenarios/daemon-ack-workflow/manifests.yaml` instead: a throwaway pod
+running the image under validation, in a namespace of its own so the
+cluster-wide default-deny does not apply to it, with a three-entry
+baseline mounted beside its config and an emptyDir ack store, deleted
+when the scenario exits. Two runtime acks are posted on signatures no
+finding ever carried, since the store validates the format and never
+the existence, and then the default listing is asserted unchanged and
+free of any `source` field, the flagged one carrying those runtime acks
+as `source: daemon` and the two active baseline entries as
+`source: toml`, `by` and `at` mapped from `acknowledged_by` and
+`acknowledged_at` verbatim (a bare date, which is what makes the
+verbatim mapping visible), `expires_at` as the end of the expiry day in
+UTC, the expired entry absent, and both daemon rows ahead of both
+baseline rows, one block per source. A malformed `include_toml` answers
+401 without the key and 400 with it, so the parameter cannot be used to
+tell a gated route from an unknown one.
+The 1000-row cap is not asserted: filling it needs a thousand baseline
+entries for a bound the daemon's own tests already pin.
 
 Counter assertions tolerate a 0.5.20 daemon that has not yet adopted
 the 0.5.21 pre-warmed series. When the surface is absent the verdict

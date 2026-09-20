@@ -1,0 +1,140 @@
+---
+# A throwaway daemon that reads a CI TOML baseline, for the
+# `GET /api/acks?include_toml=true` leg of verify.sh (step 12, 0.24.0).
+#
+# It is not the daemon under test. The lab daemon at
+# manifests/perf-sentinel-daemon.yaml sets neither `[daemon.ack] toml_path`
+# nor `[daemon.ack] api_key`, so it has no baseline to merge and no gate to
+# judge a malformed value after, and giving it either would mean editing a
+# file that carries an uncommitted local image pin during a pre-release pass.
+# This one runs the same image and answers the same route, in its own
+# namespace so the cluster-wide default-deny does not apply to it, and
+# verify.sh deletes the namespace when the leg ends.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ack-toml-baseline
+  labels:
+    app.kubernetes.io/part-of: perf-sentinel-lab
+    pod-security.kubernetes.io/enforce: restricted
+    name: ack-toml-baseline
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: perf-sentinel-ack-toml
+  namespace: ack-toml-baseline
+data:
+  config.toml: |
+    [daemon]
+    listen_address = "0.0.0.0"
+    listen_port_http = 14318
+    listen_port_grpc = 14317
+    api_enabled = true
+    environment = "staging"
+
+    # A key on purpose, where the lab daemon has none: it is what makes the
+    # `include_toml` gate observable. A malformed value has to answer 401 to a
+    # caller without the key and 400 only to one that holds it, so the
+    # parameter cannot be used to probe a gated route.
+    [daemon.ack]
+    enabled = true
+    storage_path = "/var/lib/perf-sentinel/acks.jsonl"
+    api_key = "lab-ack-toml-key-0"
+    toml_path = "/etc/perf-sentinel/acknowledgments.toml"
+
+    [daemon.correlation]
+    enabled = false
+  # Three baseline entries: one permanent, one expiring long after this lab
+  # exists, one already expired. `acknowledged_at` is free text the API has to
+  # carry verbatim, so it is a bare date here and never a timestamp.
+  acknowledgments.toml: |
+    [[acknowledged]]
+    signature = "n_plus_one_sql:baseline-svc:GET__api_orders:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    acknowledged_by = "ci-bot@lab"
+    acknowledged_at = "2026-05-04"
+    reason = "permanent baseline"
+
+    [[acknowledged]]
+    signature = "slow_sql:baseline-svc:GET__api_invoices:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    acknowledged_by = "ci-bot@lab"
+    acknowledged_at = "2026-05-04"
+    reason = "expires at the end of 2099"
+    expires_at = "2099-12-31"
+
+    [[acknowledged]]
+    signature = "redundant_sql:baseline-svc:GET__api_carts:cccccccccccccccccccccccccccccccc"
+    acknowledged_by = "ci-bot@lab"
+    acknowledged_at = "2020-01-01"
+    reason = "expired long ago, the listing must leave it out"
+    expires_at = "2020-06-30"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: perf-sentinel-ack-toml
+  namespace: ack-toml-baseline
+  labels:
+    app.kubernetes.io/name: perf-sentinel-ack-toml
+    app.kubernetes.io/part-of: perf-sentinel-lab
+spec:
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    fsGroup: 65534
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: perf-sentinel
+      # verify.sh substitutes this line with the image under validation
+      # (scripts/resolve-image.sh). The pin below is only the fallback for a
+      # manual `kubectl apply -f` of this file, and it is a digest on purpose:
+      # a version tag would read as authoritative one release later, and would
+      # let the rewrite guard pass on a sed that matched nothing.
+      image: ghcr.io/robintra/perf-sentinel@sha256:a68a1db1b5fca61772375c6919e336195d940c417b02e549888c25bf80446a59  # placeholder, verify.sh rewrites it to the image under validation
+      imagePullPolicy: IfNotPresent
+      args:
+        - watch
+        - --config
+        - /etc/perf-sentinel/config.toml
+      ports:
+        - name: http
+          containerPort: 14318
+      env:
+        - name: RUST_LOG
+          value: info
+      volumeMounts:
+        - name: config
+          mountPath: /etc/perf-sentinel
+          readOnly: true
+        # The lab daemon's PVC is ReadWriteOnce and already claimed. This one
+        # only has to answer for the length of one leg, so its ack store lives
+        # in an emptyDir and dies with the pod.
+        - name: state
+          mountPath: /var/lib/perf-sentinel
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+      readinessProbe:
+        httpGet:
+          path: /health
+          port: 14318
+        initialDelaySeconds: 2
+        periodSeconds: 3
+  volumes:
+    - name: config
+      configMap:
+        name: perf-sentinel-ack-toml
+    - name: state
+      emptyDir: {}

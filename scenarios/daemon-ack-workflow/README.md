@@ -37,8 +37,8 @@ the counter pre-warming + delta semantics hold.
 ## What is verified
 
 Steps 1-3 are setup (sanity, signature harvest, idempotent cleanup +
-counter snapshot). Steps 4-11 each emit one PASS/FAIL verdict, for a
-total of 8 verdicts that drive the final report.
+counter snapshot). Steps 4-11 each emit one PASS/FAIL verdict and step
+12 emits two, for a total of 10 verdicts that drive the final report.
 
 1. Daemon reachable on `/api/status`.
 2. At least 3 distinct finding signatures available via
@@ -64,6 +64,22 @@ total of 8 verdicts that drive the final report.
 11. TTL filter: `POST /api/findings/<sig_c>/ack` with a short TTL,
     sleep past the deadline, poll `GET /api/acks` and confirm
     `sig_c` is no longer surfaced (query-time filtering).
+12. `include_toml` on `GET /api/acks` (0.24.0), against a throwaway
+    daemon of its own. The lab daemon sets neither `[daemon.ack]
+    toml_path` nor `[daemon.ack] api_key`, so it has no CI baseline to
+    merge and no gate to judge a malformed value after, and giving it
+    either would mean editing `manifests/perf-sentinel-daemon.yaml`,
+    which carries an uncommitted local pin during a pre-release pass.
+    The step applies `manifests.yaml` beside this README instead: the
+    image under validation, in a namespace of its own, with a
+    three-entry baseline (permanent, expiring in 2099, expired) and an
+    emptyDir ack store, deleted when the scenario exits. The default
+    listing stays as it was and carries no `source`, the flagged one
+    adds the two active baseline entries as `source: toml` behind the
+    two runtime acks' `source: daemon`, `by` and `at` verbatim from
+    `acknowledged_by` and `acknowledged_at`, `expires_at` as the end of
+    the expiry day in UTC, the expired entry absent. A malformed
+    `include_toml` answers 401 without the key and 400 with it.
 
 ## How to run
 
