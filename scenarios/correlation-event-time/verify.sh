@@ -38,8 +38,10 @@ TMP_DIR="/tmp/${SCENARIO}"
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
 PERF_SENTINEL_LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel}"
 
-# The last published release, the A side of the comparison. Bump it with the
-# pin in manifests/perf-sentinel-daemon.yaml.
+# The A side of the comparison: the last release that pairs on the analysis
+# tick, which 0.23.0 replaced with the finding's own timestamp. It stays below
+# 0.23.0. Bumped to the release under test, leg 4 passes on both builds and
+# proves nothing.
 BASELINE_IMAGE="${BASELINE_IMAGE:-ghcr.io/robintra/perf-sentinel:0.22.2}"
 BASELINE_NAME="cet-baseline-$$"
 
