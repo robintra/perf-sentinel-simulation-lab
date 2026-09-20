@@ -80,9 +80,9 @@ nothing else moving.
 **E, durability.** The ring dies with the daemon, and a node-level memory event
 that kills the observed service often takes a co-located daemon with it,
 destroying the record that would explain the outage. The archive holds one
-intact line per record, all under one content-derived id, the last carrying
-the end, written by a single task so two records can never interleave. A
-symlinked `archive_path` refuses startup.
+intact line per record, under the two content-derived ids the run creates, the
+last shop-svc one carrying the end, written by a single task so two records can
+never interleave. A symlinked `archive_path` refuses startup.
 
 **F, the window form of the listing.** `GET /api/findings` with `since_ms` and
 `until_ms` folds over the detections inside the window alone, so a window
@@ -100,6 +100,15 @@ so `time() - gauge` gives the age. It adds two things over
 "perf-sentinel no longer hears this service": an age not bounded by the range
 vector's window, and *absence* rather than zero after a daemon restart, where
 every counter resets and a whole fleet looks stopped.
+
+**H, one incident by id (0.24.0).** A second incident is posted on another
+service, and `GET /api/incidents?id=` on the older one answers with that single
+record while the plain listing holds both. The `service` filter narrows the
+listing on its own first, then the same filter beside the id is ignored, along
+with `namespace`, `offset` and `limit`, so the assertion cannot pass on a
+daemon that never read them. An id the ring does not hold answers an empty
+array and not a 404, and the parameter keeps the listing's gate: 401 bare, 200
+under `[daemon] read_api_key`.
 
 ## What it does not assert
 

@@ -718,7 +718,7 @@ verify-config-fragments: ## 0.9.25 .perf-sentinel.d/ loader (merge order, reject
 verify-archive-window-drops: ## 0.15.0 dropped archive windows: the four pre-warmed reasons on a healthy archive, channel_full on a saturated one (local binary, no cluster)
 	./scenarios/archive-window-drops/verify.sh
 
-verify-incident-window-capture: ## 0.20.0 incident intake: the window frozen at reception, the settle merge, idempotent reposts, counted refusals, the NDJSON archive, until_ms and the last-span gauge (local binary, no cluster)
+verify-incident-window-capture: ## 0.20.0 incident intake: the window frozen at reception, the settle merge, idempotent reposts, counted refusals, the NDJSON archive, until_ms, the last-span gauge and the 0.24.0 id parameter (local binary, no cluster)
 	./scenarios/incident-window-capture/verify.sh
 
 verify-incident-alerting-chain: ## 0.22.0 alerting half of POST /api/incidents: the shipped rules applied unedited, the group_left fix against a replicated kube-state-metrics, the namespace-matcher trap both ways, and a real Alertmanager delivering with a bearer credential against a 0.21.0 twin

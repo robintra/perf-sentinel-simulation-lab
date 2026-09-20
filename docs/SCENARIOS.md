@@ -3186,12 +3186,24 @@ whose lifetime overlaps), `oldest_finding_ms` on `/api/status`, which separates
 an age so `time() - gauge` survives a daemon restart where every counter
 resets to zero and a whole fleet looks stopped.
 
+**One incident by id, 0.24.0.** A client that holds an id used to page through
+incidents that each carry up to 1000 frozen findings to pick one out, and lost
+the row as soon as a newer incident shifted the page. The leg posts a second
+incident, on another service, then asks for the older one by `id`: one element,
+the right one, while the plain listing holds both. The same id beside
+`service`, `namespace`, `offset` and `limit` still returns it, and the leg
+narrows the listing with `service` alone first, so "the other parameters were
+ignored" cannot pass on a daemon that never read them. An id the ring does not
+hold answers an empty array and not a 404, which is what keeps a dashboard cell
+rendering once an incident has aged out, and the parameter keeps the listing's
+gate: 401 bare, 200 under `[daemon] read_api_key`, on the same id.
+
 Durability closes it. The ring dies with the daemon, and a node-level memory
 event that kills the observed service often takes a co-located daemon with it,
 destroying the record that would explain the outage. The archive holds one
-intact line per record, all under one content-derived id, the last carrying the
-end, and a symlinked `archive_path` refuses startup rather than being
-discovered at the first incident.
+intact line per record, under the two content-derived ids the run creates, the
+last shop-svc one carrying the end, and a symlinked `archive_path` refuses
+startup rather than being discovered at the first incident.
 
 Deliberately not asserted: that the gauge means liveness (a crash, a scale to
 zero, a deploy, a load balancer drain and a quiet cron all read the same), and

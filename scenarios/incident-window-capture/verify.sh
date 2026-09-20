@@ -49,6 +49,12 @@
 #      Unix stamp of the last span admitted per service. `time() - gauge` is
 #      an age that survives a daemon restart, where every counter resets to
 #      zero and a whole fleet looks stopped.
+#   H. One incident by id, 0.24.0. A client that holds an id paged through
+#      incidents carrying up to 1000 frozen findings each to pick one out, and
+#      lost the row as soon as a newer incident shifted the page. `id` answers
+#      with that one incident whatever `service`, `namespace`, `offset` and
+#      `limit` say, and with an empty array rather than a 404 when the ring
+#      does not hold it, so a stale id reads as gone and not as a broken route.
 #
 # Local binary, no cluster.
 
@@ -198,18 +204,19 @@ api() {  # $1 = method, $2 = path, $3 = body (""), $4 = key (""), $5 = raw Autho
   curl "${args[@]}" "http://127.0.0.1:${HTTP_PORT}$2"
 }
 
-# One alert as Alertmanager posts it. $1 = status, $2 = startsAt, $3 = endsAt.
+# One alert as Alertmanager posts it. $1 = status, $2 = startsAt, $3 = endsAt,
+# $4 = service label (padded on purpose, leg A asserts the trim), $5 = kind.
 alert_body() {
   python3 -c "
 import json, sys
-status, starts, ends = sys.argv[1:4]
+status, starts, ends, service, kind = sys.argv[1:6]
 print(json.dumps({'version': '4', 'alerts': [{
     'status': status,
-    'labels': {'service': ' shop-svc ', 'perf_sentinel_kind': 'oom_kill', 'namespace': 'shop'},
+    'labels': {'service': service, 'perf_sentinel_kind': kind, 'namespace': 'shop'},
     'annotations': {'summary': 'container memory limit reached'},
     'startsAt': starts, 'endsAt': ends,
 }]}))
-" "$1" "$2" "$3"
+" "$1" "$2" "$3" "${4:- shop-svc }" "${5:-oom_kill}"
 }
 
 jqp() { python3 -c "import json,sys; d=json.load(sys.stdin); print($1)"; }
@@ -534,8 +541,8 @@ fi
 # 0.22.0 accepts `Authorization: Bearer <key>` beside `X-API-Key`, because
 # neither Kubernetes operator that generates an Alertmanager receiver can send
 # an arbitrary header. Inserted AFTER leg D reads its counters, so the exact
-# `unauthorized == 3` above keeps its meaning, and it creates no incident, so
-# leg E still finds exactly one id in the archive.
+# `unauthorized == 3` above keeps its meaning, and it creates no incident: the
+# only other id leg E finds in the archive is the one leg H posts.
 step "D2. A bearer token opens the same gate as the header, and closes on the same refusals"
 
 # --- Accepted. GET, except P7 which proves the write verb.
@@ -553,7 +560,7 @@ P5="$(api GET /api/incidents "" "" "Bearer ${API_KEY} ")"
 P6="$(api GET /api/incidents "" "${API_KEY}" "Bearer not-the-key-000")"
 P7="$(api GET /api/incidents "" "not-the-key-000" "Bearer ${API_KEY}")"
 # The write verb, without leaving a record: the credential is accepted, then the
-# alert is refused for want of a service. Leg E asserts one id in the archive.
+# alert is refused for want of a service, so it adds no id to the archive.
 P8="$(api POST /api/incidents "${NO_SVC_BODY}" "" "Bearer ${API_KEY}")"
 P8_NOSVC="$(jqp "d['rejected_no_service']" < "${TMP_DIR}/body")"
 
@@ -611,6 +618,90 @@ else
   record "401 names both" FAIL "${N5_BODY}"
 fi
 
+# === Leg H: one incident by id ===
+# 0.24.0. Placed after leg D2 because it posts a second incident, which leg E
+# then finds in the archive, and after leg D read its exact counter values, so
+# the 401 below cannot move a number another leg asserts.
+step "H. The id parameter returns one incident, whatever the other filters say"
+
+api GET /api/incidents "" "${API_KEY}" >/dev/null
+SHOP_ID="$(jqp "d[0]['id']" < "${TMP_DIR}/body")"
+
+# A second service, so a filter that contradicts the id has something real to
+# name and the listing has two rows to pick from.
+SECOND_STARTS="$(rfc3339 "$(now_ms)")"
+api POST /api/incidents \
+  "$(alert_body firing "${SECOND_STARTS}" "0001-01-01T00:00:00Z" "billing-svc" "memory_saturation")" \
+  "${API_KEY}" >/dev/null
+SECOND_RECORDED="$(jqp "d['recorded']" < "${TMP_DIR}/body")"
+
+api GET /api/incidents "" "${API_KEY}" >/dev/null
+BOTH_N="$(jqp 'len(d)' < "${TMP_DIR}/body")"
+
+api GET "/api/incidents?id=${SHOP_ID}" "" "${API_KEY}" >/dev/null
+BY_ID="$(cat "${TMP_DIR}/body")"
+BY_ID_N="$(echo "${BY_ID}" | jqp 'len(d)')"
+BY_ID_ID="$(echo "${BY_ID}" | jqp "d[0]['id'] if d else 'absent'")"
+BY_ID_SVC="$(echo "${BY_ID}" | jqp "d[0]['service'] if d else 'absent'")"
+BY_ID_ROWS="$(echo "${BY_ID}" | jqp "len(d[0]['findings']) if d else 'absent'")"
+
+if [ "${SECOND_RECORDED}" = "1" ] && [ "${BOTH_N}" = "2" ] \
+   && [ "${BY_ID_N}" = "1" ] && [ "${BY_ID_ID}" = "${SHOP_ID}" ] && [ "${BY_ID_SVC}" = "shop-svc" ]; then
+  ok "the plain listing holds both incidents, id=${SHOP_ID:0:12}... holds one, the older shop-svc one with its ${BY_ID_ROWS} frozen rows"
+  record "id returns one incident" PASS "listing 2 rows, id 1 row, service ${BY_ID_SVC}"
+else
+  fail "recorded=${SECOND_RECORDED}, listing=${BOTH_N}, id -> ${BY_ID_N} row(s), id=${BY_ID_ID}, service=${BY_ID_SVC}"
+  record "id returns one incident" FAIL "listing=${BOTH_N}, id=${BY_ID_N} row(s)"
+fi
+
+# The positive control first: the filters the id ignores are not inert, they
+# narrow the listing on their own. Without it, "the filters were ignored" would
+# also pass on a daemon that never read them.
+api GET "/api/incidents?service=billing-svc" "" "${API_KEY}" >/dev/null
+FILTER_SVC="$(jqp "d[0]['service'] if d else 'absent'" < "${TMP_DIR}/body")"
+FILTER_N="$(jqp 'len(d)' < "${TMP_DIR}/body")"
+
+api GET "/api/incidents?id=${SHOP_ID}&service=billing-svc&namespace=nowhere&offset=5&limit=1" \
+  "" "${API_KEY}" >/dev/null
+CONTRA_N="$(jqp 'len(d)' < "${TMP_DIR}/body")"
+CONTRA_ID="$(jqp "d[0]['id'] if d else 'absent'" < "${TMP_DIR}/body")"
+
+if [ "${FILTER_N}" = "1" ] && [ "${FILTER_SVC}" = "billing-svc" ] \
+   && [ "${CONTRA_N}" = "1" ] && [ "${CONTRA_ID}" = "${SHOP_ID}" ]; then
+  ok "service=billing-svc alone lists that one incident, and beside an id it is ignored"
+  ok "along with namespace, offset and limit: the shop-svc record still comes back"
+  record "id ignores the other parameters" PASS "filter alone narrows, id wins over all four"
+else
+  fail "service=billing-svc alone -> ${FILTER_N} row(s) (${FILTER_SVC}), with the id -> ${CONTRA_N} row(s) (${CONTRA_ID})"
+  record "id ignores the other parameters" FAIL "${FILTER_N}/${FILTER_SVC}, ${CONTRA_N}/${CONTRA_ID}"
+fi
+
+# An id the ring never held, and one it could hold. Both are an empty array,
+# never a 404: a dashboard cell polling a settled incident reads "gone" and
+# keeps rendering, where a 404 reads as a route that broke.
+UNKNOWN_CODE="$(api GET "/api/incidents?id=00000000000000000000000000000000" "" "${API_KEY}")"
+UNKNOWN_N="$(jqp 'len(d)' < "${TMP_DIR}/body")"
+if [ "${UNKNOWN_CODE}" = "200" ] && [ "${UNKNOWN_N}" = "0" ]; then
+  ok "an id the ring does not hold answers 200 with an empty array, not a 404"
+  record "unknown id is empty" PASS "HTTP 200, 0 rows"
+else
+  fail "unknown id: HTTP ${UNKNOWN_CODE}, ${UNKNOWN_N} row(s)"
+  record "unknown id is empty" FAIL "HTTP ${UNKNOWN_CODE}, ${UNKNOWN_N} row(s)"
+fi
+
+# The parameter is a filter, not a route: it keeps the read gate of the
+# listing, and the read key opens it exactly as it opens the listing.
+ID_BARE="$(api GET "/api/incidents?id=${SHOP_ID}" "" "")"
+ID_READ="$(api GET "/api/incidents?id=${SHOP_ID}" "" "${READ_KEY}")"
+ID_READ_ID="$(jqp "d[0]['id'] if d else 'absent'" < "${TMP_DIR}/body")"
+if [ "${ID_BARE}" = "401" ] && [ "${ID_READ}" = "200" ] && [ "${ID_READ_ID}" = "${SHOP_ID}" ]; then
+  ok "id obeys the listing's key: 401 bare, and the read key returns the same incident"
+  record "id obeys the read gate" PASS "bare 401, read key 200 on the same id"
+else
+  fail "bare ${ID_BARE}, read key ${ID_READ} returning ${ID_READ_ID}"
+  record "id obeys the read gate" FAIL "bare ${ID_BARE}, read key ${ID_READ}"
+fi
+
 # === Leg E: the archive on disk ===
 step "E. The archive holds every record, and a symlinked path fails the daemon"
 stop_daemon
@@ -626,11 +717,12 @@ print(len(rows), len(ids), max(counts) if counts else 0, sum(ended))
 " "${ARCHIVE}")"
 read -r A_ROWS A_IDS A_MAXF A_ENDED <<< "${ARCHIVE_READ}"
 
-# A record per new incident, per settle and per close, all under one id, the
-# last one carrying the end. Every line parses: two writers would tear one.
-if [ "${A_ROWS}" -ge 3 ] && [ "${A_IDS}" = "1" ] && [ "${A_MAXF}" -ge "${FROZEN_B}" ] && [ "${A_ENDED}" -ge 1 ]; then
-  ok "${A_ROWS} intact lines, one incident id, up to ${A_MAXF} findings, ${A_ENDED} carrying an end"
-  record "archive complete and intact" PASS "${A_ROWS} lines, 1 id, max ${A_MAXF} findings"
+# A record per new incident, per settle and per close, under the two ids legs A
+# and H created, the last shop-svc one carrying the end. Every line parses: two
+# writers would tear one.
+if [ "${A_ROWS}" -ge 3 ] && [ "${A_IDS}" = "2" ] && [ "${A_MAXF}" -ge "${FROZEN_B}" ] && [ "${A_ENDED}" -ge 1 ]; then
+  ok "${A_ROWS} intact lines, two incident ids, up to ${A_MAXF} findings, ${A_ENDED} carrying an end"
+  record "archive complete and intact" PASS "${A_ROWS} lines, 2 ids, max ${A_MAXF} findings"
 else
   fail "lines=${A_ROWS} (raw ${LINES}), ids=${A_IDS}, max findings=${A_MAXF}, ended=${A_ENDED}"
   record "archive complete and intact" FAIL "${A_ROWS}/${A_IDS}/${A_MAXF}/${A_ENDED}"
