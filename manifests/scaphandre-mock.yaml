@@ -188,7 +188,7 @@ spec:
           # python:3.13-alpine pinned by digest. Resolve via
           # `docker buildx imagetools inspect python:3.13-alpine
           # --format '{{json .Manifest.Digest}}'` on bump.
-          image: python:3.14-alpine@sha256:c6ead215bfd31f1e433d968853b7a769989117115b728874824e6c0a27cb96fc  # 3.13-alpine
+          image: python:3.14-alpine@sha256:9e9fde4d32eedce0b661d9ab91e826b62dddf28e928c230ec55f1866cac66b01  # 3.13-alpine
           imagePullPolicy: IfNotPresent
           command: ["python", "/scripts/app.py"]
           ports:
