@@ -3112,14 +3112,15 @@ schema, the operator that renders it and the Alertmanager that sends it.
 
 **The rules, without a cluster.** promtool accepts both example files, the
 prometheus-operator and VictoriaMetrics files carry byte-identical rules down
-to the recording rule's two-minute interval, and nine unit tests over synthetic
-kube-state-metrics series settle the five claims the files make in prose and
+to the recording rule's two-minute interval, and ten unit tests over synthetic
+kube-state-metrics series settle the six claims the files make in prose and
 cannot demonstrate: the oom and restart rules exclude each other, the
 saturation rule is permanently silent on a container with no memory limit, both
 many-to-one joins survive a kube-state-metrics scraped twice, a workload with
 no `perf_sentinel_service_io_ops_total` over the window raises nothing, and
 that same workload raises it again once
-`perf_sentinel_service_io_ops_overflow_total` is nonzero.
+`perf_sentinel_service_io_ops_overflow_total` is nonzero, unless a Job owns
+its pod.
 
 **The fifth group, 0.24.0.** Both files gained a
 `perf_sentinel:untraced_services:1d` recording rule, evaluated every two

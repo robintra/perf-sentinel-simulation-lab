@@ -39,8 +39,8 @@ Alertmanager's own group intervals.
 **A, B and C, the rules on their own.** promtool accepts both files, the two
 files carry byte-identical rules, the recording rule and its two-minute
 interval included (so everything proved on one is proved on its twin), and
-`fixtures/rules-unit-tests.yaml` drives nine cases over synthetic
-kube-state-metrics series. Five of those nine are claims the example files make
+`fixtures/rules-unit-tests.yaml` drives ten cases over synthetic
+kube-state-metrics series. Six of those ten are claims the example files make
 in prose and cannot demonstrate: that the oom and restart rules exclude each
 other, that the saturation rule is **permanently silent** on a container with
 no memory limit, that both many-to-one joins survive a kube-state-metrics
@@ -49,7 +49,11 @@ scraped on two instances, that a workload with no
 the same workload raises its alert again the moment
 `perf_sentinel_service_io_ops_overflow_total` goes nonzero, which is the
 fail-open direction and the one that decides whether a full service cap
-silences a whole fleet.
+silences a whole fleet, and that a pod a Job owns raises nothing even then.
+trivy-operator names each scan Job's container after the one it scans, so
+its scan pods match the container selector, and the record drops them only
+from its next evaluation. The StatefulSet case carries its owner series, so
+the Job clause is also shown to leave that pod to the daemon's refusal.
 
 Every case publishes the `kube_pod_container_info` its pod would really carry,
 so the record always has a left-hand side to subtract from. A case without it
@@ -58,7 +62,7 @@ behaves, which is the new suppression routed around instead of exercised. Each
 service meant to look ingested publishes `perf_sentinel_service_io_ops_total`
 beside it, and the three that do not leave it out on purpose: the StatefulSet
 pod the record's own pod selector must keep out of its result, and the untraced
-workload of the last two cases.
+workload of the last three cases.
 
 **D, the CRD.** The example file states as fact that `AlertmanagerConfig`'s
 `httpConfig` has no field for an arbitrary header and does carry a bearer

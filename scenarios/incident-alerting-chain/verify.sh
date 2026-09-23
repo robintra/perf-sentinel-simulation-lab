@@ -15,12 +15,12 @@
 #   B. The two files carry the SAME five rules, the four alerts and the
 #      recording rule they subtract. Everything proved on one is then proved on
 #      its twin, which is what lets leg C run once.
-#   C. promtool test rules over synthetic kube-state-metrics series: the nine
+#   C. promtool test rules over synthetic kube-state-metrics series: the ten
 #      behaviours the files claim in prose but cannot demonstrate, including
 #      the two duplicated-series joins, the rule that goes silent when a
-#      container carries no memory limit, and both directions of the record,
+#      container carries no memory limit, both directions of the record,
 #      the untraced workload it drops and the service cap that makes it stop
-#      dropping anything.
+#      dropping anything, and the Job pod the pod rules leave out.
 #   D. The CRD fields the receiver uses exist in the schema that admits it,
 #      read from the installed CRD when there is a cluster and from the pinned
 #      chart otherwise.
@@ -136,12 +136,13 @@ fi
 
 # ---------------------------------------------------------------------------
 step "C. The five rules behave the way the file describes them"
-# The nine cases live in fixtures/rules-unit-tests.yaml. They settle
+# The ten cases live in fixtures/rules-unit-tests.yaml. They settle
 # deterministically, in under a second, what a cluster settles slowly and only
 # with a second kube-state-metrics: the two duplicated-series joins, the rule
 # that is silent without a memory limit, the pod shape that loses its service
 # label, and the recording rule both ways, dropping a workload the daemon never
-# ingested and dropping nobody once the service cap has overflowed. Every case
+# ingested and dropping nobody once the service cap has overflowed, and the
+# Job pod the pod rules drop whatever the record says. Every case
 # gives the record a left-hand side to subtract from, so a rule that fires
 # fires past the record rather than for want of anything to subtract. Cheap
 # enough to run on every pass, and they fail on their own.
@@ -151,11 +152,12 @@ if ! command -v promtool >/dev/null; then
 else
   cp "${FIXTURES}/rules-unit-tests.yaml" "${TMP_DIR}/tests.yaml"
   if C_OUT="$(cd "${TMP_DIR}" && promtool test rules tests.yaml 2>&1)"; then
-    ok "9 behaviours asserted: the oom/restart exclusion, the for clause, the"
+    ok "10 behaviours asserted: the oom/restart exclusion, the for clause, the"
     ok "rule that stays silent with no memory limit, both duplicated-series"
     ok "joins, the pod shape that loses its service label, the workload the"
-    ok "daemon never ingested, and the service cap that silences nobody"
-    record "rule unit tests" PASS "promtool test rules SUCCESS, 9 cases"
+    ok "daemon never ingested, the service cap that silences nobody, and the"
+    ok "pod a Job owns"
+    record "rule unit tests" PASS "promtool test rules SUCCESS, 10 cases"
   else
     fail "promtool test rules failed:"
     printf '%s\n' "${C_OUT}" | head -20

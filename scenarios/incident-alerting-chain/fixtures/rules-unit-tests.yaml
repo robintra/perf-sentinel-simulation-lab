@@ -5,9 +5,10 @@
 # These assert what the file's own comments claim but cannot prove: that the
 # OOM and restart rules are mutually exclusive, that the saturation rule is
 # silent when the container carries no memory limit, that both many-to-one
-# joins survive a kube-state-metrics scraped on two instances, and that the
+# joins survive a kube-state-metrics scraped on two instances, that the
 # record drops a workload the daemon does not ingest while letting every
-# workload through the moment it can no longer tell which ones it does. A real
+# workload through the moment it can no longer tell which ones it does, and
+# that a pod a Job owns never posts an incident. A real
 # cluster proves none of them better, and this lab's cluster proves none of
 # them at all: its containers are named after their chart, never `app`.
 #
@@ -206,7 +207,9 @@ tests:
   # leaves the label alone. The alert still fires, carries no `service`, and the
   # daemon refuses it into rejected_no_service rather than joining it to the
   # wrong findings. That refusal is the safety net, and it only works because
-  # every rule drops the scrape target's own labels first.
+  # every rule drops the scrape target's own labels first. Its owner series
+  # says StatefulSet, which the Job clause of the pod rules lets through: that
+  # clause must not take the safety net with it.
   #
   # The pod publishes `kube_pod_container_info` like any other, which makes
   # this a test of the record's own `pod=~".+-[^-]+-[^-]+"` selector as well:
@@ -219,6 +222,8 @@ tests:
       - series: 'kube_pod_container_status_restarts_total{namespace="db", pod="postgres-0", container="app"}'
         values: '0 0 0 1 1 1 1 1 1 1 1'
       - series: 'kube_pod_container_info{namespace="db", pod="postgres-0", container="app", image="postgres:18"}'
+        values: '1+0x10'
+      - series: 'kube_pod_owner{namespace="db", pod="postgres-0", owner_kind="StatefulSet", owner_name="postgres"}'
         values: '1+0x10'
     alert_rule_test:
       - eval_time: 6m
@@ -275,6 +280,8 @@ tests:
         values: '0 0 0 1 1 1 1 1 1 1 1'
       - series: 'kube_pod_container_info{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app", image="legacy-batch:lab"}'
         values: '1+0x10'
+      - series: 'kube_pod_owner{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", owner_kind="ReplicaSet", owner_name="legacy-batch-7f9c4d2b1"}'
+        values: '1+0x10'
       - series: 'perf_sentinel_service_io_ops_overflow_total'
         values: '7+0x10'
     alert_rule_test:
@@ -289,3 +296,36 @@ tests:
               perf_sentinel_kind: restart
             exp_annotations:
               summary: 'shop/legacy-batch: container restarted (legacy-batch-7f9c4d2b1-k8mnp)'
+
+  # === 10. A pod a Job owns raises nothing ===
+  # Assumption 2 of the example file says a Job pod fits the regex wrongly, and
+  # this is the rule that stops it. trivy-operator names the container of each
+  # scan Job after the container it scans, so every scan of a traced image
+  # matches `container="app"`, under a pod name of the Deployment shape. The
+  # record drops such an untraced workload only from its next evaluation, up to
+  # two minutes after the pod appears, and a scan pod that restarted inside that
+  # window reached the daemon as an incident with nothing in it.
+  #
+  # Case 9 with one change, the owner kind. The service cap has overflowed, so
+  # the record subtracts nothing and only the owner clause can silence the
+  # alert: case 9 fires, this one must not. The Job owner is published by two
+  # kube-state-metrics instances, which an `unless` takes in its stride. One
+  # alert is asserted for the reason case 8 gives: the three pod rules carry the
+  # same clause.
+  - interval: 1m
+    name: a pod a Job owns stays silent
+    input_series:
+      - series: 'kube_pod_container_status_restarts_total{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app"}'
+        values: '0 0 0 1 1 1 1 1 1 1 1'
+      - series: 'kube_pod_container_info{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", container="app", image="legacy-batch:lab"}'
+        values: '1+0x10'
+      - series: 'kube_pod_owner{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", owner_kind="Job", owner_name="legacy-batch-7f9c4d2b1", instance="ksm-a"}'
+        values: '1+0x10'
+      - series: 'kube_pod_owner{namespace="shop", pod="legacy-batch-7f9c4d2b1-k8mnp", owner_kind="Job", owner_name="legacy-batch-7f9c4d2b1", instance="ksm-b"}'
+        values: '1+0x10'
+      - series: 'perf_sentinel_service_io_ops_overflow_total'
+        values: '7+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PerfSentinelRestart
+        exp_alerts: []
