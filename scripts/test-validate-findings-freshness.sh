@@ -41,6 +41,9 @@ fi
 
 mkdir -p "${TEST_TMP}/bin" "${TEST_TMP}/gate"
 
+# The losing wait blocks 3s, so a runner stuck on it reads SECONDS >= 3. The
+# failed-Job checks below bound SECONDS at 3, not 2: SECONDS counts whole-second
+# ticks and process spawns are slow on Git Bash, so a prompt run can read 2.
 cat > "${TEST_TMP}/bin/kubectl" <<'SH'
 #!/usr/bin/env bash
 if [[ " $* " == *" create configmap "* ]]; then
@@ -247,7 +250,7 @@ SECONDS=0
 run_scenario slow-messaging slow_messaging order-service \
     scenarios/slow-messaging.js /api/fault/slow-messaging
 if [[ "${RESULTS[0]}" != 'FAIL|slow-messaging|slow_messaging|order-service|0|k6 Job Failed condition' \
-        || "${SECONDS}" -ge 2 \
+        || "${SECONDS}" -ge 3 \
         || ! -s "${GATE_JOB_LOG}" ]]; then
     echo "FAIL: foundation runner did not diagnose the failed Job promptly: ${RESULTS[0]}"
     exit 1
@@ -437,7 +440,7 @@ if "${REPO_ROOT}/scripts/run-multistack-scenario.sh" quarkus messaging \
     cat "${RUNNER_KUBECTL_LOG}"
     exit 1
 fi
-if [[ "${SECONDS}" -ge 2 ]]; then
+if [[ "${SECONDS}" -ge 3 ]]; then
     echo "FAIL: runner waited ${SECONDS}s before diagnosing a failed k6 Job"
     exit 1
 fi

@@ -117,8 +117,10 @@ print(json.dumps(sorted({(f["trace_id"], f.get("source_endpoint") or "") for f i
 
 evaluate_findings() {
     local pattern="$1" endpoint="$2" baseline_file="$3" started_at_ms="$4" expected_framework="$5" expected_recommendation="$6" findings_json="$7"
+    # MSYS2_ENV_CONV_EXCL: under Git Bash, MSYS rewrites the endpoint (a
+    # leading slash) into a Windows path before python3 sees it.
     printf '%s' "${findings_json}" | EXPECTED_TYPE="${pattern}" EXPECTED_SERVICE="${SERVICE}" \
-        EXPECTED_ENDPOINT="${endpoint}" EXPECTED_FRAMEWORK="${expected_framework}" EXPECTED_RECOMMENDATION="${expected_recommendation}" BASELINE_FILE="${baseline_file}" STARTED_AT_MS="${started_at_ms}" \
+        EXPECTED_ENDPOINT="${endpoint}" MSYS2_ENV_CONV_EXCL=EXPECTED_ENDPOINT EXPECTED_FRAMEWORK="${expected_framework}" EXPECTED_RECOMMENDATION="${expected_recommendation}" BASELINE_FILE="${baseline_file}" STARTED_AT_MS="${started_at_ms}" \
         python3 -c '
 import collections, json, os, sys
 try:

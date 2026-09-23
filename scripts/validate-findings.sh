@@ -210,8 +210,10 @@ EOF
             break
         fi
 
+        # MSYS2_ENV_CONV_EXCL: under Git Bash, MSYS rewrites the endpoint (a
+        # leading slash) into a Windows path before python3 sees it.
         count="$(printf "%s" "${findings_json}" | EXPECTED_TYPE="${finding_type}" \
-            EXPECTED_SERVICE="${service}" EXPECTED_ENDPOINT="${endpoint}" \
+            EXPECTED_SERVICE="${service}" EXPECTED_ENDPOINT="${endpoint}" MSYS2_ENV_CONV_EXCL=EXPECTED_ENDPOINT \
             BASELINE_FILE="${baseline_file}" STARTED_AT_MS="${started_at_ms}" python3 -c "
 import json, os, sys
 try:
