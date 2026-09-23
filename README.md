@@ -194,7 +194,7 @@ listen_address = "0.0.0.0"
 listen_port_http = 14318
 listen_port_grpc = 14317
 max_active_traces = 10000
-trace_ttl_ms = 5000               # lab-only short TTL, see manifest comment
+trace_ttl_ms = 30000              # production-aligned, see manifest comment
 api_enabled = true
 environment = "staging"
 
