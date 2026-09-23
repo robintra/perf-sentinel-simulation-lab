@@ -269,7 +269,9 @@ fi
 # Archive opened at startup, before any incident: a bad path must fail the
 # daemon, not the first delivery, and the file must not be world-readable.
 if [ -f "${TMP_DIR}/incidents.ndjson" ]; then
-  MODE="$(stat -f '%Lp' "${TMP_DIR}/incidents.ndjson" 2>/dev/null || stat -c '%a' "${TMP_DIR}/incidents.ndjson")"
+  # GNU first: GNU `stat -f` also succeeds, printing the filesystem's status,
+  # so a BSD-first order never reaches the fallback on Linux.
+  MODE="$(stat -c '%a' "${TMP_DIR}/incidents.ndjson" 2>/dev/null || stat -f '%Lp' "${TMP_DIR}/incidents.ndjson")"
   if [ "${MODE}" = "600" ]; then
     ok "archive created at startup with mode 0600"
     record "archive opened at startup" PASS "mode 0600 before any incident"
