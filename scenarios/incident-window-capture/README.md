@@ -50,8 +50,10 @@ value keeps its space and the service is the join key to the findings.
 `oldest_finding_ms` sits above `window_from_ms`, which is what says the
 capture is complete rather than eaten into by eviction. The alert also carries
 the `namespace` label kube-prometheus attaches to every pod alert, and the
-record keeps it as `namespace`: a label for reading and filtering, never a
-join key, the freeze stays by service.
+record keeps it as `namespace`, for reading and filtering. Since 0.25.0 it
+also narrows the freeze to that namespace's findings, which
+`incident-namespace-scope` owns: the seeds here carry no namespace attribute,
+so they are kept.
 
 **B, the settle pass grows the record.** A second anti-pattern is seeded right
 after the delivery, so it is analysed after the reception freeze but inside

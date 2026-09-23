@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 89 scenarios live under `scenarios/<name>/` and each one ships a
+The 90 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -195,7 +195,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 89
+`grouping-identity` is the 0.11 contract gate. The lab now ships 90
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -425,7 +425,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 89 (sequential, long-running-drift is the long pole)
+# All 90 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1456,7 +1456,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 89 scenarios, in an order
+`make verify-all-scenarios` includes all 90 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -3273,6 +3273,59 @@ Deliberately not asserted: that the gauge means liveness (a crash, a scale to
 zero, a deploy, a load balancer drain and a quiet cron all read the same), and
 that a finding analysed after the settle fired reaches the record (the settle
 is one pass, not a poll, and the reception capture is already on disk by then).
+
+## incident-namespace-scope (0.25.0, which findings an incident keeps)
+
+`make verify-incident-namespace-scope`. Self-contained: a local release binary,
+python3 and curl. No cluster, no Docker. Around 15 seconds.
+
+On a fleet where each tenant runs the same service in its own namespace, one
+rollout fires one alert per namespace and the daemon records one incident per
+namespace. Up to 0.24.0 each of them froze the findings of that service in
+every namespace, the incident's `namespace` being only a label, so every
+tenant's post-mortem read the others'. 0.25.0 leaves out a finding whose
+grouping names a different `k8s.namespace.name` and keeps one that names none.
+`incident-window-capture` owns the intake and the window, this scenario owns
+which rows of that window an incident with a namespace keeps. Run against
+0.24.0 it fails the seven checks 0.25.0 changed, and its five controls pass on
+both.
+
+**The namespace is not always first.** The daemon runs
+`grouping_attributes = ["service.namespace", "k8s.namespace.name"]`, and one
+seed carries `service.namespace=commerce` with tenant-b behind it. The daemon
+orders a trace's grouping by that list whatever order it arrives in, so this
+row's effective grouping is `commerce`, and a screen that read only the first
+attribute would freeze it into tenant-a. The same n+1 is also seeded under
+tenant-a, under tenant-b and with no namespace, and the ring has to hold the
+four rows apart before any alert.
+
+**One delivery, three incidents.** Three alerts on the same service at the
+same instant, tenant-a, tenant-b and none, record three incidents, since the
+namespace is part of the id. Each tenant's holds its own rows and the
+unlabelled one, never the other's, and the one without a namespace freezes by
+service. Right after the delivery each tenant gets a new anti-pattern, and
+after the settle each record has grown by its own row alone. Both must grow,
+so "no foreign row" cannot pass on a settle that never ran. Every NDJSON
+record of the tenant-a incident is screened the same way.
+
+**`findings=false` is what the dashboard reads.** The lab's Incidents table
+asked `/api/incidents?limit=50` for a count and got every frozen finding of
+every incident, the load the 0.25.0 release note describes taking Grafana down.
+It now asks with `findings=false`, and the scenario checks that shape by page,
+by `namespace` and by `id`: no `findings` key, `finding_count` equal to the
+full record's length, every other field unchanged. A malformed `findings` or
+`offset` answers 401 without the key and 400 with it, where a malformed
+`offset` answered 400 ahead of the key before.
+
+**The warning says what it costs.** `[daemon.incidents]` enabled without
+`k8s.namespace.name` among `grouping_attributes` warns at startup and the
+daemon serves, while the namespace-second config above does not warn. Under
+`["tenant.id"]` the ingest keeps no namespace, so a tenant-b trace lands in a
+tenant-a incident: the freeze by service the warning announces.
+
+Deliberately not asserted: that incidents recorded before an upgrade keep what
+they froze (the absence of a migration), and the Hub's copy, which mirrors
+what the daemon froze and is `hub-incidents-mirror`'s.
 
 ## hub-incidents-mirror (0.20.0 daemon-to-Hub incident chain)
 
