@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 90 scenarios live under `scenarios/<name>/` and each one ships a
+The 91 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -195,7 +195,7 @@ Findings produced by the standard rule omit the field.
 
 The first nine rows are the core deployment-mode scenarios.
 `astronomy-shop` is the foreign-instrumentation replay gate.
-`grouping-identity` is the 0.11 contract gate. The lab now ships 90
+`grouping-identity` is the 0.11 contract gate. The lab now ships 91
 scenarios in total, all wired into `make verify-all-scenarios` (run
 `make help` for the full per-target list). The others cover the CI
 quality gate (`ci-shift-left`, `output-formats-coverage`), the three
@@ -425,7 +425,7 @@ make verify-rpc-carrier-parity
 # Live-chaos telemetry from the OTel demo (local release binary only)
 make verify-chaos-replay
 
-# All 90 (sequential, long-running-drift is the long pole)
+# All 91 (sequential, long-running-drift is the long pole)
 make verify-all-scenarios
 ```
 
@@ -1456,7 +1456,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 90 scenarios, in an order
+`make verify-all-scenarios` includes all 91 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -3409,6 +3409,35 @@ its own interval, the reader's paging and its body cap, retention, which is
 archive, which it does not replay at startup. Alertmanager itself used to be on
 that list and no longer is: `incident-alerting-chain` runs a real one since
 0.22.0 shipped the rules and the receiver that feed this route.
+
+## micrometer-http-client (0.25.2, Micrometer method and status tags)
+
+`make verify-micrometer-http-client`. Self-contained: a local release binary,
+JDK 25, Maven, python3 and Docker for a throwaway Jaeger. No cluster. Around a
+minute once Maven has its dependencies.
+
+A Spring Boot 4.1.1 service traced through Micrometer Observation tags its
+RestClient spans `method` and `status`, where OTel writes `http.request.method`
+and `http.response.status_code`, through both bridges it can pick:
+`spring-boot-starter-opentelemetry` and the Brave bridge of
+`spring-boot-starter-zipkin`. Up to 0.25.1 perf-sentinel read every such call
+as a `GET` without a status, so a `POST` and a `GET` to one URL fused into one
+`n_plus_one_http` finding. Every Java service in the lab runs the OTel agent,
+so this is the only emitter of that shape here.
+
+The app calls itself once and fans out 6 `POST`, 6 `GET`, one `GET` answered
+404 and one refused call (`status=CLIENT_ERROR`). The scenario reads it over
+OTLP through `perf-sentinel capture`, as Zipkin v2 JSON, as the Jaeger JSON of
+the OTLP capture replayed into Jaeger, and through the daemon's OTLP receiver.
+Each file path has to split the finding into `POST` x6 and `GET` x7, carry
+201, 200 and 404 on the embedded events and no status on the refused call, and
+the four paths have to agree on both signatures. Run against 0.25.1 it fails
+the eight method and status checks, and its four build and shape checks pass
+on both.
+
+**Jaeger 2.21.0 has no `/api/traces`.** It removed the v1 HTTP endpoints
+(jaegertracing/jaeger#9260), so the scenario pins 2.20.0. The same removal
+breaks `perf-sentinel jaeger-query` against Jaeger 2.21.0 and later.
 
 ## Which binary a scenario runs against
 
