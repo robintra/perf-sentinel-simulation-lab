@@ -3439,6 +3439,38 @@ on both.
 (jaegertracing/jaeger#9260), so the scenario pins 2.20.0. The same removal
 breaks `perf-sentinel jaeger-query` against Jaeger 2.21.0 and later.
 
+## hibernate-alias-suggestion (0.25.3, JPA fix without a Hibernate span)
+
+`make verify-hibernate-alias-suggestion`. Self-contained: a local release
+binary, JDK 25, Maven and python3. No cluster. Around a minute once Maven has
+its dependencies.
+
+The OTel Java agent wraps a Hibernate query or a Spring Data repository call in
+a span that names the ORM, but not the load of a lazy collection. That SELECT
+reaches perf-sentinel as a bare `io.opentelemetry.jdbc` span, so up to 0.25.2
+the most common N+1 of a JPA application got the Java generic fix instead of
+the JPA one. A service traced through Micrometer got no fix at all, since its
+only scope, `org.springframework.boot`, named no language. 0.25.3 reads
+Hibernate's table aliases on a SELECT, strips the comment
+`hibernate.use_sql_comments` puts in front, leaves bulk UPDATEs to the Java
+generic fix, and reads that scope as Java.
+
+A Spring Boot 4.1.1 + Spring Data JPA app on H2 runs five loops of six calls
+(lazy loads, a JdbcTemplate SELECT, a derived query, a bulk JPQL UPDATE,
+RestClient GETs) under the agent, under the agent with its Hibernate and Spring
+Data instrumentation off and SQL comments on, under the Micrometer bridge, and
+straight into the daemon. Lazy loads and the commented derived SELECT have to
+read `java_jpa`, the JdbcTemplate SELECT and the commented UPDATE
+`java_generic`, the Micrometer `n_plus_one_http` `java_generic`, and the file
+and daemon paths have to agree on every signature. Run against 0.25.2 it fails
+the five checks that read the new fix and passes the nine others.
+
+**The detector type of a loop moves between runs.** Every statement is already
+parameterized, so the strict sanitizer-aware mode picks `n_plus_one_sql` or
+`redundant_sql` from the spread of the durations, which changes from one run of
+the app to the next, and the signature follows the type. The assertions find
+each loop by its template.
+
 ## Which binary a scenario runs against
 
 Scenarios split into two families by how they reach perf-sentinel, and the

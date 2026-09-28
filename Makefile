@@ -50,6 +50,7 @@ PERF_SENTINEL_LOCAL_BIN ?= $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-java-ci-capture \
         verify-java-ci-file-export \
         verify-micrometer-http-client \
+        verify-hibernate-alias-suggestion \
         verify-ci-e2e-jenkins verify-ci-e2e-github verify-ci-e2e-gitlab \
         verify-archive-integrity-chain verify-archive-window-drops verify-config-fragments \
         verify-incident-window-capture verify-incident-namespace-scope \
@@ -225,6 +226,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/java-ci-capture/verify.sh
 	@bash -n scenarios/java-ci-file-export/verify.sh
 	@bash -n scenarios/micrometer-http-client/verify.sh
+	@bash -n scenarios/hibernate-alias-suggestion/verify.sh
 	@bash -n scenarios/ci-e2e-common/render-check.sh
 	@bash -n scenarios/ci-e2e-jenkins/verify.sh
 	@bash -n scenarios/ci-e2e-github/verify.sh
@@ -706,6 +708,10 @@ verify-java-ci-file-export: ## Java agent (SDK 1.66 otlp_file) writes the trace 
 verify-micrometer-http-client: ## 0.25.2 ingest: Spring Boot 4 traced through Micrometer Observation, method and status tags read over OTLP, Zipkin, Jaeger and the daemon (local binary + Docker, no cluster)
 	./scenarios/micrometer-http-client/verify.sh
 
+verify-hibernate-alias-suggestion: ## 0.25.3 detect: java_jpa from Hibernate aliases on lazy loads no Hibernate span wraps, java_generic through Micrometer, under the agent, the bare agent and the daemon (local binary, no cluster)
+	./scenarios/hibernate-alias-suggestion/verify.sh
+
+
 verify-ci-e2e-jenkins: ## Upstream Java CI recipe inside a real Jenkins controller, through to whether the published dashboard renders under Jenkins' CSP (docker, no cluster)
 	./scenarios/ci-e2e-jenkins/verify.sh
 
@@ -796,7 +802,7 @@ verify-all-scenarios: seed-tracegen ## Run all 91 scenarios sequentially (see do
 	@#   leaves an empty findings ring behind, so it sits after the hub
 	@#   scenarios that read that ring and just before cold-start-edge-cases,
 	@#   which starts from a cold daemon anyway.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture java-ci-file-export micrometer-http-client ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture incident-namespace-scope incident-alerting-chain grouping-identity grouping-metrics-split findings-page-filters correlation-event-time slow-window-cross-batch diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding consumer-endpoint grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability hub-incidents-mirror cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture java-ci-file-export micrometer-http-client hibernate-alias-suggestion ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture incident-namespace-scope incident-alerting-chain grouping-identity grouping-metrics-split findings-page-filters correlation-event-time slow-window-cross-batch diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding consumer-endpoint grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability hub-incidents-mirror cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
