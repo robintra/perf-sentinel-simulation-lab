@@ -3471,6 +3471,20 @@ parameterized, so the strict sanitizer-aware mode picks `n_plus_one_sql` or
 the app to the next, and the signature follows the type. The assertions find
 each loop by its template.
 
+## ack-store-fsgroup-root (0.25.3, ack store at an fsGroup volume root)
+
+`make verify-ack-store-fsgroup-root`. Needs Docker, around 15 seconds. The
+image resolves through `scripts/resolve-image.sh`.
+
+The Helm chart puts the ack store at the root of its volume, which the kubelet
+leaves owned by root, group `fsGroup`, mode 2775. The daemon runs as 65534 and
+cannot tighten that directory to 0700, and up to 0.25.2 it warned about it at
+every start. A Docker volume prepared as root reproduces that shape without a
+cluster. 0.25.3 has to start on it without the warning, log the refusal at
+debug, accept an ack and write `acks.jsonl` at 600. A world-writable directory
+still warns, and a directory the daemon owns is tightened to 700 in silence.
+Run against 0.25.2 it fails the two log checks and passes the four others.
+
 ## Which binary a scenario runs against
 
 Scenarios split into two families by how they reach perf-sentinel, and the
