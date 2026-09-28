@@ -1,7 +1,8 @@
 # ack-store-fsgroup-root
 
 The daemon's start-up chmod of its ack store directory, against the volume
-shape a Kubernetes `fsGroup` leaves behind.
+shape a Kubernetes `fsGroup` leaves behind, and the start-up advisories of the
+chart's configuration.
 
 ## Why it exists
 
@@ -17,6 +18,12 @@ something the operator cannot and need not fix.
 others. A world-writable directory still warns, as does any other chmod
 failure. The ack file keeps its 0600 mode.
 
+The chart's configuration also listens on `0.0.0.0`. Up to 0.25.2 `watch`
+validated its configuration twice, once as loaded and once after its
+command-line flags, so every advisory, the non-loopback listen one first,
+printed twice on every pod. 0.25.3 applies the flags as a last layer and
+validates once.
+
 ## What it asserts
 
 | id | assertion |
@@ -27,8 +34,11 @@ failure. The ack file keeps its 0600 mode.
 | F4 | `acks.jsonl` is 600 and owned by 65534, the directory is left at 2775 `root:65534` |
 | W1 | world-writable (`root:65534 2777`): the warning stays |
 | O1 | a directory the daemon owns (`65534:65534 2775`): no ack store log line, tightened to 700 |
+| L1 | `listen_address = "0.0.0.0"` in the file: the non-loopback advisory prints once |
+| L2 | `--listen-address 0.0.0.0` on the command line: the advisory prints once and `/health` answers |
 
-Run against 0.25.2 the scenario fails F1 and F2 and passes the other four.
+Run against 0.25.2 the scenario fails F1, F2 and L1 (the advisory prints
+twice when the address comes from the file) and passes the other five.
 
 ## How it reproduces the volume
 
@@ -46,10 +56,3 @@ PERF_SENTINEL_IMAGE=perf-sentinel:<local tag> make verify-ack-store-fsgroup-root
 
 Needs Docker. The image resolves through `scripts/resolve-image.sh`, so
 `PERF_SENTINEL_VERSION=0.25.2` runs the control above. Around 15 seconds.
-
-## Watch out
-
-**The non-loopback warning prints twice.** The daemon listens on `0.0.0.0` here
-so the published port reaches it, and 0.25.2 and 0.25.3 both log
-`Daemon configured to listen on non-loopback address` twice at start. The
-assertions match the ack store messages only.

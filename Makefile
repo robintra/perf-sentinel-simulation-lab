@@ -712,7 +712,7 @@ verify-micrometer-http-client: ## 0.25.2 ingest: Spring Boot 4 traced through Mi
 verify-hibernate-alias-suggestion: ## 0.25.3 detect: java_jpa from Hibernate aliases on lazy loads no Hibernate span wraps, java_generic through Micrometer, under the agent, the bare agent and the daemon (local binary, no cluster)
 	./scenarios/hibernate-alias-suggestion/verify.sh
 
-verify-ack-store-fsgroup-root: ## 0.25.3 daemon: no warning at start when the ack store sits at an fsGroup volume root it cannot chmod (docker image, no cluster)
+verify-ack-store-fsgroup-root: ## 0.25.3 daemon: no warning at start when the ack store sits at an fsGroup volume root it cannot chmod, each advisory printed once (docker image, no cluster)
 	./scenarios/ack-store-fsgroup-root/verify.sh
 
 verify-ci-e2e-jenkins: ## Upstream Java CI recipe inside a real Jenkins controller, through to whether the published dashboard renders under Jenkins' CSP (docker, no cluster)

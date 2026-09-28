@@ -3483,7 +3483,11 @@ every start. A Docker volume prepared as root reproduces that shape without a
 cluster. 0.25.3 has to start on it without the warning, log the refusal at
 debug, accept an ack and write `acks.jsonl` at 600. A world-writable directory
 still warns, and a directory the daemon owns is tightened to 700 in silence.
-Run against 0.25.2 it fails the two log checks and passes the four others.
+The same starts listen on `0.0.0.0` like the chart, and the non-loopback
+advisory has to print once, whether the address comes from the file or from
+`--listen-address`: up to 0.25.2 `watch` validated its configuration a second
+time after its flags, and printed every advisory twice. Run against 0.25.2 it
+fails the three log checks that cover these and passes the five others.
 
 ## Which binary a scenario runs against
 

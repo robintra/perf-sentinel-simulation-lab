@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # ack-store-fsgroup-root: the daemon's start-up chmod of the ack store
-# directory, against the volume shape a Kubernetes fsGroup gives it.
+# directory, against the volume shape a Kubernetes fsGroup gives it, and the
+# start-up advisories of the chart's configuration.
 #
 # The Helm chart puts the ack store at the root of its volume. Under the pod's
 # fsGroup that root belongs to root, group fsGroup, mode 2775, and the daemon
 # runs as 65534: its chmod to 0700 always fails with EPERM. perf-sentinel
 # 0.25.2 and older warned about it at every start. 0.25.3 logs it at debug,
 # and keeps the warning for a directory other users can write into.
+#
+# The chart's configuration listens on 0.0.0.0. Up to 0.25.2 `watch` validated
+# its configuration twice, before and after its command-line flags, so the
+# non-loopback advisory printed twice. 0.25.3 validates once, flags applied.
 #
 # No cluster: a Docker volume prepared as root reproduces the kubelet's result
 # (owner root, group 65534, setgid, group-writable), and the image runs as
@@ -20,6 +25,9 @@
 #   W1  world-writable (root:65534 2777): the warning stays.
 #   O1  a directory the daemon owns (65534:65534 2775): no warning, tightened
 #       to 700.
+#   L1  listen_address = "0.0.0.0" in the file: the advisory prints once.
+#   L2  --listen-address 0.0.0.0 on the command line: the advisory prints once
+#       and the daemon answers on the published port.
 #
 # Needs Docker. The image resolves through scripts/resolve-image.sh.
 set -uo pipefail
@@ -72,6 +80,8 @@ listen_address = "0.0.0.0"
 [daemon.ack]
 storage_path = "/data/acks.jsonl"
 EOF
+grep -v '^listen_address' "${TMP_DIR}/config.toml" > "${TMP_DIR}/config-flags.toml"
+NONLOOPBACK_MSG="Daemon configured to listen on non-loopback address"
 
 # prepare <volume> <owner:group> <mode>: the volume root as the kubelet leaves it.
 prepare() {
@@ -80,17 +90,20 @@ prepare() {
     sh -c "chown $2 /data && chmod $3 /data" || die "cannot prepare volume $1"
 }
 
-# start <volume> [RUST_LOG]: run the daemon as 65534 until /health answers.
+# start <volume> [RUST_LOG [config file [watch flags...]]]: run the daemon as
+# 65534 until /health answers.
 start() {
+  local volume="$1" level="${2:-info}" config="${3:-config.toml}"
+  shift $(($# < 3 ? $# : 3))
   docker rm -f "${PREFIX}-daemon" > /dev/null 2>&1 || true
   docker run -d --name "${PREFIX}-daemon" --user 65534:65534 \
-    -e RUST_LOG="${2:-info}" \
-    -v "${PREFIX}-$1:/data" -v "${TMP_DIR}/config.toml:/etc/perf-sentinel/config.toml:ro" \
+    -e RUST_LOG="${level}" \
+    -v "${PREFIX}-${volume}:/data" -v "${TMP_DIR}/${config}:/etc/perf-sentinel/config.toml:ro" \
     -p "127.0.0.1:${PORT}:4318" \
-    "${IMAGE}" watch -c /etc/perf-sentinel/config.toml > /dev/null || die "cannot start ${IMAGE}"
+    "${IMAGE}" watch -c /etc/perf-sentinel/config.toml "$@" > /dev/null || die "cannot start ${IMAGE}"
   for _ in $(seq 40); do curl -sf "http://127.0.0.1:${PORT}/health" > /dev/null && return 0; sleep 0.5; done
-  docker logs "${PREFIX}-daemon" > "${TMP_DIR}/$1-failed.log" 2>&1
-  die "daemon on volume $1 never answered /health, see ${TMP_DIR}/$1-failed.log"
+  docker logs "${PREFIX}-daemon" > "${TMP_DIR}/${volume}-failed.log" 2>&1
+  die "daemon on volume ${volume} never answered /health, see ${TMP_DIR}/${volume}-failed.log"
 }
 
 # logs_to <file>: the daemon's logs so far, colour codes stripped.
@@ -111,6 +124,12 @@ if grep -q "${WARN_MSG}" "${TMP_DIR}/F-info.log"; then
   assert_fail "F1" "warning at start: $(grep -m1 "${WARN_MSG}" "${TMP_DIR}/F-info.log" | cut -c1-160)"
 else
   assert_pass "F1" "no warning about the ack store directory at start"
+fi
+n="$(grep -c "${NONLOOPBACK_MSG}" "${TMP_DIR}/F-info.log")"
+if [ "${n}" = "1" ]; then
+  assert_pass "L1" "listen_address 0.0.0.0 in the file: the non-loopback advisory prints once"
+else
+  assert_fail "L1" "listen_address 0.0.0.0 in the file: the non-loopback advisory prints ${n} times"
 fi
 code="$(curl -s -o "${TMP_DIR}/F-ack.body" -w '%{http_code}' -X POST \
   -H 'Content-Type: application/json' -d '{"by":"lab","reason":"fsgroup volume"}' \
@@ -158,6 +177,18 @@ if ! grep -q "ack store parent" "${TMP_DIR}/O.log" && [ "${got}" = "700 65534:65
   assert_pass "O1" "no ack store log line, directory tightened to 700"
 else
   assert_fail "O1" "directory ${got}, log: $(grep -m1 'ack store parent' "${TMP_DIR}/O.log" | cut -c1-160)"
+fi
+
+# =============================================================================
+step "L2: the listen address from the command line"
+start own info config-flags.toml --listen-address 0.0.0.0 --listen-port-http 4318
+logs_to "${TMP_DIR}/L2.log"
+docker rm -f "${PREFIX}-daemon" > /dev/null
+n="$(grep -c "${NONLOOPBACK_MSG}" "${TMP_DIR}/L2.log")"
+if [ "${n}" = "1" ]; then
+  assert_pass "L2" "--listen-address 0.0.0.0: the advisory prints once, /health answers"
+else
+  assert_fail "L2" "--listen-address 0.0.0.0: the advisory prints ${n} times"
 fi
 
 # =============================================================================
