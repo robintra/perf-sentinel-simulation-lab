@@ -50,7 +50,7 @@ PERF_SENTINEL_LOCAL_BIN ?= $(PERF_SENTINEL_REPO_PATH)/target/release/perf-sentin
         verify-java-ci-capture \
         verify-java-ci-file-export \
         verify-micrometer-http-client \
-        verify-hibernate-alias-suggestion verify-ack-store-fsgroup-root \
+        verify-hibernate-alias-suggestion verify-ack-store-fsgroup-root verify-outbound-proxy-private-ca \
         verify-ci-e2e-jenkins verify-ci-e2e-github verify-ci-e2e-gitlab \
         verify-archive-integrity-chain verify-archive-window-drops verify-config-fragments \
         verify-incident-window-capture verify-incident-namespace-scope \
@@ -228,6 +228,7 @@ validate: ## Validate manifests, helm values, dashboards, scripts (no cluster)
 	@bash -n scenarios/micrometer-http-client/verify.sh
 	@bash -n scenarios/hibernate-alias-suggestion/verify.sh
 	@bash -n scenarios/ack-store-fsgroup-root/verify.sh
+	@bash -n scenarios/outbound-proxy-private-ca/verify.sh
 	@bash -n scenarios/ci-e2e-common/render-check.sh
 	@bash -n scenarios/ci-e2e-jenkins/verify.sh
 	@bash -n scenarios/ci-e2e-github/verify.sh
@@ -512,7 +513,7 @@ verify-output-formats-coverage: ## Output formats, diff mode, signature presence
 verify-verify-hash-roundtrip: ## verify-hash CLI contract (exit codes 1/3/4 + identity-required default)
 	./scenarios/verify-hash-roundtrip/verify.sh
 
-verify-sql-backtick-redaction: ## 0.9.2 normalize: MySQL backtick ids preserved + PostgreSQL bracket/array literals masked (no leak)
+verify-sql-backtick-redaction: ## 0.9.2 normalize: MySQL backtick ids preserved + PostgreSQL bracket/array literals masked (no leak), 0.25.5 MySQL/MariaDB double-quoted values masked
 	./scenarios/sql-backtick-redaction/verify.sh
 
 verify-non-sql-datastore-drop: ## 0.9.2 ingest: redis/elasticsearch dropped on db.system across batch Jaeger/Zipkin + OTLP daemon
@@ -706,14 +707,17 @@ verify-java-ci-capture: ## Upstream Java CI recipe end to end: Maven Failsafe + 
 verify-java-ci-file-export: ## Java agent (SDK 1.66 otlp_file) writes the trace file itself in a forked Failsafe JVM, no capture -> analyze (local binary, no cluster)
 	./scenarios/java-ci-file-export/verify.sh
 
-verify-micrometer-http-client: ## 0.25.2 ingest: Spring Boot 4 traced through Micrometer Observation, method and status tags read over OTLP, Zipkin, Jaeger and the daemon (local binary + Docker, no cluster)
+verify-micrometer-http-client: ## 0.25.2 ingest: Spring Boot 4 traced through Micrometer Observation, method and status tags read over OTLP, Zipkin, Jaeger and the daemon, 0.25.5 jaeger-query on Jaeger 2.20 and 2.21 (local binary + Docker, no cluster)
 	./scenarios/micrometer-http-client/verify.sh
 
 verify-hibernate-alias-suggestion: ## 0.25.3 detect: java_jpa from Hibernate aliases on lazy loads no Hibernate span wraps, java_generic through Micrometer, under the agent, the bare agent and the daemon (local binary, no cluster)
 	./scenarios/hibernate-alias-suggestion/verify.sh
 
-verify-ack-store-fsgroup-root: ## 0.25.3 daemon: no warning at start when the ack store sits at an fsGroup volume root it cannot chmod, each advisory printed once (docker image, no cluster)
+verify-ack-store-fsgroup-root: ## 0.25.3 daemon: no warning at start when the ack store sits at an fsGroup volume root it cannot chmod, each advisory printed once, 0.25.5 advisory wording (docker image, no cluster)
 	./scenarios/ack-store-fsgroup-root/verify.sh
+
+verify-outbound-proxy-private-ca: ## 0.25.5 HTTPS_PROXY/ALL_PROXY/NO_PROXY/SSL_CERT_FILE through a CONNECT proxy to a private-CA origin, plus the daemon TLS listener (local binary + docker, no cluster)
+	./scenarios/outbound-proxy-private-ca/verify.sh
 
 verify-ci-e2e-jenkins: ## Upstream Java CI recipe inside a real Jenkins controller, through to whether the published dashboard renders under Jenkins' CSP (docker, no cluster)
 	./scenarios/ci-e2e-jenkins/verify.sh
@@ -751,7 +755,7 @@ verify-export-snapshot-scope: ## 0.13.1 export snapshot scope: the configurable 
 verify-otlp-compression-matrix: ## 0.9.28 OTLP transport x encoding matrix (gRPC/HTTP x gzip/deflate/none/zstd) with an A/B against the pre-fix image (Docker, no cluster; one cluster leg SKIPs without one)
 	./scenarios/otlp-compression-matrix/verify.sh
 
-verify-all-scenarios: seed-tracegen ## Run all 91 scenarios sequentially (see docs/SCENARIOS.md)
+verify-all-scenarios: seed-tracegen ## Run all 92 scenarios sequentially (see docs/SCENARIOS.md)
 	@# Order matters:
 	@# - grafana-dashboard before pg-stat so pg-stat detects postgres-exporter
 	@#   and exercises Path 2 (--pg-stat-prometheus).
@@ -805,7 +809,7 @@ verify-all-scenarios: seed-tracegen ## Run all 91 scenarios sequentially (see do
 	@#   leaves an empty findings ring behind, so it sits after the hub
 	@#   scenarios that read that ring and just before cold-start-edge-cases,
 	@#   which starts from a cold daemon anyway.
-	@for s in limit-batch-volume endpoint-resolution java-ci-capture java-ci-file-export micrometer-http-client hibernate-alias-suggestion ack-store-fsgroup-root ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture incident-namespace-scope incident-alerting-chain grouping-identity grouping-metrics-split findings-page-filters correlation-event-time slow-window-cross-batch diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding consumer-endpoint grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability hub-incidents-mirror cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
+	@for s in limit-batch-volume endpoint-resolution java-ci-capture java-ci-file-export micrometer-http-client hibernate-alias-suggestion ack-store-fsgroup-root outbound-proxy-private-ca ci-e2e-jenkins ci-e2e-github ci-e2e-gitlab archive-integrity-chain archive-window-drops config-fragments incident-window-capture incident-namespace-scope incident-alerting-chain grouping-identity grouping-metrics-split findings-page-filters correlation-event-time slow-window-cross-batch diff-mutated-findings ack-lifecycle-warning export-snapshot-scope broker-messaging-waste sql-backtick-redaction non-sql-datastore-drop non-sql-datastore-metering ruby-activerecord-suggestion datadog-bridge batch-otlp-file otlp-compression-matrix mysql-stat astronomy-shop sampling-degradation semconv-drift prod-topology-replay rpc-carrier-parity chaos-replay alumet-conformance alumet-db-waste appsec-hardening hybrid-daemon-batch batch-tempo-scrape batch-victoria-scrape daemon-otlp-direct hub-ingestion hub-derived-status hub-lineage-mutation hub-retention-purge hub-plugin-contract multiformat-input calibrate-mode sidecar-pattern correlation-finding consumer-endpoint grafana-dashboard query-monitor-api pg-stat ci-shift-left output-formats-coverage verify-hash-roundtrip intent-validator disclose disclose-temporal disclose-archive-family-baseline sci-functional-unit rgesn-crosswalk esrs-e1-crosswalk verify-hash-fail-closed chart-prometheusrule-pdb chart-disclose-persistence template-gitlab-ci template-jenkinsfile template-github-actions multi-agent-load long-running-drift failure-mode-daemon-restart daemon-sigterm-drain daemon-analysis-shedding failure-mode-backend-down failure-mode-network-partition hub-source-reachability hub-incidents-mirror cold-start-edge-cases daemon-ack-workflow scaphandre-mock-validation measured-energy-chain limit-trace-shapes limit-multi-source limit-service-cardinality limit-saturation-curve limit-prod-window-soak; do \
 	  echo "==> verify-$$s"; \
 	  $(MAKE) verify-$$s || echo "$$s FAILED"; \
 	done
