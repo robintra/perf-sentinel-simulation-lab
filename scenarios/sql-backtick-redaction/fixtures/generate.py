@@ -25,8 +25,25 @@
 #     (1..6) makes the group an N+1 so a finding is guaranteed to fire and
 #     carry the masked pattern.template.
 #
+#   double-quote.otlp.json  (0.25.5)
+#     OTLP JSON, CLIENT spans carrying db.statement plus the engine attribute.
+#     Four traces of six spans each, distinct values 1..6 -> one N+1 per trace:
+#       A  db.system=mysql        WHERE email = "alice-<n>@example.com"
+#       B  db.system=mariadb      same statement
+#       D  db.system.name=mysql   same statement, stable semconv key only
+#       C  db.system=postgresql   SELECT "Name" FROM "Users" WHERE "Id" = <n>
+#     MySQL and MariaDB read "..." as a string literal, so A, B and D must mask
+#     it to ? (and the address must never reach the output). PostgreSQL reads
+#     it as an identifier, so C keeps the quoted names verbatim.
+#
+#   double-quote-gap.native.json  (0.25.5)
+#     Native JSON whose `operation` is the SQL verb names no engine, so the
+#     double-quoted value is kept: the documented gap, pinned so a silent
+#     change of the default shows up.
+#
 # stdlib-only. Regenerating needs no extra packages. verify.sh consumes the
-# committed *.native.json directly and never runs this generator.
+# committed *.native.json and double-quote.otlp.json directly and never runs
+# this generator.
 import json
 import os
 
@@ -82,16 +99,67 @@ def build_array_redaction():
     return events
 
 
+def otlp_span(trace_hex, i, statement, engine_key, engine):
+    start = BASE_NS + (2 + i * 4) * 1_000_000
+    return {
+        "traceId": "%032x" % trace_hex,
+        "spanId": "%016x" % ((trace_hex << 20) | (i + 1)),
+        "parentSpanId": "%016x" % ((trace_hex << 20) | 1),
+        "name": "SELECT",
+        "kind": 3,
+        "startTimeUnixNano": str(start),
+        "endTimeUnixNano": str(start + 2_000_000),
+        "attributes": [
+            {"key": engine_key, "value": {"stringValue": engine}},
+            {"key": "db.statement", "value": {"stringValue": statement}},
+        ],
+    }
+
+
+def build_double_quote_otlp():
+    email = 'SELECT * FROM users WHERE email = "alice-%d@example.com"'
+    pg = 'SELECT "Name" FROM "Users" WHERE "Id" = %d'
+    spans = []
+    for trace_hex, key, engine, stmt in (
+        (0xDA, "db.system", "mysql", email),
+        (0xDB, "db.system", "mariadb", email),
+        (0xDD, "db.system.name", "mysql", email),
+        (0xDC, "db.system", "postgresql", pg),
+    ):
+        spans += [otlp_span(trace_hex, i, stmt % i, key, engine) for i in range(1, 7)]
+    return {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [{"key": "service.name", "value": {"stringValue": "shop-users"}}]
+                },
+                "scopeSpans": [{"scope": {"name": "lab"}, "spans": spans}],
+            }
+        ]
+    }
+
+
+def build_double_quote_gap():
+    return [
+        sql_event(0xDE, i + 1, 1, 2 + i * 4,
+                  'SELECT * FROM users WHERE email = "gap-%d@native.test"' % i,
+                  "GET /api/users")
+        for i in range(1, 7)
+    ]
+
+
 def main():
     for name, events in (
         ("backtick.native.json", build_backtick()),
         ("array-redaction.native.json", build_array_redaction()),
+        ("double-quote.otlp.json", build_double_quote_otlp()),
+        ("double-quote-gap.native.json", build_double_quote_gap()),
     ):
         path = os.path.join(HERE, name)
         with open(path, "w") as fh:
             json.dump(events, fh, indent=2)
             fh.write("\n")
-        print("%s  %d events" % (name, len(events)))
+        print("%s  written" % name)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# sql-backtick-redaction: validate the 0.9.2 normalize/sql.rs changes on the
-# local batch CLI path (no cluster, no daemon).
+# sql-backtick-redaction: validate the 0.9.2 and 0.25.5 normalize/sql.rs
+# changes on the local batch CLI path (no cluster, no daemon).
 #
 #   1. MySQL backtick identifiers are preserved verbatim by the normalizer,
 #      including a NUMERIC backtick identifier (`2024`) that the pre-0.9.2
@@ -11,18 +11,25 @@
 #      security fix in the batch: no string literal may appear in analyze
 #      output. `[` is deliberately NOT a special identifier state, so the
 #      `'...'` string path masks the contents.
+#   3. (0.25.5) MySQL / MariaDB double-quoted values are masked: OTLP spans
+#      with db.system=mysql, db.system=mariadb and db.system.name=mysql each
+#      give one n_plus_one_sql on `SELECT * FROM users WHERE email = ?`, and
+#      example.com appears 0 times in the JSON and SARIF output. PostgreSQL
+#      keeps `SELECT "Name" FROM "Users" WHERE "Id" = ?` verbatim. Native JSON
+#      with no engine keeps the value (documented gap, pinned).
 #
-# Both fixtures are committed native SpanEvent JSON. fixtures/generate.py
-# regenerates them (stdlib-only). Uses the local release binary built from
+# All fixtures are committed (native SpanEvent JSON, one OTLP JSON).
+# fixtures/generate.py regenerates them (stdlib-only). Uses the local release binary built from
 # the perf-sentinel checkout under test.
 set -euo pipefail
 
 SCENARIO="sql-backtick-redaction"
 REPORT="/tmp/scenario-${SCENARIO}-report.md"
-TMP_DIR="/tmp/${SCENARIO}"
+rm -f "${REPORT}"  # die() prints it, never show a previous run's verdict
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/${SCENARIO}.XXXXXX")"
+trap 'rm -rf "${TMP_DIR}"' EXIT
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FIX="${SCRIPT_DIR}/fixtures"
-mkdir -p "${TMP_DIR}"
 
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
 PERF_SENTINEL_LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel}"
@@ -53,11 +60,14 @@ assert len(n1)==1, 'expected exactly 1 n_plus_one_sql, got %d (%s)' % (len(n1), 
 print(n1[0]['pattern']['template'])
 ")" || die "backtick: ${BT_TEMPLATE:-no n_plus_one_sql finding}"
 
+# shellcheck disable=SC2016  # literal backticks, nothing to expand
 EXPECTED_BT='SELECT `name`, `col2` FROM `2024` WHERE `id` = ?'
 [ "${BT_TEMPLATE}" = "${EXPECTED_BT}" ] \
   || die "backtick template mismatch: got [${BT_TEMPLATE}] want [${EXPECTED_BT}]"
 # Numeric backtick id must NOT have been masked to `?`.
+# shellcheck disable=SC2016
 echo "${BT_TEMPLATE}" | grep -qF '`2024`' || die "numeric backtick \`2024\` was masked (pre-0.9.2 regression)"
+# shellcheck disable=SC2016
 echo "${BT_TEMPLATE}" | grep -qF '`col2`' || die "alphanumeric backtick \`col2\` not preserved"
 ok "template: ${BT_TEMPLATE}"
 
@@ -87,8 +97,8 @@ ok "template: ${AR_TEMPLATE}  (no secret/pii/ssn leak)"
 # The 0.9.2 security fix is the NORMALIZED TEMPLATE (signature/grouping path),
 # proven clean above on the canonical `analyze --format json` output. The HTML
 # report ALSO embeds a raw example span (`target` = captured db.statement) as
-# an exemplar. That raw exemplar is rendered verbatim and is OUTSIDE the three
-# commits under test (normalize/sql.rs only; the report renderer is untouched).
+# an exemplar. That raw exemplar is rendered verbatim and is OUTSIDE the 0.9.2
+# commits under test (normalize/sql.rs only, the report renderer is untouched).
 # So we assert the masked template renders, and we OBSERVE, non-fatally,
 # whether the raw exemplar surfaces literals from un-sanitized input.
 step "HTML report: masked template renders; raw exemplar surface observed"
@@ -104,8 +114,92 @@ if grep -qF "ARRAY['secret'" "${TMP_DIR}/array.html"; then
 fi
 ok "masked template present in HTML; raw-exemplar leak=${HTML_EXEMPLAR_LEAK}"
 
+# --- 4. MySQL / MariaDB double-quoted values masked (0.25.5) -----------------
+# OTLP CLIENT spans, engine from db.system / db.system.name. MySQL and MariaDB
+# read "..." as a string literal, so the address must collapse to ? and the six
+# spans of each trace group as one N+1. PostgreSQL keeps "..." as identifiers.
+# Before 0.25.5 the value stayed in the template: one template per address, no
+# N+1, and the address leaked into JSON and SARIF. HTML is not scanned, it
+# embeds raw spans by design (section 3).
+step "MySQL/MariaDB double-quoted values masked, PostgreSQL identifiers kept"
+for fmt in json sarif; do
+  "${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${FIX}/double-quote.otlp.json" --format "${fmt}" \
+    > "${TMP_DIR}/dq.${fmt}" 2>"${TMP_DIR}/dq.err" \
+    || die "analyze --format ${fmt} failed on double-quote.otlp.json: $(tail -2 "${TMP_DIR}/dq.err")"
+done
+# Every check runs before the leg fails, so a regression shows all its faces.
+DQ_FAILS=0
+dq_fail() { color_red "    FAIL: $*"; DQ_FAILS=$((DQ_FAILS + 1)); }
+DQ_LINES="$(python3 - "${TMP_DIR}/dq.json" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1]))
+want = [
+    ("da", "db.system=mysql", "SELECT * FROM users WHERE email = ?"),
+    ("db", "db.system=mariadb", "SELECT * FROM users WHERE email = ?"),
+    ("dd", "db.system.name=mysql", "SELECT * FROM users WHERE email = ?"),
+    ("dc", "db.system=postgresql", 'SELECT "Name" FROM "Users" WHERE "Id" = ?'),
+]
+for suffix, engine, template in want:
+    n1 = [f["pattern"]["template"] for f in r["findings"]
+          if f.get("type") == "n_plus_one_sql" and f.get("trace_id", "").endswith(suffix)]
+    if n1 == [template]:
+        print("ok %s: one n_plus_one_sql on [%s]" % (engine, template))
+    else:
+        print("FAIL %s: want one n_plus_one_sql [%s], got %s" % (engine, template, n1))
+PY
+)" || die "could not parse ${TMP_DIR}/dq.json"
+while IFS= read -r line; do
+  case "${line}" in
+    "ok "*) ok "${line#ok }" ;;
+    *)      dq_fail "${line#FAIL }" ;;
+  esac
+done <<< "${DQ_LINES}"
+# The SARIF scan alone would pass on an empty run, so require its 4 N+1 first.
+SARIF_N1="$(python3 -c "
+import json,sys
+r=json.load(open(sys.argv[1]))
+print(sum(1 for x in r['runs'][0]['results'] if x.get('ruleId')=='n_plus_one_sql'))" "${TMP_DIR}/dq.sarif")" \
+  || die "could not parse ${TMP_DIR}/dq.sarif"
+if [ "${SARIF_N1}" = "4" ]; then
+  ok "sarif output holds 4 n_plus_one_sql results"
+else
+  dq_fail "sarif output: want 4 n_plus_one_sql results, got ${SARIF_N1}"
+fi
+for fmt in json sarif; do
+  hits="$({ grep -oF 'example.com' "${TMP_DIR}/dq.${fmt}" || true; } | wc -l | tr -d ' ')"
+  if [ "${hits}" = "0" ]; then
+    ok "example.com appears 0 times in the ${fmt} output"
+  else
+    dq_fail "double-quoted address leaked: example.com appears ${hits} time(s) in the ${fmt} output"
+  fi
+done
+[ "${DQ_FAILS}" = "0" ] || die "${DQ_FAILS} double-quote check(s) failed"
+
+# Documented gap: native JSON whose operation is the SQL verb names no engine,
+# so "..." stays an identifier. Pinned so a silent change of the default shows.
+step "Native JSON without an engine keeps the double-quoted value (documented gap)"
+"${PERF_SENTINEL_LOCAL_BIN}" analyze --input "${FIX}/double-quote-gap.native.json" --format json \
+  > "${TMP_DIR}/dq-gap.json" 2>"${TMP_DIR}/dq-gap.err" \
+  || die "analyze failed on double-quote-gap.native.json: $(tail -2 "${TMP_DIR}/dq-gap.err")"
+GAP_TYPES="$(python3 -c "
+import json,sys
+print(' '.join(sorted({f.get('type') for f in json.load(open(sys.argv[1]))['findings']})))" "${TMP_DIR}/dq-gap.json")" \
+  || die "could not parse ${TMP_DIR}/dq-gap.json"
+case " ${GAP_TYPES} " in
+  *" n_plus_one_sql "*) die "gap changed: the engine-less double-quoted values now group as an N+1" ;;
+esac
+# The value reaches the output only through the serialized_calls suggestion,
+# so a missing serialized_calls says nothing about the normalizer default.
+case " ${GAP_TYPES} " in
+  *" serialized_calls "*) ;;
+  *) die "gap leg cannot judge: no serialized_calls finding (got [${GAP_TYPES}]), the detector that carries the value changed" ;;
+esac
+grep -qF 'gap-1@native.test' "${TMP_DIR}/dq-gap.json" \
+  || die "gap changed: the double-quoted value no longer reaches the output (update the scenario and the docs)"
+ok "engine-less native JSON keeps \"gap-<n>@native.test\", no N+1 forms"
+
 # --- verdict ----------------------------------------------------------------
-# PASS reflects the 0.9.2 change under test (normalize/sql.rs). The HTML
+# PASS reflects the 0.9.2 and 0.25.5 changes under test (normalize/sql.rs). The HTML
 # exemplar observation is reported but does not gate this scenario.
 verdict="PASS"
 {
@@ -121,14 +215,18 @@ verdict="PASS"
   echo "| secret/pii/ssn leak in analyze JSON | none |"
   echo "| masked template renders in HTML | yes |"
   echo "| raw exemplar leak in HTML (out of scope) | ${HTML_EXEMPLAR_LEAK} |"
+  echo "| mysql/mariadb/db.system.name double-quoted value masked, one N+1 each | yes |"
+  echo "| postgresql double-quoted identifiers kept | yes |"
+  echo "| example.com in OTLP analyze JSON/SARIF | 0 |"
+  echo "| engine-less native JSON keeps double-quoted value (documented gap) | yes |"
   echo ""
   if [ "${HTML_EXEMPLAR_LEAK}" = "yes" ]; then
     echo "> Observation: the normalized template (the 0.9.2 fix) masks bracket/array"
     echo "> string literals correctly on the canonical \`analyze --format json\` path."
     echo "> The HTML report additionally embeds a raw example span whose \`target\` is"
     echo "> the captured db.statement, so un-sanitized literals still appear in that"
-    echo "> exemplar. The report renderer is NOT part of the three commits under test"
-    echo "> (normalize/sql.rs only) — pre-existing behaviour, worth flagging upstream."
+    echo "> exemplar. The report renderer is NOT part of the 0.9.2 commits under test"
+    echo "> (normalize/sql.rs only). Pre-existing behaviour, worth flagging upstream."
     echo ""
   fi
   echo "Verdict: **${verdict}**"
