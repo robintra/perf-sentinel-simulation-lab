@@ -24,21 +24,29 @@ command-line flags, so every advisory, the non-loopback listen one first,
 printed twice on every pod. 0.25.3 applies the flags as a last layer and
 validates once.
 
+0.25.5 rewords that advisory. It used to say the endpoints have no
+authentication, which is false for the ack and incident routes once their API
+keys are set. It now says `OTLP ingest, /metrics and most read endpoints are
+never authenticated. Put a reverse proxy or a network policy in front.`
+
 ## What it asserts
 
-| id | assertion |
-|----|-----------|
-| F1 | fsGroup shape (`root:65534 2775`): no warning about the ack store directory at start |
-| F2 | the same start at `RUST_LOG=debug` logs the refusal at debug, not warn |
-| F3 | an ack posted to that daemon answers 201 |
-| F4 | `acks.jsonl` is 600 and owned by 65534, the directory is left at 2775 `root:65534` |
-| W1 | world-writable (`root:65534 2777`): the warning stays |
-| O1 | a directory the daemon owns (`65534:65534 2775`): no ack store log line, tightened to 700 |
-| L1 | `listen_address = "0.0.0.0"` in the file: the non-loopback advisory prints once |
-| L2 | `--listen-address 0.0.0.0` on the command line: the advisory prints once and `/health` answers |
+| id | assertion                                                                                                                                                                |
+|----|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| F1 | fsGroup shape (`root:65534 2775`): no warning about the ack store directory at start                                                                                     |
+| F2 | the same start at `RUST_LOG=debug` logs the refusal at debug, not warn                                                                                                   |
+| F3 | an ack posted to that daemon answers 201                                                                                                                                 |
+| F4 | `acks.jsonl` is 600 and owned by 65534, the directory is left at 2775 `root:65534`                                                                                       |
+| W1 | world-writable (`root:65534 2777`): the warning stays                                                                                                                    |
+| O1 | a directory the daemon owns (`65534:65534 2775`): no ack store log line, tightened to 700                                                                                |
+| L1 | `listen_address = "0.0.0.0"` in the file: the non-loopback advisory prints once                                                                                          |
+| L2 | `--listen-address 0.0.0.0` on the command line: the advisory prints once and `/health` answers                                                                           |
+| L3 | in the L1 and L2 logs the advisory line reads `OTLP ingest, /metrics and most read endpoints are never authenticated` once, and `Endpoints have no authentication` never |
 
-Run against 0.25.2 the scenario fails F1, F2 and L1 (the advisory prints
-twice when the address comes from the file) and passes the other five.
+Run against 0.25.2 the scenario fails F1, F2, L1 (the advisory prints twice
+when the address comes from the file) and L3 (new/old counts `F-info:0/2
+L2:0/1`), and passes the other five. Run against 0.25.4 it fails L3 only, with
+`F-info:0/1 L2:0/1`.
 
 ## How it reproduces the volume
 

@@ -28,6 +28,9 @@
 #   L1  listen_address = "0.0.0.0" in the file: the advisory prints once.
 #   L2  --listen-address 0.0.0.0 on the command line: the advisory prints once
 #       and the daemon answers on the published port.
+#   L3  in both L1 and L2 logs the advisory line carries the 0.25.5 wording ("OTLP
+#       ingest, /metrics and most read endpoints are never authenticated")
+#       once, and the old "Endpoints have no authentication" never.
 #
 # Needs Docker. The image resolves through scripts/resolve-image.sh.
 set -uo pipefail
@@ -82,6 +85,8 @@ storage_path = "/data/acks.jsonl"
 EOF
 grep -v '^listen_address' "${TMP_DIR}/config.toml" > "${TMP_DIR}/config-flags.toml"
 NONLOOPBACK_MSG="Daemon configured to listen on non-loopback address"
+NOAUTH_MSG="OTLP ingest, /metrics and most read endpoints are never authenticated"
+OLD_NOAUTH_MSG="Endpoints have no authentication"
 
 # prepare <volume> <owner:group> <mode>: the volume root as the kubelet leaves it.
 prepare() {
@@ -189,6 +194,19 @@ if [ "${n}" = "1" ]; then
   assert_pass "L2" "--listen-address 0.0.0.0: the advisory prints once, /health answers"
 else
   assert_fail "L2" "--listen-address 0.0.0.0: the advisory prints ${n} times"
+fi
+
+# =============================================================================
+step "L3: the advisory wording"
+# The new sentence counts only on the advisory line itself, the old one anywhere.
+got=""
+for log in F-info L2; do
+  got="${got} ${log}:$(grep -c "${NONLOOPBACK_MSG}.*${NOAUTH_MSG}" "${TMP_DIR}/${log}.log")/$(grep -c "${OLD_NOAUTH_MSG}" "${TMP_DIR}/${log}.log")"
+done
+if [ "${got}" = " F-info:1/0 L2:1/0" ]; then
+  assert_pass "L3" "advisory says \"${NOAUTH_MSG}\" once per log, never \"${OLD_NOAUTH_MSG}\""
+else
+  assert_fail "L3" "new/old wording counts per log:${got}, advisory: $(grep -m1 "${NONLOOPBACK_MSG}" "${TMP_DIR}/F-info.log" | cut -c1-200)"
 fi
 
 # =============================================================================
