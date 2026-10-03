@@ -19,11 +19,18 @@
 #   O3  embedded events: POST 201 x6, GET 200 x6, GET 404 x1, and the call
 #       that got no response (status=CLIENT_ERROR) carries no status.
 #   Z1-Z3, J1-J3  the same three on the Zipkin and Jaeger files.
+#   Q20 jaeger-query --service on Jaeger 2.20 reports the same two findings
+#       through the v1 search, without the v3 retry.
+#   Q21 jaeger-query --service on Jaeger 2.21, whose v1 search is gone, retries
+#       through /api/v3/traces and reports the same two findings (0.25.5).
+#   Q21-empty   an unknown service on 2.21 fails with "no traces found".
+#   Q21-badpath a wrong endpoint path on 2.21 fails with the HTTP 404 of the
+#       /api/v3/traces request.
 #   D1  the daemon, fed by the app directly, reports the same two findings.
-#   P1  each finding keeps one signature across the four paths.
+#   P1  each finding keeps one signature across the six paths.
 #
 # Self-contained: no cluster. Needs the local release binary, JDK 25, Maven,
-# python3 and Docker (throwaway Jaeger only).
+# python3 and Docker (two throwaway Jaegers only).
 set -uo pipefail
 
 SCENARIO="micrometer-http-client"
@@ -34,9 +41,14 @@ CENSUS="${SCRIPT_DIR}/fixtures/census.py"
 
 PERF_SENTINEL_REPO_PATH="${PERF_SENTINEL_REPO_PATH:-${HOME}/RustroverProjects/perf-sentinel}"
 PERF_SENTINEL_LOCAL_BIN="${PERF_SENTINEL_LOCAL_BIN:-${PERF_SENTINEL_REPO_PATH}/target/release/perf-sentinel}"
-# 2.21.0 removed the v1 HTTP API (/api/traces) that Jaeger JSON comes from.
+# 2.21.0 removed the v1 search (/api/traces?service=) that Jaeger JSON comes from.
 JAEGER_IMAGE="${JAEGER_IMAGE:-jaegertracing/jaeger:2.20.0}"
 JAEGER_CONTAINER="mhc-jaeger"
+# 2.21.0 has only the v3 search, which jaeger-query falls back to since 0.25.5.
+JAEGER21_IMAGE="${JAEGER21_IMAGE:-jaegertracing/jaeger:2.21.0}"
+JAEGER21_CONTAINER="mhc-jaeger21"
+JAEGER21_OTLP="${JAEGER21_OTLP:-15329}"
+JAEGER21_QUERY="${JAEGER21_QUERY:-16697}"
 CAPTURE_GRPC="${CAPTURE_GRPC:-15317}"
 CAPTURE_HTTP="${CAPTURE_HTTP:-15318}"
 JAEGER_OTLP="${JAEGER_OTLP:-15319}"
@@ -61,7 +73,7 @@ assert_fail() { color_red "    FAIL: $2"; FAILS=$((FAILS + 1)); record "$1" "FAI
 BG_PIDS=()
 cleanup() {
   for p in "${BG_PIDS[@]:-}"; do [ -n "$p" ] && kill "$p" 2>/dev/null; done
-  docker rm -f "${JAEGER_CONTAINER}" >/dev/null 2>&1 || true
+  docker rm -f "${JAEGER_CONTAINER}" "${JAEGER21_CONTAINER}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -109,6 +121,51 @@ check_file() {
   fi
 }
 
+# jaeger_query <leg> <endpoint> <service>: one jaeger-query run. Leaves the
+# report in <leg>.json, stderr in <leg>.err, the finding rows in <leg>.findings
+# and the exit code in QRC.
+QRC=0
+jaeger_query() {
+  local p="$1"
+  QRC=0
+  "${PERF_SENTINEL_LOCAL_BIN}" jaeger-query --endpoint "$2" --service "$3" \
+    --lookback 1h --max-traces 20 --format json \
+    > "${TMP_DIR}/${p}.json" 2> "${TMP_DIR}/${p}.err" || QRC=$?
+  python3 "${CENSUS}" findings "${TMP_DIR}/${p}.json" 2>/dev/null | sort > "${TMP_DIR}/${p}.findings"
+}
+RETRY_MSG="Jaeger v1 search answered 404, retrying through the v3 API"
+
+# retry <tries> <cmd...>: runs cmd once a second until it succeeds, fails after
+# <tries> attempts. A wait that runs out is a setup failure, not a product one.
+retry() {
+  local n="$1"
+  shift
+  for _ in $(seq "$n"); do "$@" && return 0; sleep 1; done
+  return 1
+}
+
+# jaeger_search_has_28: the 2.20 v1 search returns all 28 spans.
+jaeger_search_has_28() {
+  curl -sf "http://127.0.0.1:${JAEGER_QUERY}/api/traces?service=micrometer-client&limit=5&lookback=2d" > "${TMP_DIR}/jaeger.json" \
+    && python3 -c "import json,sys; sys.exit(0 if sum(len(t['spans']) for t in json.load(open('${TMP_DIR}/jaeger.json'))['data']) == 28 else 1)" 2>/dev/null
+}
+
+# jaeger21_has_28: every trace of the capture, read by id on 2.21 (which kept
+# the v1 per-trace read), adds up to 28 spans.
+jaeger21_has_28() {
+  python3 - "${TMP_DIR}/otlp.ndjson" "http://127.0.0.1:${JAEGER21_QUERY}" <<'EOF'
+import json, sys, urllib.request
+ids = {s["traceId"] for line in open(sys.argv[1]) if line.strip()
+       for rs in json.loads(line)["resourceSpans"] for ss in rs["scopeSpans"] for s in ss["spans"]}
+try:
+    n = sum(len(t["spans"]) for i in ids
+            for t in json.load(urllib.request.urlopen(f"{sys.argv[2]}/api/traces/{i}"))["data"])
+except Exception:
+    sys.exit(1)
+sys.exit(0 if ids and n == 28 else 1)
+EOF
+}
+
 # =============================================================================
 step "B0: build the otlp and zipkin profiles"
 if (cd "${TMP_DIR}/project" && mvn -q -DskipTests package > "${TMP_DIR}/build-otlp.log" 2>&1 \
@@ -148,15 +205,60 @@ docker rm -f "${JAEGER_CONTAINER}" >/dev/null 2>&1 || true
 docker run -d --name "${JAEGER_CONTAINER}" \
   -p "127.0.0.1:${JAEGER_OTLP}:4318" -p "127.0.0.1:${JAEGER_QUERY}:16686" \
   "${JAEGER_IMAGE}" > /dev/null || die "cannot start ${JAEGER_IMAGE}"
-for _ in $(seq 60); do curl -sf "http://127.0.0.1:${JAEGER_QUERY}/api/services" > /dev/null && break; sleep 1; done
+retry 60 curl -sf -o /dev/null "http://127.0.0.1:${JAEGER_QUERY}/api/services" || die "${JAEGER_IMAGE} never answered /api/services"
 curl -sf -H 'Content-Type: application/json' --data-binary @"${TMP_DIR}/otlp.ndjson" \
   "http://127.0.0.1:${JAEGER_OTLP}/v1/traces" > /dev/null || die "replay into Jaeger refused"
-for _ in $(seq 20); do
-  curl -sf "http://127.0.0.1:${JAEGER_QUERY}/api/traces?service=micrometer-client&limit=5&lookback=2d" > "${TMP_DIR}/jaeger.json"
-  python3 -c "import json,sys; sys.exit(0 if sum(len(t['spans']) for t in json.load(open('${TMP_DIR}/jaeger.json'))['data']) == 28 else 1)" 2>/dev/null && break
-  sleep 1
-done
+retry 20 jaeger_search_has_28 || die "${JAEGER_IMAGE} never returned the 28 spans"
 check_file J jaeger "${TMP_DIR}/jaeger.json"
+
+# =============================================================================
+step "Q20: jaeger-query on ${JAEGER_IMAGE}"
+jaeger_query Q20 "http://127.0.0.1:${JAEGER_QUERY}" micrometer-client
+got="$(cut -f1,2 "${TMP_DIR}/Q20.findings")"
+if [ "${QRC}" -eq 0 ] && [ "${got}" = "${EXPECTED_FINDINGS}" ] && ! grep -qF "${RETRY_MSG}" "${TMP_DIR}/Q20.err"; then
+  assert_pass "Q20" "jaeger-query on ${JAEGER_IMAGE}: POST x6, GET x7 through the v1 search, no v3 retry"
+else
+  assert_fail "Q20" "jaeger-query on ${JAEGER_IMAGE}: exit ${QRC}, retry logged: $(grep -cF "${RETRY_MSG}" "${TMP_DIR}/Q20.err"), rows: $(echo "${got}" | tr '\t\n' ' ;'), $(tail -1 "${TMP_DIR}/Q20.err")"
+fi
+docker rm -f "${JAEGER_CONTAINER}" >/dev/null 2>&1 || true
+
+# =============================================================================
+step "Q21: the same replay into ${JAEGER21_IMAGE}, read by jaeger-query"
+docker rm -f "${JAEGER21_CONTAINER}" >/dev/null 2>&1 || true
+docker run -d --name "${JAEGER21_CONTAINER}" \
+  -p "127.0.0.1:${JAEGER21_OTLP}:4318" -p "127.0.0.1:${JAEGER21_QUERY}:16686" \
+  "${JAEGER21_IMAGE}" > /dev/null || die "cannot start ${JAEGER21_IMAGE}"
+# /api/services is 404 on 2.21, the v3 one is the readiness probe.
+retry 60 curl -sf -o /dev/null "http://127.0.0.1:${JAEGER21_QUERY}/api/v3/services" || die "${JAEGER21_IMAGE} never answered /api/v3/services"
+curl -sf -H 'Content-Type: application/json' --data-binary @"${TMP_DIR}/otlp.ndjson" \
+  "http://127.0.0.1:${JAEGER21_OTLP}/v1/traces" > /dev/null || die "replay into ${JAEGER21_IMAGE} refused"
+retry 20 jaeger21_has_28 || die "${JAEGER21_IMAGE} never ingested the 28 spans"
+
+jaeger_query Q21 "http://127.0.0.1:${JAEGER21_QUERY}" micrometer-client
+got="$(cut -f1,2 "${TMP_DIR}/Q21.findings")"
+if [ "${QRC}" -eq 0 ] && [ "${got}" = "${EXPECTED_FINDINGS}" ] && grep -qF "${RETRY_MSG}" "${TMP_DIR}/Q21.err"; then
+  assert_pass "Q21" "jaeger-query on ${JAEGER21_IMAGE}: v1 search 404, v3 retry, POST x6, GET x7"
+else
+  assert_fail "Q21" "jaeger-query on ${JAEGER21_IMAGE}: exit ${QRC}, retry logged: $(grep -cF "${RETRY_MSG}" "${TMP_DIR}/Q21.err"), rows: $(echo "${got}" | tr '\t\n' ' ;'), $(tail -1 "${TMP_DIR}/Q21.err")"
+fi
+
+jaeger_query Q21-empty "http://127.0.0.1:${JAEGER21_QUERY}" nosuch
+if [ "${QRC}" -ne 0 ] && grep -qF "no traces found" "${TMP_DIR}/Q21-empty.err"; then
+  assert_pass "Q21-empty" "unknown service on 2.21: exit ${QRC}, no traces found"
+else
+  assert_fail "Q21-empty" "unknown service on 2.21: exit ${QRC}, $(tail -1 "${TMP_DIR}/Q21-empty.err")"
+fi
+
+# A path Jaeger answers 404 to. A prefix outside /api (say /nope) does not
+# work: the UI answers any such path 200 with its index.html.
+jaeger_query Q21-badpath "http://127.0.0.1:${JAEGER21_QUERY}/api" micrometer-client
+if [ "${QRC}" -ne 0 ] && grep -qF "HTTP 404 for http://127.0.0.1:${JAEGER21_QUERY}/api/api/v3/traces" "${TMP_DIR}/Q21-badpath.err" \
+    && ! grep -qF "no traces found" "${TMP_DIR}/Q21-badpath.err"; then
+  assert_pass "Q21-badpath" "wrong endpoint path on 2.21: exit ${QRC}, HTTP 404 of the v3 request"
+else
+  assert_fail "Q21-badpath" "wrong endpoint path on 2.21: exit ${QRC}, $(tail -1 "${TMP_DIR}/Q21-badpath.err")"
+fi
+docker rm -f "${JAEGER21_CONTAINER}" >/dev/null 2>&1 || true
 
 # =============================================================================
 step "D: the app exports straight to the daemon's OTLP receiver"
@@ -182,10 +284,10 @@ else
 fi
 
 # =============================================================================
-step "P1: one signature per finding across the four paths"
-distinct="$(cat "${TMP_DIR}"/{O,Z,J,D}.findings | cut -f1,3 | sort -u | wc -l | tr -d ' ')"
+step "P1: one signature per finding across the six paths"
+distinct="$(cat "${TMP_DIR}"/{O,Z,J,Q20,Q21,D}.findings | cut -f1,3 | sort -u | wc -l | tr -d ' ')"
 if [ "${distinct}" = "2" ]; then
-  assert_pass "P1" "OTLP, Zipkin, Jaeger and daemon agree on both signatures"
+  assert_pass "P1" "OTLP, Zipkin, Jaeger JSON, jaeger-query on 2.20 and 2.21, and daemon agree on both signatures"
 else
   assert_fail "P1" "${distinct} distinct (template, signature) pairs, want 2"
 fi
@@ -196,7 +298,7 @@ verdict=$([ "${FAILS}" -eq 0 ] && echo PASS || echo FAIL)
   echo "# Scenario: ${SCENARIO}"
   echo ""
   echo "A Spring Boot 4 service traced through Micrometer Observation, read by"
-  echo "perf-sentinel ${BIN_VERSION} over OTLP, Zipkin, Jaeger and the daemon."
+  echo "perf-sentinel ${BIN_VERSION} over OTLP, Zipkin, Jaeger (file and query API) and the daemon."
   echo ""
   echo "| assertion | result |"
   echo "|---|---|"
