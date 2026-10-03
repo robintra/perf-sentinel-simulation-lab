@@ -6,7 +6,7 @@ validated end to end on the lab cluster, with an architecture diagram,
 the input/output capture types, the configuration knobs that matter,
 and the gotchas that bit us during validation.
 
-The 91 scenarios live under `scenarios/<name>/` and each one ships a
+The 94 scenarios live under `scenarios/<name>/` and each one ships a
 runnable `verify.sh` plus a focused `README.md`. The scripts are
 reproducible on a `make up-cni` + `make seed-services` +
 `make seed-electricity-maps` cluster.
@@ -1456,7 +1456,7 @@ SKIP_RUNTIME=1 make verify-template-github-actions
 | template-jenkinsfile | jenkinsfile.groovy lint + runtime | yes | LOCAL ONLY (jenkinsfile-runner flaky) |
 | template-github-actions | github-actions.yml lint + act --list | yes | LOCAL ONLY (act-in-act convolu) |
 
-`make verify-all-scenarios` includes all 91 scenarios, in an order
+`make verify-all-scenarios` includes all 94 scenarios, in an order
 that preserves the inter-scenario artefact dependencies.
 
 `java-ci-capture` is the first lab scenario whose trace file is
@@ -2012,7 +2012,7 @@ scenarios stay CI-runnable without a cluster.
 
 | Scenario | What it proves |
 |---|---|
-| `sql-backtick-redaction` | MySQL backtick identifiers are preserved (incl. the numeric `` `2024` `` the pre-0.9.2 tokenizer masked); PostgreSQL bracket/array string literals (`ARRAY['secret','pii']`, `data['ssn']`) are masked to `?` with no leak in the `analyze --format json` output |
+| `sql-backtick-redaction` | MySQL backtick identifiers are preserved (incl. the numeric `` `2024` `` the pre-0.9.2 tokenizer masked); PostgreSQL bracket/array string literals (`ARRAY['secret','pii']`, `data['ssn']`) are masked to `?` with no leak in the `analyze --format json` output. 0.25.5: a double-quoted value on MySQL and MariaDB (`db.system`, `db.system.name`) is masked and groups into one `n_plus_one_sql` with no leak in the JSON and SARIF output, while a PostgreSQL double-quoted identifier stays verbatim |
 | `non-sql-datastore-drop` | redis + elasticsearch (with `url.full`) spans dropped on `db.system` alone across batch Jaeger, batch Zipkin, and OTLP daemon. Only the PostgreSQL N+1 survives, ES is not reclassified as HTTP, `non_sql_datastore` counter rises by the dropped count |
 | `non-sql-datastore-metering` | a Redis-only fleet raises the `non_sql_datastore` counter but **not** the `/api/export/report` zero-retention warning (0.9.2 excludes it from the gap); an internal `not_io` fleet still raises the warning (negative control) |
 | `ruby-activerecord-suggestion` | an N+1 under the OTLP scope `OpenTelemetry::Instrumentation::ActiveRecord` is enriched with `suggested_fix.framework = ruby_active_record` (recommends `includes`/`preload`/`eager_load`); a `.rb` `code.filepath` with no ORM scope yields `ruby_generic` |
@@ -3429,15 +3429,28 @@ The app calls itself once and fans out 6 `POST`, 6 `GET`, one `GET` answered
 404 and one refused call (`status=CLIENT_ERROR`). The scenario reads it over
 OTLP through `perf-sentinel capture`, as Zipkin v2 JSON, as the Jaeger JSON of
 the OTLP capture replayed into Jaeger, and through the daemon's OTLP receiver.
-Each file path has to split the finding into `POST` x6 and `GET` x7, carry
-201, 200 and 404 on the embedded events and no status on the refused call, and
-the four paths have to agree on both signatures. Run against 0.25.1 it fails
-the eight method and status checks, and its four build and shape checks pass
-on both.
+Each file path has to split the finding into `POST` x6 and `GET` x7, carry 201,
+200 and 404 on the embedded events and no status on the refused call.
 
-**Jaeger 2.21.0 has no `/api/traces`.** It removed the v1 HTTP endpoints
-(jaegertracing/jaeger#9260), so the scenario pins 2.20.0. The same removal
-breaks `perf-sentinel jaeger-query` against Jaeger 2.21.0 and later.
+Since 0.25.5 the scenario also runs `jaeger-query --service` on both sides of
+the Jaeger 2.21 API removal (jaegertracing/jaeger#9260). Q20 runs it against
+the throwaway Jaeger 2.20.0 container the J legs use and expects the same two
+findings through the v1 search, with no v3 retry. A second throwaway container
+on Jaeger 2.21.0 gets the same OTLP replay. It is probed on `/api/v3/services`,
+because `/api/services` is a 404 there, and the script waits until the
+capture's traces, read by id through `/api/traces/{id}`, add up to all 28
+spans, or stops with a setup error. Q21 expects the fallback: the log line
+`Jaeger v1 search answered 404, retrying through the v3 API` and the same two
+findings. Q21-empty expects an unknown service to fail with `no traces found`.
+Q21-badpath expects `--endpoint .../api` to fail with the HTTP 404 of the
+`/api/v3/traces` request. A `/nope` prefix would not test this, because the
+Jaeger UI answers any path outside `/api` with a 200 and its `index.html`.
+
+P1 checks that each finding keeps one signature across six paths: OTLP, Zipkin,
+Jaeger JSON, `jaeger-query` on 2.20 and on 2.21, and the daemon. Run against
+0.25.4, Q21, Q21-empty and Q21-badpath fail on the v1 404 and everything else
+passes, Q20 included. Run against 0.25.1, the method and status checks also
+fail, Q20 among them, and B0, O1, Z1 and J1 pass on every version.
 
 ## hibernate-alias-suggestion (0.25.3, JPA fix without a Hibernate span)
 
@@ -3471,7 +3484,7 @@ parameterized, so the strict sanitizer-aware mode picks `n_plus_one_sql` or
 the app to the next, and the signature follows the type. The assertions find
 each loop by its template.
 
-## ack-store-fsgroup-root (0.25.3, ack store at an fsGroup volume root)
+## ack-store-fsgroup-root (0.25.3 and 0.25.5, ack store at an fsGroup volume root)
 
 `make verify-ack-store-fsgroup-root`. Needs Docker, around 15 seconds. The
 image resolves through `scripts/resolve-image.sh`.
@@ -3486,8 +3499,46 @@ still warns, and a directory the daemon owns is tightened to 700 in silence.
 The same starts listen on `0.0.0.0` like the chart, and the non-loopback
 advisory has to print once, whether the address comes from the file or from
 `--listen-address`: up to 0.25.2 `watch` validated its configuration a second
-time after its flags, and printed every advisory twice. Run against 0.25.2 it
-fails the three log checks that cover these and passes the five others.
+time after its flags, and printed every advisory twice.
+
+L3 (0.25.5) reads the advisory line itself in both logs: it must say "OTLP
+ingest, /metrics and most read endpoints are never authenticated" exactly once,
+and "Endpoints have no authentication" must never appear. The old sentence was
+false for the ack and incident routes once their API keys are set. Run against
+0.25.4 the scenario fails L3 only and passes the other eight. Run against
+0.25.2 it fails F1, F2, L1 and L3 and passes the other five, both observed on
+2026-10-03.
+
+## outbound-proxy-private-ca (0.25.5, outbound proxy and private CA)
+
+`make verify-outbound-proxy-private-ca`. A local release binary, openssl,
+python3 and Docker. No cluster, around 5 seconds.
+
+openssl mints a throwaway CA and a server certificate for `tls-origin`,
+`localhost` and `127.0.0.1`. One Docker network holds a digest-pinned nginx
+origin named `tls-origin`, which serves a hash-baked G2 report, a 302 and an 11
+MiB body, and a digest-pinned tinyproxy published on a free loopback port that
+logs every `CONNECT`. The pre-flight stops the run if the host resolves
+`tls-origin`, so a successful fetch proves the tunnel. Each leg counts
+`CONNECT` lines from its own baseline, and a failing `docker logs` stops the
+run instead of counting as zero.
+
+`verify-hash --url` must succeed (exit 2, content hash OK, `CONNECT` logged)
+through `HTTPS_PROXY`, and through `ALL_PROXY` alone, with `SSL_CERT_FILE` set.
+It must fail on the certificate without `SSL_CERT_FILE`, and fail on DNS with
+no `CONNECT` when no proxy is set, when `NO_PROXY=tls-origin`, and when
+`HTTPS_PROXY` is a `socks5://` URL, which also logs the warning about `http://`
+proxy URLs. It must refuse the 302 and stop at `exceeds 10485760 byte cap`. The
+daemon's TLS listener (`[daemon] tls_cert_path` and `tls_key_path`) must answer
+`query --daemon https://localhost:<port> status` only when `SSL_CERT_FILE` is
+set. With an inherited `HTTPS_PROXY`, the query reaches it directly only when
+`NO_PROXY` lists `localhost`, otherwise the call is tunneled and `CONNECT
+localhost` is logged. Run against 0.25.4 the scenario fails V1, V5, V6, V7, V8,
+T1, T2 and T3, and passes V2, V3 and V4.
+
+`query` prints only `HTTP transport error` when the daemon's certificate is not
+trusted, without the TLS cause, so T1 asserts on the pair of exit codes rather
+than on a certificate message.
 
 ## Which binary a scenario runs against
 
