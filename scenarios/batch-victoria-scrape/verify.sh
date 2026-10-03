@@ -103,11 +103,14 @@ PF_ORDER_PID=""
 # also probed by the readiness loop above and scraped by Prometheus, and both
 # produce single-span traces that the backend returns first because they are
 # the most recent. Waiting on "any data" would let the scenario proceed while
-# only that noise is visible, which is what --max-traces then fetches.
+# only that noise is visible, which is what --max-traces then fetches. The
+# search starts at TRAFFIC_START, not two minutes back: multiformat-input and
+# validate-findings drive the same N+1 endpoint, and their traces would let
+# the wait pass before this run's own traffic is indexed.
 indexed=0
 for i in $(seq 1 30); do
   now_us=$(( $(date -u +%s) * 1000000 ))
-  start_us=$(( now_us - 120000000 ))
+  start_us=$(( TRAFFIC_START * 1000000 ))
   if curl -fsS "${VT_URL_HOST}/select/jaeger/api/traces?service=order-service&start=${start_us}&end=${now_us}&limit=50" \
        | python3 -c 'import json,sys; sys.exit(not any(len(t.get("spans", [])) > 5 for t in json.load(sys.stdin).get("data") or []))' 2>/dev/null; then
     indexed=1
@@ -131,10 +134,22 @@ else
 fi
 
 step "Leg B: a window that excludes the traffic must come back empty"
-# One hour, ending an hour before the traffic. If the window reaches the
-# backend at all, nothing can match it. If the window is dropped, the search
-# runs unbounded and returns the traffic, which is the pre-0.16.0 bug.
+# One hour, ending an hour before the traffic, and never after the Victoria
+# Traces volume was created: other scenarios drive order-service traffic too,
+# so on a busy cluster the hour before this run is not empty, but nothing can
+# predate the volume. If the window reaches the backend at all, nothing can
+# match it. If the window is dropped, the search runs unbounded and returns
+# the traffic, which is the pre-0.16.0 bug.
 EXCL_TO=$(( TRAFFIC_START - 3600 ))
+VT_CREATED=$(kubectl -n observability get pvc data-victoria-traces-0 -o jsonpath='{.metadata.creationTimestamp}' 2>/dev/null || true)
+if [ -n "${VT_CREATED}" ]; then
+  VT_CREATED_EPOCH=$(python3 -c "import datetime,sys; print(int(datetime.datetime.strptime(sys.argv[1], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp()))" "${VT_CREATED}")
+  if [ $(( VT_CREATED_EPOCH - 60 )) -lt "${EXCL_TO}" ]; then
+    EXCL_TO=$(( VT_CREATED_EPOCH - 60 ))
+  fi
+else
+  color_blue "    note: no Victoria Traces volume creation time, leg B keeps the hour before the traffic"
+fi
 EXCL_FROM=$(( EXCL_TO - 3600 ))
 iso() { python3 -c "import datetime,sys; print(datetime.datetime.fromtimestamp(int(sys.argv[1]), datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$1"; }
 EXCL_FROM_ISO="$(iso "${EXCL_FROM}")"
