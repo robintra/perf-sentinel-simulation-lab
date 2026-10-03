@@ -1,6 +1,12 @@
 # Helm values overlay applied on top of helm/values/otel-collector.yaml.
-# Adds Jaeger + Zipkin exporters in parallel to the existing Tempo and
-# perf_sentinel exporters in the traces pipeline.
+# Adds Jaeger + Zipkin exporters in parallel to the existing Tempo,
+# perf_sentinel and Victoria Traces exporters in the traces pipeline.
+#
+# Helm replaces lists instead of merging them, so the exporters list below
+# must repeat every exporter of the base values. The scenario keeps this
+# overlay installed after it runs, and an exporter missing here stops
+# feeding its backend for every later scenario (batch-victoria-scrape read
+# an empty Victoria Traces after this one until victoria_traces was added).
 #
 # Apply with:
 #   helm upgrade otel-collector open-telemetry/opentelemetry-collector \
@@ -31,5 +37,6 @@ config:
         exporters:
           - otlphttp/tempo
           - otlphttp/perf_sentinel
+          - otlphttp/victoria_traces
           - otlphttp/jaeger
           - zipkin
