@@ -253,8 +253,8 @@ lab works fine on the bundled `annual` source when no token is
 provisioned.
 
 Beyond the proxy and Electricity Maps paths, the daemon ingests
-measured energy from Scaphandre (RAPL), Kepler (eBPF), and Redfish
-(BMC) exporters. The lab ships Python stdlib mocks for all three, so
+measured energy from Scaphandre (RAPL), Kepler (RAPL, per container),
+and Redfish (BMC) exporters. The lab ships Python stdlib mocks for all three, so
 those scrape paths run without bare-metal counters. perf-sentinel
 0.8.2 added periodic disclosure with two-tier avoidable-waste
 reporting (schema v1.1), and 0.8.3 added temporal-coverage

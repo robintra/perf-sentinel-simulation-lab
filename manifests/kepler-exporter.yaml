@@ -1,5 +1,5 @@
 ---
-# Upstream Kepler v2 exporter, opt-in via `make seed-kepler-exporter`.
+# Upstream Kepler v0.12.0 exporter, opt-in via `make seed-kepler-exporter`.
 # This harness lets post-release validations confirm perf-sentinel's
 # Kepler scraper against the real metric names exposed by Kepler,
 # rather than against a lab-side mock built from parser assumptions.
@@ -68,12 +68,15 @@ metadata:
     app.kubernetes.io/name: kepler-exporter
     app.kubernetes.io/part-of: perf-sentinel-lab
 data:
-  # `dev.fake-cpu-meter.enabled: true` is the actual knob (the
-  # `cpu.meters` field documented in early v0.11 release notes does
-  # not exist in the parsed schema). Lets Kepler emit /metrics with
-  # canonical names and synthetic readings on hosts without RAPL.
-  # Metric names come from the real Kepler Go code regardless of the
-  # meter source, so parser conformance is still validated for real.
+  # `cpu.preferredMeters: ["fake"]` selects the fake meter
+  # (config/config.go@v0.12.0, `yaml:"preferredMeters"`). The legacy
+  # `dev.fake-cpu-meter.enabled` still works with a deprecation
+  # warning, and `cpu.meters`, which some upstream docs show, is not
+  # in the parsed schema. `zones: []` keeps the fake meter's default
+  # zones, package, core and dram, so the daemon's `[green.kepler]
+  # zone` choice is exercised against overlapping series. Readings
+  # are synthetic without RAPL, but metric names and labels come from
+  # the real Kepler Go code, so parser conformance is still real.
   #
   # `kube.podInformer.mode: apiserver` switches off the default
   # kubelet pod informer (port 10250, needs kubelet RBAC we cannot
@@ -95,9 +98,10 @@ data:
       podInformer:
         mode: apiserver
         pollInterval: 15s
+    cpu:
+      preferredMeters: ["fake"]
     dev:
       fake-cpu-meter:
-        enabled: true
         zones: []
 ---
 apiVersion: v1
@@ -126,7 +130,7 @@ metadata:
   labels:
     app.kubernetes.io/name: kepler-exporter
     app.kubernetes.io/part-of: perf-sentinel-lab
-    app.kubernetes.io/version: "0.11.4"
+    app.kubernetes.io/version: "0.12.0"
 spec:
   selector:
     matchLabels:
@@ -136,7 +140,7 @@ spec:
       labels:
         app.kubernetes.io/name: kepler-exporter
         app.kubernetes.io/part-of: perf-sentinel-lab
-        app.kubernetes.io/version: "0.11.4"
+        app.kubernetes.io/version: "0.12.0"
     spec:
       serviceAccountName: kepler
       hostPID: true
@@ -147,7 +151,7 @@ spec:
           key: node-role.kubernetes.io/master
       containers:
         - name: kepler
-          image: quay.io/sustainable_computing_io/kepler@sha256:ef69ff63f7f50d2d5c199028de0da1af389b5b73a498c516cf6d504d0a492406  # latest = v0.11.4-68-g39ac9b24 amd64
+          image: quay.io/sustainable_computing_io/kepler@sha256:7681d8b453e4e10ac67c183e0b68238c3d19d3a8af80743354ef57b8511553b0  # v0.12.0 amd64
           imagePullPolicy: IfNotPresent
           command: ["/usr/bin/kepler"]
           args:

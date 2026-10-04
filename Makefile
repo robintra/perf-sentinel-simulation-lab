@@ -403,7 +403,7 @@ seed-scaphandre-mock: ## Apply the Scaphandre mock manifest (RAPL stand-in for t
 	@kubectl apply -f manifests/scaphandre-mock.yaml
 	@kubectl rollout status deployment/scaphandre-mock -n observability --timeout=120s
 
-seed-kepler-mock: ## Apply the Kepler mock manifest (eBPF stand-in for the daemon scrape path)
+seed-kepler-mock: ## Apply the Kepler mock manifest (stand-in for the daemon scrape path)
 	@kubectl apply -f manifests/kepler-mock.yaml
 	@kubectl rollout status deployment/kepler-mock -n observability --timeout=120s
 

@@ -227,8 +227,8 @@ data:
     cmdline_contains = "symfony-svc"
 
     [green.kepler]
-    # Kepler eBPF exporter scrape path. The real exporter needs
-    # bare-metal perf counters which the lab cannot provide, so a
+    # Kepler exporter scrape path. The real exporter needs RAPL,
+    # which the lab nodes do not expose, so a
     # Python stdlib mock at manifests/kepler-mock.yaml serves the
     # `kepler_container_cpu_joules_total` counter perf-sentinel
     # consumes in container mode (Kepler v0.10+ name with the
@@ -246,7 +246,7 @@ data:
     "notification-service" = "notification-svc"
 
     [green.redfish]
-    # Redfish BMC wall-plug wattage scrape. Real BMC hardware is not
+    # Redfish BMC chassis power scrape. Real BMC hardware is not
     # available in CI, so a Python stdlib mock at
     # manifests/redfish-mock.yaml stands in for two chassis and
     # serves BOTH schemas the v0.7.6 daemon dispatches on (legacy

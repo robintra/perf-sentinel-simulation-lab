@@ -1,8 +1,8 @@
 ---
-# Kepler mock for the lab. The real Kepler exporter (CNCF eBPF + perf
-# counters) only emits non-zero readings on bare-metal Linux with
-# perf_event_paranoid permissive enough to allow per-process counters,
-# neither of which is available on the lab nodes. This Python stdlib
+# Kepler mock for the lab. The real Kepler exporter (v0.10+) reads
+# RAPL through powercap and splits it by CPU time, so it only emits
+# real readings on Linux hosts that expose RAPL, which the lab nodes
+# do not. This Python stdlib
 # mock stands in for a real Kepler DaemonSet and lets the daemon
 # exercise its `[green.kepler]` Prometheus scrape path. The mock
 # exposes only `kepler_container_cpu_joules_total`, the single metric
@@ -23,8 +23,8 @@ data:
 
     Cumulative joule counters per container_name, advanced by a
     background thread on a wall-clock cadence independent of the HTTP
-    scrape rate. The real Kepler exporter updates its counters from
-    eBPF samples regardless of who scrapes them; matching that
+    scrape rate. The real Kepler exporter updates its counters on its
+    own monitor interval regardless of who scrapes them; matching that
     semantic means a second scraper (e.g. a Prometheus ServiceMonitor
     layered on top of the daemon's direct scrape) cannot inflate the
     visible rate.
