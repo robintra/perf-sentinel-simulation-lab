@@ -526,7 +526,10 @@ EOF
   arch_dw="$(count_db_windows "${TMP_DIR}/archive-b-frozen.ndjson")"
   if [ "${arch_dw:-0}" -gt 0 ]; then
     strip_db_archive "${TMP_DIR}/archive-b-frozen.ndjson" "${TMP_DIR}/archive-b-stripped.ndjson"
-    B_PERIOD=(--period-type calendar-quarter --from 2026-04-01 --to 2026-09-30)
+    # The archive windows are written today, so the period is the current
+    # calendar quarter, not a fixed one that the calendar walks out of.
+    read -r B_FROM B_TO < <(python3 -c 'import datetime as d; t=d.date.today(); q=(t.month-1)//3; s=d.date(t.year,3*q+1,1); e=(d.date(t.year+(q==3),(3*q+3)%12+1,1)-d.timedelta(days=1)); print(s,e)')
+    B_PERIOD=(--period-type calendar-quarter --from "${B_FROM}" --to "${B_TO}")
     if "${PERF_SENTINEL_LOCAL_BIN}" disclose --intent internal --confidentiality internal \
          --org-config "${ORG_CONFIG}" "${B_PERIOD[@]}" \
          --input "${TMP_DIR}/archive-b-frozen.ndjson" --output "${TMP_DIR}/b-disclosure.json" \
